@@ -18,6 +18,9 @@ celery==5.4.0
 redis==5.0.8
 django-redis==5.4.0
 
+# Health/readiness probes (/readyz)
+django-health-check==3.18.3
+
 # Database driver (MySQL 8)
 mysqlclient==2.2.4
 

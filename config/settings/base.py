@@ -47,6 +47,13 @@ THIRD_PARTY_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.openid_connect",
+    # Health/readiness probes (used by /readyz). The Celery broker check is a
+    # custom backend registered in apps.core.apps.CoreConfig.ready().
+    "health_check",
+    "health_check.db",
+    "health_check.cache",
+    "health_check.contrib.migrations",
+    "health_check.contrib.redis",
 ]
 
 LOCAL_APPS = [
@@ -102,7 +109,18 @@ DATABASES = {
         "PASSWORD": env("DB_PASSWORD", default="pmspw"),
         "HOST": env("DB_HOST", default="127.0.0.1"),
         "PORT": env("DB_PORT", default="3306"),
+        # Persistent connections (held per worker thread for up to 60s) reduce
+        # connect churn under horizontal scaling; CONN_HEALTH_CHECKS revalidates
+        # a reused connection before each request so a stale/killed connection is
+        # transparently replaced instead of erroring.
+        #
+        # MySQL max_connections sizing (the mysql service caps at 100):
+        #   peak_conns ≈ web_replicas × gunicorn_workers × threads
+        #               + celery_worker_concurrency + headroom
+        # e.g. 3 replicas × 9 workers × 2 threads = 54, + celery + buffer < 100.
+        # Raise --max-connections (and DB resources) before scaling past that.
         "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
+        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": {
             "charset": "utf8mb4",
             # Strict mode: surface bad data as errors instead of silent truncation.
@@ -116,17 +134,34 @@ DATABASES = {
 }
 
 # ─── Cache + sessions (Redis 7) ────────────────────────────────────────
-REDIS_URL = env("REDIS_URL", default="redis://127.0.0.1:6379/0")
+# Redis is split by logical DB so cache pressure can never disturb queued work:
+#   /0 → Celery broker + results   (must be noeviction — see docker-compose)
+#   /1 → application cache          (TTL'd; safe to evict)
+#   /2 → sessions
+REDIS_CACHE_URL = env("REDIS_CACHE_URL", default="redis://127.0.0.1:6379/1")
+REDIS_SESSION_URL = env("REDIS_SESSION_URL", default="redis://127.0.0.1:6379/2")
+# health_check.contrib.redis pings this URL; point it at the cache DB.
+REDIS_URL = REDIS_CACHE_URL
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL,
+        "LOCATION": REDIS_CACHE_URL,
+        "KEY_PREFIX": "pms",
+        "TIMEOUT": 300,
         "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
-    }
+    },
+    "sessions": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_SESSION_URL,
+        "KEY_PREFIX": "pms-sess",
+        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+    },
 }
-# Sessions live in Redis (per the Module 1 login workflow: "write session to Redis").
+# Sessions live in their own Redis DB (per the Module 1 login workflow:
+# "write session to Redis"), isolated from the application cache.
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
-SESSION_CACHE_ALIAS = "default"
+SESSION_CACHE_ALIAS = "sessions"
 
 # ─── Auth: users, password hashing (Argon2), validators ────────────────
 AUTH_USER_MODEL = "identity.User"
@@ -225,9 +260,11 @@ SOCIALACCOUNT_PROVIDERS = {
 
 LOGIN_REDIRECT_URL = "/api/auth/oidc/complete"
 
-# ─── Celery (Redis broker + result backend) ────────────────────────────
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://127.0.0.1:6379/1")
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://127.0.0.1:6379/2")
+# ─── Celery (Redis broker + result backend, logical DB /0) ─────────────
+# The broker DB MUST be configured noeviction (see docker-compose redis service)
+# so memory pressure can never silently drop queued jobs.
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://127.0.0.1:6379/0")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://127.0.0.1:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"

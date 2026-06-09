@@ -21,7 +21,7 @@ from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
 from .serializers import EntitlementSerializer
-from .services import get_or_create_entitlement, set_seats, upgrade_to_full_ai
+from .services import get_entitlement_cached, set_seats, upgrade_to_full_ai
 
 
 class EntitlementView(RBACMixin, APIView):
@@ -34,7 +34,7 @@ class EntitlementView(RBACMixin, APIView):
     required_capability = Capability.MANAGE_TENANT
 
     def get(self, request):
-        entitlement = get_or_create_entitlement(request.user.tenant)
+        entitlement = get_entitlement_cached(request.user.tenant)
         return Response(EntitlementSerializer(entitlement).data)
 
 

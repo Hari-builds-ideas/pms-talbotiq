@@ -14,11 +14,19 @@ identically whether called from an endpoint (tenant already bound by
 """
 from __future__ import annotations
 
+from django.core.cache import cache
+
 from apps.audit.services import record
+from apps.core.cache import invalidate_tenant_cache, tenant_cache_key
 from apps.tenancy.context import tenant_context
 
 from .models import DEFAULT_PACKS, Entitlement
 from .packs import FULL_AI, agents_for_packs
+
+#: Time-to-live (seconds) for a cached entitlement read.
+_ENTITLEMENT_CACHE_TTL = 300
+#: Cache key suffix identifying a tenant's cached entitlement.
+_ENTITLEMENT_CACHE_PART = "entitlement"
 
 
 def _tenant_id(tenant) -> str:
@@ -45,13 +53,35 @@ def get_or_create_entitlement(tenant, *, default_seats=0, default_packs=None) ->
         return entitlement
 
 
+def get_entitlement_cached(tenant) -> Entitlement:
+    """Return ``tenant``'s entitlement, served from the per-tenant cache.
+
+    The READ path for the hot gate: on a cache hit the stored :class:`Entitlement`
+    instance is returned directly (django-redis pickles the model, so
+    ``.has_agent()`` and friends keep working); on a miss it loads via
+    :func:`get_or_create_entitlement`, caches the instance under a tenant-scoped
+    key for :data:`_ENTITLEMENT_CACHE_TTL` seconds, and returns it.
+
+    Mutation paths deliberately do NOT use this — they read fresh from the DB and
+    then invalidate, so a stale row can never be persisted.
+    """
+    key = tenant_cache_key(_tenant_id(tenant), _ENTITLEMENT_CACHE_PART)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    entitlement = get_or_create_entitlement(tenant)
+    cache.set(key, entitlement, _ENTITLEMENT_CACHE_TTL)
+    return entitlement
+
+
 def tenant_has_agent(tenant, agent_code: str) -> bool:
     """True iff ``tenant``'s entitlement unlocks ``agent_code``.
 
-    Resolves (and provisions a default if needed) the tenant's entitlement, then
-    checks the agent against the union of its packs.
+    Reads through the cache (:func:`get_entitlement_cached`) so the gate's hot
+    path avoids a DB round-trip, then checks the agent against the union of the
+    entitlement's packs.
     """
-    entitlement = get_or_create_entitlement(tenant)
+    entitlement = get_entitlement_cached(tenant)
     return entitlement.has_agent(agent_code)
 
 
@@ -75,6 +105,7 @@ def set_seats(tenant, seat_count: int, *, actor=None) -> Entitlement:
         )
         entitlement.seat_count = seat_count
         entitlement.save(update_fields=["seat_count", "updated_at"])
+    invalidate_tenant_cache(tid, _ENTITLEMENT_CACHE_PART)
     return entitlement
 
 
@@ -107,4 +138,5 @@ def upgrade_to_full_ai(tenant, *, actor=None) -> Entitlement:
         )
         entitlement.add_pack(FULL_AI)
         entitlement.save(update_fields=["feature_packs", "updated_at"])
+    invalidate_tenant_cache(tid, _ENTITLEMENT_CACHE_PART)
     return entitlement

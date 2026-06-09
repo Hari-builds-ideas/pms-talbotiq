@@ -17,9 +17,10 @@ x-app-environment: &app_environment
   DB_PASSWORD: ${DB_PASSWORD:-pmspw}
   DB_HOST: mysql
   DB_PORT: "3306"
-  REDIS_URL: redis://redis:6379/0
-  CELERY_BROKER_URL: redis://redis:6379/1
-  CELERY_RESULT_BACKEND: redis://redis:6379/2
+  REDIS_CACHE_URL: redis://redis:6379/1
+  REDIS_SESSION_URL: redis://redis:6379/2
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
   OIDC_PROVIDER_ID: ${OIDC_PROVIDER_ID:-oidc-demo}
   OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-Demo OIDC}
   OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-demo-client-id}
@@ -43,6 +44,7 @@ services:
     command: >
       --default-authentication-plugin=caching_sha2_password
       --log-bin-trust-function-creators=1
+      --max-connections=100
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpw}
       MYSQL_DATABASE: ${DB_NAME:-pms}
@@ -63,6 +65,13 @@ services:
 
   redis:
     image: redis:7-alpine
+    # noeviction (the default policy, set explicitly) so that under memory
+    # pressure Redis rejects writes rather than evicting keys. This is REQUIRED
+    # for the Celery broker DB (/0): evicting a queued task = a silently dropped
+    # job. The cache DB (/1) shares this instance for MVP; its entries are TTL'd
+    # and tolerate write failures. In production, run a SEPARATE Redis (or an
+    # allkeys-lru instance) for the cache so cache churn never starves the broker.
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
     ports:
       - "6380:6379"
     healthcheck:
@@ -73,17 +82,28 @@ services:
 
   web:
     <<: *app_build
-    command: python manage.py runserver 0.0.0.0:8000
+    # Uses the Dockerfile CMD (gunicorn -c gunicorn.conf.py). The web tier is
+    # stateless: no host port, fronted by nginx, scale with `--scale web=N`.
     environment: *app_environment
     volumes:
       - .:/app
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    # Round-robins across all `web` replicas via Docker DNS (see nginx.conf).
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - web
 
   celery-worker:
     <<: *app_build

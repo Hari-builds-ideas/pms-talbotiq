@@ -23,10 +23,15 @@ from apps.testsupport.factories import TenantFactory, UserFactory
 pytestmark = pytest.mark.django_db
 
 
-def _sociallogin(email):
+def _sociallogin(email, email_verified=True):
+    extra_data = {"email": email}
+    # Only include the claim when explicitly provided; passing None lets a test
+    # simulate an IdP that omits ``email_verified`` entirely.
+    if email_verified is not None:
+        extra_data["email_verified"] = email_verified
     return SimpleNamespace(
         user=User(email=email),
-        account=SimpleNamespace(extra_data={"email": email}, provider="openid_connect", uid="x"),
+        account=SimpleNamespace(extra_data=extra_data, provider="openid_connect", uid="x"),
         state={},
     )
 
@@ -76,6 +81,30 @@ def test_adapter_does_not_cross_tenant():
     sl = _sociallogin("person@acme.test")
     with pytest.raises(ImmediateHttpResponse):
         adapter.pre_social_login(_request("acme"), sl)
+
+
+def test_adapter_denies_unverified_email():
+    # A matching active tenant user exists, so the ONLY reason to deny is the
+    # unverified email claim — proving the flag is the deciding factor.
+    t = TenantFactory(slug="acme")
+    existing = UserFactory(tenant=t, email="person@acme.test")
+    adapter = TenantSocialAccountAdapter()
+
+    # email_verified omitted -> denied.
+    sl_missing = _sociallogin("person@acme.test", email_verified=None)
+    with pytest.raises(ImmediateHttpResponse):
+        adapter.pre_social_login(_request("acme"), sl_missing)
+
+    # email_verified False -> denied.
+    sl_false = _sociallogin("person@acme.test", email_verified=False)
+    with pytest.raises(ImmediateHttpResponse):
+        adapter.pre_social_login(_request("acme"), sl_false)
+
+    # Same identity, email_verified True -> maps to the existing user.
+    sl_verified = _sociallogin("person@acme.test", email_verified=True)
+    adapter.pre_social_login(_request("acme"), sl_verified)
+    assert sl_verified.user.pk == existing.pk
+    assert sl_verified.state["process"] == "connect"
 
 
 def test_oidc_complete_mints_tenant_scoped_jwt():

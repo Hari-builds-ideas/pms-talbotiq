@@ -36,4 +36,6 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+# Production app server: gunicorn driven by gunicorn.conf.py (workers/threads/
+# timeouts/recycling). NOT runserver — the web tier runs as N stateless replicas.
+CMD ["gunicorn", "config.wsgi:application", "-c", "gunicorn.conf.py"]

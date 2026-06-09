@@ -25,6 +25,10 @@ coverage.xml
 # Local DB artifacts
 *.sqlite3
 
+# Celery beat scheduler state (runtime artifact)
+celerybeat-schedule*
+celerybeat.pid
+
 # OS / editor
 .DS_Store
 docs/.DS_Store

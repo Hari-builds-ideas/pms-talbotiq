@@ -26,6 +26,22 @@ def _deny(message):
     raise ImmediateHttpResponse(JsonResponse({"detail": message}, status=403))
 
 
+def _email_is_verified(extra_data) -> bool:
+    """Return True only if the IdP asserts a verified email.
+
+    The OIDC ``email_verified`` claim is spec'd as a boolean, but some
+    providers stringify it, so we accept boolean ``True`` or the string
+    ``"true"`` (case-insensitive). Everything else — missing, ``None``,
+    ``False``, ``"false"`` — is treated as unverified.
+    """
+    value = extra_data.get("email_verified")
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
+
+
 class TenantSocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(self, request, sociallogin):
         # IdP-driven self-signup is disabled: admins provision users, the IdP
@@ -44,6 +60,15 @@ class TenantSocialAccountAdapter(DefaultSocialAccountAdapter):
         tenant = self.resolve_tenant(request, sociallogin)
         if not email or tenant is None:
             _deny("OIDC identity could not be mapped to a tenant.")
+
+        # Security: never trust an unverified email claim. A matching tenant
+        # user must not be bound to an identity whose email the IdP has not
+        # verified, otherwise an IdP asserting an arbitrary (unverified) email
+        # could be used to take over that user's account. Reject before the
+        # user lookup so an unverified email is denied regardless of whether a
+        # matching user happens to exist.
+        if not _email_is_verified(sociallogin.account.extra_data):
+            _deny("OIDC email is not verified by the identity provider.")
 
         with tenant_context(tenant):
             user = User.objects.filter(email=email, is_active=True).first()

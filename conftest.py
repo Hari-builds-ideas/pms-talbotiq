@@ -13,6 +13,20 @@ import pytest
 from apps.testsupport.factories import TenantFactory, UserFactory
 
 
+@pytest.fixture(autouse=True)
+def _clear_caches():
+    """Isolate tests that touch the cache. The test cache is real Redis on
+    dedicated scratch DBs (see config.settings.test), so flush them around every
+    test to prevent cross-test bleed."""
+    from django.core.cache import caches
+
+    for alias in ("default", "sessions"):
+        caches[alias].clear()
+    yield
+    for alias in ("default", "sessions"):
+        caches[alias].clear()
+
+
 @pytest.fixture
 def tenant(db):
     return TenantFactory()

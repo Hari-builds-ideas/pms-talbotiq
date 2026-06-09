@@ -149,3 +149,133 @@ above the `DJANGO_SETTINGS_MODULE` env var compose sets to dev).
   the tenant context is already bound by `TenantMiddleware` from the JWT.
 - Reporting-tree helpers: `apps.rbac.scope.reporting_subtree_ids(manager)` and
   `User.manager` / `User.reports`.
+
+---
+
+## Phase 1.5a — Horizontal-Scaling Foundation
+
+**Status:** ✅ Complete. **217 tests passing** on MySQL 8 + Redis 7 in Docker.
+Adds NO product features — it makes the existing backend safe to run as multiple
+stateless web replicas and lays the caching + health groundwork later modules
+build on. Also folds in two Module-1 security-review fixes. Stack unchanged.
+
+### What was built
+
+**App server & scaling**
+- `gunicorn.conf.py`: `workers = (2 × cores) + 1`, `threads = 2`, `timeout = 60`,
+  `max_requests = 1000` + `max_requests_jitter = 100`, stdout/stderr logging.
+  All overridable via `GUNICORN_*` env. Dockerfile `CMD` now runs gunicorn with
+  this config (not `runserver`).
+- `nginx.conf` + an `nginx` compose service (host `:8080` → `:80`). Round-robins
+  across `web` replicas by re-resolving the compose service name per request via
+  Docker DNS (resolver `127.0.0.11` + variable `proxy_pass`). `web` has no host
+  port and is scaled with `docker compose up --scale web=3`. Verified: `/readyz`
+  returns 200 through nginx served by 3 distinct replica IPs; `X-Served-By`
+  header exposes which replica handled each request.
+- mysql service capped at `--max-connections=100`.
+
+**Statelessness (decision 1)** — verified, not just asserted
+- The only per-request state is the current-tenant contextvar, set from the
+  verified JWT by `TenantMiddleware` and reset in `finally`. No module-level
+  mutable request/tenant globals; no local-disk writes on the request path.
+- Tests (`apps/tenancy/tests/test_statelessness.py`): a fresh request starts with
+  no tenant bound; an authenticated request binds the tenant but a subsequent
+  request on the same worker thread sees `None` (no cross-request bleed); both
+  the tenant and request-active contextvars are clean outside any request.
+
+**Connections (decision 3)**
+- `CONN_MAX_AGE = 60` (persistent) + `CONN_HEALTH_CHECKS = True` (revalidate a
+  reused connection per request) on the default DB. Explicitly did NOT add
+  django-db-geventpool (gevent monkeypatch conflicts with mysqlclient).
+
+**Redis split (decision 4)** — one instance, isolated logical DBs
+- `/0` Celery broker + results, `/1` application cache, `/2` sessions (separate
+  `sessions` cache alias; `SESSION_CACHE_ALIAS = "sessions"`). The redis service
+  runs `--maxmemory-policy noeviction` so memory pressure can never silently drop
+  queued jobs; documented on the service that prod should run a *separate* Redis
+  (or allkeys-lru) for the cache so cache churn can't starve the broker.
+
+**Caching framework (decision 5)**
+- `CACHES["default"]` = django-redis on `/1`, `KEY_PREFIX = "pms"`, `TIMEOUT = 300`.
+- `apps/core/cache.py`: `tenant_cache_key(tenant_id, *parts)` — EVERY cache key
+  embeds the tenant id (cross-tenant cache isolation is treated as a security
+  control), plus `invalidate_tenant_cache(tenant_id, *parts)` (django-redis
+  `delete_pattern`). Tested: two tenants computing the same logical key get
+  distinct keys; invalidation clears only the target tenant.
+- First user: `apps/billing` caches the per-tenant entitlement lookup
+  (`get_entitlement_cached`, 300s) on the hot read path (the `requires_entitlement`
+  gate) and invalidates via `delete_pattern` on `upgrade_to_full_ai` /
+  `set_seats`. Tested: cache hit does zero DB queries; upgrade invalidates and a
+  fresh read reflects FULL_AI.
+
+**Health & readiness (decision via Agent C)**
+- django-health-check. `/healthz` stays pure liveness (no dependency checks).
+  `/readyz` runs all backends — DatabaseBackend, Cache (default + sessions),
+  RedisHealthCheck, MigrationsHealthCheck, and a custom `CeleryBrokerHealthCheck`
+  (broker *connection* reachability via `kombu`, NOT a worker ping, so a web
+  replica is ready without a running worker) — returning 200 only if all pass,
+  else 503 with minimal per-check `up`/`down` JSON. Tested: 200 when all up; 503
+  with a backend mocked down; `/healthz` stays 200 even when a dependency is down.
+
+**Security fixes (Module 1 review)**
+- `config/settings/prod.py`: `SECRET_KEY = env("DJANGO_SECRET_KEY")` with NO
+  default — prod refuses to boot without it (mirrors ALLOWED_HOSTS), and the JWT
+  signing key is re-pointed at it. Tested in a clean subprocess: prod `django.setup()`
+  fails without the key and succeeds with it.
+- `apps/identity/adapters.py`: the OIDC adapter now requires the IdP
+  `email_verified` claim to be true before mapping an identity to a tenant user
+  (denies 403 otherwise), rejecting before the user lookup. Tested: unverified /
+  missing claim denied; same identity with `email_verified=True` maps through.
+
+### Files
+New: `gunicorn.conf.py`, `nginx.conf`, `apps/core/cache.py`, `apps/core/health.py`,
+`apps/core/tests/{test_cache,test_readyz,test_settings}.py`,
+`apps/billing/tests/test_cache.py`,
+`apps/tenancy/tests/{views,urls,test_statelessness}.py`.
+Changed: `config/settings/{base,prod,test}.py`, `conftest.py`, `requirements.txt`
+(+`django-health-check==3.18.3`), `.env.example`, `Dockerfile`, `docker-compose.yml`,
+`apps/core/{views,urls,apps}.py`, `apps/identity/{adapters.py,tests/test_oidc.py}`,
+`apps/billing/{services,views}.py`.
+
+### max_connections sizing note
+The mysql service caps connections at 100. With persistent connections
+(`CONN_MAX_AGE=60`) each gunicorn worker thread holds a DB connection, so:
+
+    peak_conns ≈ web_replicas × gunicorn_workers × threads
+                + celery_worker_concurrency + headroom
+
+e.g. 3 replicas × 9 workers × 2 threads = 54, plus Celery and buffer, stays under
+100. Raise `--max-connections` (and DB resources) — or cap gunicorn `workers`
+via `GUNICORN_WORKERS` — before scaling past that envelope. (Documented inline in
+`config/settings/base.py` on the DATABASES block.)
+
+### Tests
+217 passing (Module 1's 201 + 16 new: statelessness 3, core cache 4, readyz 3,
+prod-secret 2, billing cache 3, OIDC unverified-email 1). Test cache is real
+django-redis on dedicated scratch DBs (15/14) so `delete_pattern` and cache
+semantics are exercised as in prod; an autouse conftest fixture flushes them per
+test. Suite runs only inside Docker (local host is Python 3.14 with no MySQL).
+
+### Known risks / notes
+- **Single Redis instance, noeviction global.** Broker safety (no eviction) is
+  guaranteed, but the cache shares the policy — under memory pressure cache
+  *writes* fail rather than LRU-evicting. Fine for MVP (cache entries are TTL'd
+  and optional); production should split broker vs cache into separate Redis
+  instances (cache on allkeys-lru). Documented on the compose redis service.
+- **nginx DNS round-robin** uses Docker's embedded DNS with `valid=5s`, so
+  distribution is approximate within a 5s window (observed traffic reaching all 3
+  replicas). For finer control use a real LB / Swarm/k8s service in production.
+- **Sticky-session assumption: none.** Sessions live in shared Redis `/2`, so any
+  replica can serve any request — required for the stateless web tier.
+- Prod runs gunicorn with `config.settings.prod` (wsgi default); the local
+  `--scale` validation uses `config.settings.dev` (compose default) so there is
+  no HTTPS redirect in front of plain-HTTP curl.
+
+### What the next module needs from this
+- Cache anything tenant-scoped through `apps.core.cache.tenant_cache_key(...)` and
+  invalidate with `invalidate_tenant_cache(...)`; never build a cache key without
+  the tenant id.
+- New external dependencies a request truly needs at readiness → add a
+  health-check backend (register in an app's `ready()`); keep `/healthz` pure.
+- Assume N stateless web replicas: no in-process caches/locks/globals for
+  cross-request state; use Redis/DB.

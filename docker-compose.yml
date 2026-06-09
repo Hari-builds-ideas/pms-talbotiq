@@ -1,0 +1,113 @@
+# PMS — Talbotiq · local/dev stack (LOCKED to the approved tech stack).
+# Services: web (Django+DRF), mysql8, redis7, celery-worker, celery-beat.
+# Redis is the ONLY broker/result backend — no Kafka in MVP.
+#
+#   docker compose up -d --build         # bring the stack up
+#   docker compose run --rm web pytest   # run the full test suite (MySQL-backed)
+#   docker compose run --rm web python manage.py migrate
+
+# Shared environment for every app container (web + celery), via YAML anchor.
+x-app-environment: &app_environment
+  DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.dev}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-insecure-dev-key-change-me}
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+  DB_NAME: ${DB_NAME:-pms}
+  DB_USER: ${DB_USER:-pms}
+  DB_PASSWORD: ${DB_PASSWORD:-pmspw}
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/1
+  CELERY_RESULT_BACKEND: redis://redis:6379/2
+  OIDC_PROVIDER_ID: ${OIDC_PROVIDER_ID:-oidc-demo}
+  OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-Demo OIDC}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-demo-client-id}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-demo-secret}
+  OIDC_SERVER_URL: ${OIDC_SERVER_URL:-https://oidc.example.com}
+  OIDC_DEFAULT_TENANT_SLUG: ${OIDC_DEFAULT_TENANT_SLUG:-}
+
+x-app-build: &app_build
+  build:
+    context: .
+    args:
+      INSTALL_DEV: "true"
+
+services:
+  mysql:
+    image: mysql:8.0
+    # log-bin-trust-function-creators lets a non-SUPER user create the audit-log
+    # immutability TRIGGERS (migration audit/0002) while binary logging is on.
+    # In a managed prod DB, set this server var (or grant TRIGGER+SUPER) before
+    # running migrations — see docs/BUILD_NOTES.md.
+    command: >
+      --default-authentication-plugin=caching_sha2_password
+      --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpw}
+      MYSQL_DATABASE: ${DB_NAME:-pms}
+      MYSQL_USER: ${DB_USER:-pms}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-pmspw}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # Host port 3307 (container 3306) to avoid clashing with a local MySQL.
+    # Inter-container traffic uses the service name + internal port regardless.
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_ROOT_PASSWORD:-rootpw}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  web:
+    <<: *app_build
+    command: python manage.py runserver 0.0.0.0:8000
+    environment: *app_environment
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    <<: *app_build
+    command: celery -A config worker -l info
+    environment: *app_environment
+    volumes:
+      - .:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    <<: *app_build
+    command: celery -A config beat -l info
+    environment: *app_environment
+    volumes:
+      - .:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql_data:

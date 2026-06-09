@@ -1,0 +1,17 @@
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+htmlcov
+.coverage
+.env
+*.sqlite3
+node_modules
+.DS_Store
+docs/.DS_Store

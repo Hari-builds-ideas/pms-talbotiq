@@ -1,0 +1,28 @@
+# ─── Core runtime (pinned) ─────────────────────────────────────────────
+# Stack is LOCKED per CLAUDE.md: Django 4.2 + DRF, MySQL 8, Redis 7 +
+# Celery, simplejwt, django-allauth, django-otp, Argon2. Do not bump majors.
+Django==4.2.16
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+PyJWT==2.9.0
+
+# Auth: OAuth/OIDC (allauth) + MFA TOTP (django-otp) + Argon2 hashing
+django-allauth==0.63.6
+django-otp==1.5.4
+argon2-cffi==23.1.0
+cryptography==43.0.1
+requests==2.32.3
+
+# Cache, sessions, queue/broker — Redis is the ONLY broker for MVP (no Kafka)
+celery==5.4.0
+redis==5.0.8
+django-redis==5.4.0
+
+# Database driver (MySQL 8)
+mysqlclient==2.2.4
+
+# Config + ops
+django-environ==0.11.2
+python-json-logger==2.0.7
+gunicorn==22.0.0
+whitenoise==6.7.0

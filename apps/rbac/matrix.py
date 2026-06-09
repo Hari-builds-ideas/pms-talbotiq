@@ -1,0 +1,105 @@
+"""
+The §2 Roles & Permissions matrix — the single server-side source of truth for
+*what a role may do* (capabilities), independent of *what data it may see*
+(scopes; see ``scope.py``).
+
+A capability is a coarse, role-gated verb (e.g. "approve a review", "manage the
+tenant"). Capabilities are checked on every endpoint server-side — the frontend
+is never trusted (CLAUDE.md architecture rule 7). Two capabilities,
+``bypass_tenant_isolation`` and ``alter_audit_log``, exist explicitly so the
+matrix can state that **nobody** holds them: tenant isolation and the
+INSERT-only audit log are inviolable for every role, including Admin
+(architecture rules 2 and 5).
+
+This module is pure data + pure functions: no Django, no DB, no I/O. That keeps
+it trivially testable and importable from anywhere (views, decorators, tasks).
+"""
+from __future__ import annotations
+
+
+class Role:
+    """The four PMS roles. Values are the exact strings stored on ``User.role``
+    and embedded in the JWT ``role`` claim, so they compare directly against
+    ``request.user.role`` with no translation."""
+
+    EMPLOYEE = "EMPLOYEE"
+    MANAGER = "MANAGER"
+    HRBP = "HRBP"
+    ADMIN = "ADMIN"
+
+    #: Every valid role, in increasing order of breadth. Handy for parametrized
+    #: tests and for validating an incoming role string.
+    ALL = frozenset({EMPLOYEE, MANAGER, HRBP, ADMIN})
+
+
+class Capability:
+    """Capability keys. Use these constants rather than bare strings so typos
+    surface at import time instead of silently denying access."""
+
+    VIEW_OWN = "view_own"
+    SUBMIT_SELF_EVAL = "submit_self_eval"
+    VIEW_TEAM_ANALYTICS = "view_team_analytics"
+    MANAGE_REPORTS_GOALS = "manage_reports_goals"
+    RUN_AI_REVIEW_DRAFT = "run_ai_review_draft"
+    APPROVE_REVIEW = "approve_review"
+    BU_ANALYTICS_CALIBRATION = "bu_analytics_calibration"
+    SUCCESSION_BENCH_FULL = "succession_bench_full"
+    GENERATE_JD = "generate_jd"
+    MANAGE_JD_LIBRARY = "manage_jd_library"
+    MANAGE_TENANT = "manage_tenant"
+    READ_PRIVATE_DATA = "read_private_data"
+    # Held by NOBODY — see module docstring. Present so the matrix is explicit
+    # that these powers do not exist for any role.
+    BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
+    ALTER_AUDIT_LOG = "alter_audit_log"
+
+
+# Convenience role groupings used to express the matrix concisely.
+_MANAGER_UP = frozenset({Role.MANAGER, Role.HRBP, Role.ADMIN})
+_HRBP_UP = frozenset({Role.HRBP, Role.ADMIN})
+_ADMIN_ONLY = frozenset({Role.ADMIN})
+_EVERYONE = Role.ALL
+_NOBODY: frozenset = frozenset()
+
+
+#: capability key -> frozenset of roles permitted to exercise it.
+#:
+#: This encodes the §2 matrix exactly. Notes on the spec's parentheticals:
+#:  - ``succession_bench_full`` is the *full* bench view; Manager sees only its
+#:    own report tier (a scoped, lesser view) and so is modelled as NOT holding
+#:    this capability.
+#:  - ``generate_jd`` / ``manage_jd_library``: Manager may *request* a JD but not
+#:    generate/manage the library, so it is not granted the capability.
+#:  - ``read_private_data`` is granted to HRBP and Admin; HRBP's access is
+#:    *scoped* (tenant-wide for MVP, see ``scope.py``) and every read is expected
+#:    to be audit-logged with a justification by the calling feature.
+CAPABILITIES: dict[str, frozenset] = {
+    Capability.VIEW_OWN: _EVERYONE,
+    Capability.SUBMIT_SELF_EVAL: _EVERYONE,
+    Capability.VIEW_TEAM_ANALYTICS: _MANAGER_UP,
+    Capability.MANAGE_REPORTS_GOALS: _MANAGER_UP,
+    Capability.RUN_AI_REVIEW_DRAFT: _MANAGER_UP,
+    Capability.APPROVE_REVIEW: _MANAGER_UP,
+    Capability.BU_ANALYTICS_CALIBRATION: _HRBP_UP,
+    Capability.SUCCESSION_BENCH_FULL: _HRBP_UP,
+    Capability.GENERATE_JD: _HRBP_UP,
+    Capability.MANAGE_JD_LIBRARY: _HRBP_UP,
+    Capability.MANAGE_TENANT: _ADMIN_ONLY,
+    Capability.READ_PRIVATE_DATA: _HRBP_UP,
+    Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
+    Capability.ALTER_AUDIT_LOG: _NOBODY,
+}
+
+
+def role_has_capability(role: str, capability: str) -> bool:
+    """Return True iff ``role`` is permitted to exercise ``capability``.
+
+    Fails closed: an unknown role, an unknown capability, or a ``None`` returns
+    False rather than raising, so a misconfigured view denies access instead of
+    erroring open. Capability typos are guarded against by using the
+    ``Capability`` constants at call sites.
+    """
+    allowed = CAPABILITIES.get(capability)
+    if allowed is None:
+        return False
+    return role in allowed

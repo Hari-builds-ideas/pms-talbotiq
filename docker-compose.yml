@@ -17,10 +17,17 @@ x-app-environment: &app_environment
   DB_PASSWORD: ${DB_PASSWORD:-pmspw}
   DB_HOST: mysql
   DB_PORT: "3306"
-  REDIS_CACHE_URL: redis://redis:6379/1
-  REDIS_SESSION_URL: redis://redis:6379/2
-  CELERY_BROKER_URL: redis://redis:6379/0
-  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  # Broker+results on /0 (noeviction). Cache /1 + sessions /2 share this Redis
+  # for MVP, but they are addressed by their OWN env URLs — in production point
+  # REDIS_CACHE_URL / REDIS_SESSION_URL at a SEPARATE Redis (allkeys-lru) with no
+  # code change, so cache churn can never evict broker jobs. See BUILD_NOTES.
+  REDIS_CACHE_URL: ${REDIS_CACHE_URL:-redis://redis:6379/1}
+  REDIS_SESSION_URL: ${REDIS_SESSION_URL:-redis://redis:6379/2}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+  CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
   OIDC_PROVIDER_ID: ${OIDC_PROVIDER_ID:-oidc-demo}
   OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-Demo OIDC}
   OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-demo-client-id}
@@ -126,6 +133,21 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  flower:
+    <<: *app_build
+    # Celery monitoring dashboard on the existing broker. Basic-auth is REQUIRED
+    # (never unauthenticated) — credentials from FLOWER_BASIC_AUTH ("user:pass").
+    command: >
+      celery -A config flower
+      --port=5555
+      --basic-auth=${FLOWER_BASIC_AUTH:-admin:flowerpass}
+    environment: *app_environment
+    ports:
+      - "5555:5555"
+    depends_on:
       redis:
         condition: service_healthy
 

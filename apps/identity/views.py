@@ -3,6 +3,7 @@ import logging
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -35,6 +36,10 @@ class LoginView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    # IP-throttle the unauthenticated login surface via the "anon" scope: the
+    # global Tenant/User throttles no-op for anonymous callers, so this view
+    # needs its own anon throttle to cap credential-stuffing bursts.
+    throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -55,6 +60,9 @@ class MfaChallengeView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    # Same IP-based anon throttle as LoginView: this is the other half of the
+    # unauthenticated auth surface, so cap MFA-code guessing bursts per IP.
+    throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
         serializer = MfaChallengeSerializer(data=request.data)

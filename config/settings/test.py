@@ -46,8 +46,14 @@ CACHES = {
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
-# Throttling off in tests to avoid order-dependent flakiness.
-REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_CLASSES": (), "DEFAULT_THROTTLE_RATES": {}}
+# Global Tenant/User throttles OFF in tests (they'd add an entitlement lookup to
+# every authed request and could trip on hot-loop tests); individual throttle
+# tests enable what they need. KEEP the base "anon" rate so the AnonRateThrottle
+# attached to the login views resolves a rate (an empty rates map makes
+# SimpleRateThrottle.get_rate raise ImproperlyConfigured). The autouse cache-clear
+# fixture resets throttle counters between tests; the anon-throttle test overrides
+# the rate low to force a trip.
+REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_CLASSES": ()}
 
 # Fixed key so signed MFA tokens etc. are stable across the run.
 SECRET_KEY = "test-secret-key-not-for-production"

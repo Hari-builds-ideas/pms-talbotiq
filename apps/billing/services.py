@@ -28,6 +28,18 @@ _ENTITLEMENT_CACHE_TTL = 300
 #: Cache key suffix identifying a tenant's cached entitlement.
 _ENTITLEMENT_CACHE_PART = "entitlement"
 
+#: Time-to-live (seconds) for a cached rate-limit map.
+_RATE_LIMITS_CACHE_TTL = 300
+#: Cache key suffix identifying a tenant's cached rate-limit map.
+_RATE_LIMITS_CACHE_PART = "rate_limits"
+
+#: DRF rate strings per entitlement, keyed by the throttle scope. STARTER tenants
+#: get the conservative limits; adding the FULL_AI pack lifts every bucket. These
+#: are the single source of truth for throttle rates — call sites must NOT
+#: hardcode their own (they resolve through :func:`rate_limits_for`).
+_RATE_LIMITS_STARTER = {"tenant": "600/min", "user": "120/min", "ai": "20/min"}
+_RATE_LIMITS_FULL_AI = {"tenant": "3000/min", "user": "600/min", "ai": "120/min"}
+
 
 def _tenant_id(tenant) -> str:
     return str(getattr(tenant, "id", tenant))
@@ -85,6 +97,31 @@ def tenant_has_agent(tenant, agent_code: str) -> bool:
     return entitlement.has_agent(agent_code)
 
 
+def rate_limits_for(tenant_id) -> dict:
+    """Return the DRF rate strings for ``tenant_id``, derived from its entitlement.
+
+    The map is keyed by throttle scope (``"tenant"``, ``"user"``, ``"ai"``): a
+    STARTER tenant gets the conservative limits, a FULL_AI tenant the lifted ones
+    (see :data:`_RATE_LIMITS_STARTER` / :data:`_RATE_LIMITS_FULL_AI`). Rates are
+    NOT hardcoded at the call site — every throttle resolves through here so an
+    upgrade lifts limits everywhere at once.
+
+    Mirrors the entitlement cache pattern: on a cache hit the stored dict is
+    returned directly; on a miss the entitlement is read (itself cached) and the
+    chosen dict is cached under a tenant-scoped key for
+    :data:`_RATE_LIMITS_CACHE_TTL` seconds. Accepts a ``Tenant`` or a bare id
+    (passed straight through to :func:`get_entitlement_cached`).
+    """
+    key = tenant_cache_key(_tenant_id(tenant_id), _RATE_LIMITS_CACHE_PART)
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    entitlement = get_entitlement_cached(tenant_id)
+    limits = _RATE_LIMITS_FULL_AI if entitlement.has_pack(FULL_AI) else _RATE_LIMITS_STARTER
+    cache.set(key, limits, _RATE_LIMITS_CACHE_TTL)
+    return limits
+
+
 def set_seats(tenant, seat_count: int, *, actor=None) -> Entitlement:
     """Set ``seat_count`` independently of packs and audit the change.
 
@@ -105,7 +142,11 @@ def set_seats(tenant, seat_count: int, *, actor=None) -> Entitlement:
         )
         entitlement.seat_count = seat_count
         entitlement.save(update_fields=["seat_count", "updated_at"])
-    invalidate_tenant_cache(tid, _ENTITLEMENT_CACHE_PART)
+    # Clear the WHOLE tenant namespace, not just the entitlement key: the cached
+    # rate-limit map (rate_limits_for) is derived from the same entitlement, so
+    # both must refresh together. Clearing everything still satisfies the
+    # entitlement-key invalidation the cache tests assert.
+    invalidate_tenant_cache(tid)
     return entitlement
 
 
@@ -138,5 +179,9 @@ def upgrade_to_full_ai(tenant, *, actor=None) -> Entitlement:
         )
         entitlement.add_pack(FULL_AI)
         entitlement.save(update_fields=["feature_packs", "updated_at"])
-    invalidate_tenant_cache(tid, _ENTITLEMENT_CACHE_PART)
+    # Clear the WHOLE tenant namespace, not just the entitlement key: the cached
+    # rate-limit map (rate_limits_for) is derived from the same entitlement, so
+    # an upgrade must refresh both. Clearing everything still satisfies the
+    # entitlement-key invalidation the cache tests assert.
+    invalidate_tenant_cache(tid)
     return entitlement

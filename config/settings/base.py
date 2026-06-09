@@ -72,6 +72,10 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # current tenant from the cryptographically verified JWT *after* auth, sets the
 # contextvar before the view executes, and resets it immediately afterwards.
 MIDDLEWARE = [
+    # Outermost: stamp a request id into a contextvar before anything else, so
+    # every log line + Sentry event for this request is correlatable. Reset in
+    # finally (no cross-request bleed).
+    "apps.core.middleware.RequestIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -201,13 +205,18 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    # Per-tenant and per-user limits, both resolved from the tenant's entitlement
+    # at request time (see apps/core/throttling.py). Anonymous requests fall
+    # through these (handled by AnonRateThrottle on the login surface). AIThrottle
+    # exists + is tested but is attached per-view (Module 10), not globally.
     "DEFAULT_THROTTLE_CLASSES": (
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
+        "apps.core.throttling.TenantThrottle",
+        "apps.core.throttling.UserThrottle",
     ),
     "DEFAULT_THROTTLE_RATES": {
+        # Only the IP-based anon scope (login) reads its rate from here; the
+        # tenant/user/ai rates come from rate_limits_for(tenant).
         "anon": env("THROTTLE_ANON", default="100/min"),
-        "user": env("THROTTLE_USER", default="1000/min"),
     },
     "EXCEPTION_HANDLER": "rest_framework.views.exception_handler",
 }
@@ -285,19 +294,30 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
-# ─── Logging (structured JSON to stdout) ───────────────────────────────
+# ─── Logging (structured JSON to stdout, request-correlated) ───────────
+# RequestContextFilter injects request_id (+ tenant_id when bound) onto every
+# record; they appear in the JSON because they're named in the format string.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_context": {"()": "apps.core.logging.RequestContextFilter"},
+    },
     "formatters": {
         "json": {
             "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+            "format": "%(asctime)s %(levelname)s %(name)s %(request_id)s %(tenant_id)s %(message)s",
         },
-        "plain": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"},
+        "plain": {
+            "format": "%(asctime)s %(levelname)s %(name)s [req=%(request_id)s tenant=%(tenant_id)s] %(message)s"
+        },
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "json"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+            "filters": ["request_context"],
+        },
     },
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
     "loggers": {
@@ -305,3 +325,15 @@ LOGGING = {
         "pms": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
     },
 }
+
+# ─── Sentry (optional; disabled when SENTRY_DSN is unset) ──────────────
+# init_sentry no-ops without a DSN so the app boots normally. PII is scrubbed
+# (send_default_pii=False + before_send drops Authorization/JWTs); events are
+# tagged with tenant_id + request_id from the contextvars.
+from apps.core.observability import init_sentry  # noqa: E402
+
+init_sentry(
+    dsn=env("SENTRY_DSN", default=""),
+    environment=env("SENTRY_ENVIRONMENT", default="dev"),
+    traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.0),
+)

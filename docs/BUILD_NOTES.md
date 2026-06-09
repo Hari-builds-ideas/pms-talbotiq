@@ -279,3 +279,109 @@ test. Suite runs only inside Docker (local host is Python 3.14 with no MySQL).
   health-check backend (register in an app's `ready()`); keep `/healthz` pure.
 - Assume N stateless web replicas: no in-process caches/locks/globals for
   cross-request state; use Redis/DB.
+
+---
+
+## Phase 1.5b — Rate Limiting & Observability
+
+**Status:** ✅ Complete. **238 tests passing** on MySQL 8 + Redis 7 in Docker.
+Adds NO product features — per-tenant/per-user rate limiting tied to entitlements
+plus the observability layer (request-id correlation, structured-log enrichment,
+Sentry, Flower). Folds in nothing new from the security review (those landed in
+1.5a). Stack unchanged.
+
+### What was built
+
+**Rate limiting (DRF-native, entitlement-driven)**
+- `apps/billing/services.rate_limits_for(tenant_id) -> {"tenant","user","ai"}` —
+  DRF rate strings derived from the tenant's entitlement, NOT hardcoded at call
+  sites: STARTER `{600,120,20}/min`, FULL_AI `{3000,600,120}/min`. Cached under
+  `tenant_cache_key(tid, "rate_limits")` (300s) and invalidated together with the
+  entitlement cache by clearing the whole tenant namespace on `upgrade_to_full_ai`
+  / `set_seats`.
+- `apps/core/throttling.py`: `TenantThrottle` (key `thr:t:{tenant}`), `UserThrottle`
+  (`thr:u:{tenant}:{user}`), `AIThrottle` (`thr:ai:{tenant}:{user}`) — all
+  `SimpleRateThrottle` subclasses that read their rate from `rate_limits_for` per
+  request. EVERY key embeds tenant_id (cross-tenant counter isolation = a security
+  control). Anonymous requests pass through (handled by AnonRateThrottle on login).
+  Throttled requests raise a custom `RateLimited(Throttled)` → **429 + Retry-After**,
+  with an `upgrade_hint` in the body for the tenant/AI buckets.
+- `DEFAULT_THROTTLE_CLASSES = [TenantThrottle, UserThrottle]`. `AIThrottle` is
+  implemented + tested but attached to NO endpoint yet — wired so Module 10 adds it
+  to AI viewsets with one line (`throttle_classes = [..., AIThrottle]`).
+- `AnonRateThrottle` attached to `LoginView` + `MfaChallengeView` (IP-throttle the
+  unauthenticated surface against credential/MFA-code stuffing).
+- DRF `SimpleRateThrottle` is a rolling-log window; fixed-window is fine for MVP. A
+  comment in `throttling.py` marks the precise sliding-window upgrade path (Redis
+  sorted-set + Lua INCR/EXPIRE).
+
+**Observability**
+- `apps/core/middleware.RequestIDMiddleware` (outermost): reads inbound
+  `X-Request-ID` or mints a uuid4, binds it to a contextvar, stashes
+  `request.request_id`, echoes `X-Request-ID` on the response, resets in `finally`
+  (same no-bleed discipline as the tenant contextvar).
+- `apps/core/logging.RequestContextFilter` enriches every log record with
+  `request_id` + `tenant_id` (both `"-"` when unbound); the JSON formatter includes
+  them, so every application log line is correlatable.
+- `apps/core/observability.py`: `init_sentry(dsn, environment, traces_sample_rate)`
+  — no-op (app boots normally) when `SENTRY_DSN` is unset; otherwise wires the
+  Django + Celery integrations with `send_default_pii=False`. `before_send` scrubs
+  Authorization/Cookie headers and redacts JWT/secret-named fields
+  (authorization/token/access/refresh/password/mfa_token) across request data,
+  cookies and extra, and tags events with `tenant_id` + `request_id`.
+- **Flower**: a compose `flower` service on the existing Celery app/broker, port
+  5555, basic-auth REQUIRED via `FLOWER_BASIC_AUTH` (never unauthenticated).
+
+### Files
+New: `apps/core/throttling.py`, `apps/core/middleware.py`, `apps/core/logging.py`,
+`apps/core/observability.py`, `apps/core/request_context.py`,
+`apps/core/tests/{test_throttling.py,throttle_urls.py,test_request_id.py,test_logging.py,test_sentry.py}`,
+`apps/billing/tests/test_rate_limits.py`.
+Changed: `config/settings/{base,test}.py`, `apps/billing/services.py`,
+`apps/identity/views.py`, `requirements.txt` (+`sentry-sdk==2.18.0`, `flower==2.0.1`),
+`.env.example`, `docker-compose.yml`.
+
+### Env-flippable Redis split (decision 8 — the 1.5a known-risk fix)
+Broker + results stay on Redis `/0` with `noeviction`. The cache and sessions are
+addressed by their OWN env URLs (`REDIS_CACHE_URL` `/1`, `REDIS_SESSION_URL` `/2`),
+so **production points them at a SEPARATE Redis instance (allkeys-lru) with no code
+change** — just set the env vars. compose documents this on the app-environment
+block. No second Redis container is added for MVP; the split is purely
+configuration. (When split, the broker can never be starved by cache eviction.)
+
+### Tests (238 total, +21)
+billing rate_limits 4 (STARTER vs FULL_AI, cache hit 0-query, invalidation,
+two-tenant independence); throttling 7 (tenant trip + 429/wait/upgrade_hint, user
+independence + no hint, cross-tenant isolation, AI trip, anon bypass, e2e HTTP 429
++ Retry-After, anon-login cap); request-id 4; logging 2; sentry 4.
+
+### Live validation (docker compose up)
+`X-Request-ID` generated when absent and echoed when supplied; a hot loop on
+`/api/auth/me` tripped at request 121 (STARTER user 120/min) → 429 with
+`Retry-After: 59`; Flower returned 401 unauthenticated and 200 with basic-auth.
+
+### Known risks / notes
+- **Throttle precision:** DRF's rolling-log throttle stores per-window timestamps
+  in the cache and is approximate under heavy concurrency across replicas (the
+  cache is shared, so counters are global, but check-then-set is not atomic). For
+  strict limits, move to the documented Redis sorted-set + Lua sliding window.
+- **Cache eviction vs throttle counters:** throttle counters live in the cache DB
+  (`/1`). With the MVP single-Redis `noeviction`, counters aren't evicted; once the
+  cache is split to an allkeys-lru instance in prod, throttle counters could be
+  evicted under pressure (fail-open). If strict enforcement matters, keep throttle
+  counters on a non-evicting DB (another env-addressable split).
+- **Sentry is opt-in:** disabled without `SENTRY_DSN`. PII scrubbing is enforced by
+  `before_send` + `send_default_pii=False`; new event sources should be re-checked
+  against the scrubber.
+- **Flower auth** is HTTP basic over the app network; put it behind TLS / network
+  policy in production and use a strong `FLOWER_BASIC_AUTH`.
+
+### What the next module needs from this
+- AI viewsets (Module 10): add `AIThrottle` to the view's `throttle_classes` (one
+  line) to enforce the per-tenant AI budget; the rate already flows from the
+  entitlement.
+- Tenant-scoped rates: extend `rate_limits_for` (and invalidate the tenant cache)
+  if a new pack changes limits.
+- Correlate async work: `request_id`/`tenant_id` are on log records and Sentry tags
+  on the web tier; propagate them into Celery task kwargs if cross-process
+  correlation is needed.

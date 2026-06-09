@@ -7,6 +7,9 @@ urlpatterns = [
     path("api/auth/", include("apps.identity.urls")),
     # Module 13 — Admin & Billing entitlements
     path("api/billing/", include("apps.billing.urls")),
+    # Module 2 — Goals & KPI engine
+    path("api/cycles/", include("apps.cycles.urls")),
+    path("api/goals/", include("apps.goals.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

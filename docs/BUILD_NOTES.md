@@ -385,3 +385,129 @@ independence + no hint, cross-tenant isolation, AI trip, anon bypass, e2e HTTP 4
 - Correlate async work: `request_id`/`tenant_id` are on log records and Sentry tags
   on the web tier; propagate them into Celery task kwargs if cross-process
   correlation is needed.
+
+---
+
+## Module 2 — Goals & KPI Engine
+
+**Status:** ✅ Complete. **382 tests passing** on MySQL 8 + Redis 7 in Docker
+(Phase 1.5b's 238 + 144 new). Build contract: Document 2 §Module 3, §2, §3;
+Document 3 §F1 (Agent 2) / Pattern 2. Stack unchanged. Built ON the foundation
+(TenantScopedModel, RBAC, audit, cache) — not beside it.
+
+### What was built (two new apps)
+- **`apps/cycles`** — `PerformanceCycle` (DRAFT/ACTIVE/CLOSED, `elapsed_fraction()`
+  for pace). Scoring is always scoped to (tenant, cycle).
+- **`apps/goals`** — `Goal`, `Kpi`, `KpiMeasurement` (append-only actual history),
+  `CycleScore` (unique per tenant+employee+cycle), `KpiTemplate`. Every model is a
+  TenantScopedModel; every weight/ratio/value is **Decimal**, never float.
+
+**Weight "= 100%" rule (exact Decimal equality, two levels)** — `validators.py`:
+a goal's KPI weights and an employee's ACTIVE goals' weights must each sum to
+exactly 100.00. 99.99 and 100.01 are rejected; 100.00 accepted. Surfaced in the
+serializers (the editor's live-sum indicator) and tested at both levels + boundaries.
+
+**Deterministic scoring engine** (`scoring/engine.py`, constants in
+`scoring/constants.py`): per-KPI attainment (INCREASING actual/target, DECREASING
+target/actual, actual==0→cap; clamped [0, 1.5]); goal raw = Σ(kpi.weight/100 ×
+attainment); employee raw = Σ(goal.weight/100 × goal_raw) over ACTIVE goals;
+two-pass normalisation over the cohort (μ, **population** σ, Z=(raw−μ)/σ,
+T=50+10Z clamped [0,100]); deterministic `risk_status` (T tiers when the cohort is
+sufficient, absolute-raw fallback when n<2 or σ==0 → `insufficient_cohort=True`);
+`pace_behind` is a SEPARATE boolean (elapsed-fraction × 0.7) that never changes the
+tier. All Decimal (engine sets `getcontext().prec=50` for exact `Decimal.sqrt`),
+quantised to 4 dp internally / 2 dp display. `recompute_cycle_scores(tenant_id,
+cycle_id)` (Celery `@shared_task`, also called directly/synchronously) upserts one
+CycleScore per employee **idempotently** (re-running yields identical score fields,
+no duplicate rows; only `computed_at` changes). A **golden worked example** test
+locks the exact raw/z/t/risk numbers (the live demo reproduced them:
+0.9→t62.2500 ON_TRACK, 0.6→t50 ON_TRACK, 0.3→t37.7500 AT_RISK).
+
+**API (DRF, all RBAC-gated + audited):** cycles CRUD + recompute + score reads
+(own / team / tenant by scope); goals CRUD (nested KPIs, weight-validated) +
+manager approve; KPI CRUD with transactional weight re-validation; an OWN-scoped
+actual-update endpoint (mobile self-service); KPI template list + instantiate.
+Audits `cycle.created`, `goal.created`, `goal.approved`, `actual.recorded`,
+`scores.recomputed` BEFORE the side effect.
+
+**KPI templates:** `KpiTemplate` + a per-role `DEFAULT_TEMPLATES` catalogue (each
+role's default_weights sum to 100), `seed_templates_for_tenant`, a
+`seed_kpi_templates --tenant-slug` management command, and `instantiate_templates`/
+`instantiate_role_templates` (validates weights = 100 in one transaction).
+
+### Scoring constants + cohort decision
+Constants live in `apps/goals/scoring/constants.py` (all tunable): ATTAINMENT_FLOOR
+0, ATTAINMENT_CAP 1.5, T_CRITICAL 30, T_AT_RISK 40, ABS_CRITICAL 0.5, ABS_AT_RISK
+0.8, PACE_SHORTFALL 0.7. **Cohort = all employees in the same (tenant, cycle) with
+a raw score (≥1 ACTIVE goal); σ is population (divisor n).** `CycleScore.cohort_key`
+defaults to `"tenant"` so role-based cohorts can be added later WITHOUT a migration
+(the engine would group by cohort_key within tenant+cycle). The cohort NEVER spans
+tenants (tested: a huge raw in tenant B does not move tenant A's Z/T).
+
+### Agent-2 seam (Module 10 will own this)
+`apps/goals/signals.py::cycle_scores_recomputed` is fired by the engine AFTER
+storing scores, carrying structured risk data (`{employee_id, raw_score, z_score,
+t_score, risk_status, pace_behind, insufficient_cohort, cohort_size}`). Module 10's
+Agent 2 (Fast-AI KPI-Intelligence nudge, Doc 3 Pattern 2) connects a receiver here
+to classify/compose/deliver. **This module composes/sends NOTHING.** The
+`risk_status` is deterministic + core + ungated; the `requires_entitlement("agent2")`
+gate attaches to Agent 2's nudge surface in Module 10, NOT to scoring.
+
+### Jira seam (Module 12 will own the concrete client)
+`apps/goals/services.record_actual(...)` is the single actuals write path (manual
+AND Jira). `apps/goals/jira.py` is a real, loud seam: `JiraActualProvider` (ABC),
+`NotConfiguredProvider` (raises `JiraNotConfiguredError`), `get_provider()`
+(resolves `settings.JIRA_ACTUAL_PROVIDER` import-string, else NotConfigured), and
+`sync_jira_actuals(tenant_id, cycle_id)` which logs-and-skips cleanly (returns
+`{"synced":0,"skipped":n,"reason":"no_provider"}`) when unconfigured — never crashes.
+
+### RBAC additions (`apps/rbac/matrix.py`)
+Added `view_own_goals`, `update_own_actuals`, `approve_goals`, `view_team_scores`
+(all Manager+; scope differs by role via WithinScope), `manage_kpi_templates`,
+`configure_scoring` (admin), and `manage_cycles` (HRBP/Admin, for cycle CRUD —
+added since §2 had no explicit cycle key). Goal create/edit reuses the pre-existing
+`manage_reports_goals`. The matrix oracle test was extended to cover them.
+
+### Files
+New apps `apps/cycles/` and `apps/goals/` (models, validators, signals,
+scoring/{constants,engine}, tasks, services, jira, templates, management command,
+serializers, views, urls, migrations 0001, and tests test_models/test_weights/
+test_scoring/test_actuals/test_jira/test_templates/test_api). Changed:
+`config/settings/base.py` (LOCAL_APPS), `config/urls.py`, `apps/rbac/matrix.py` +
+`apps/rbac/tests/test_matrix.py`, `apps/testsupport/factories.py` (Cycle/Goal/Kpi/
+KpiMeasurement/KpiTemplate factories; tenant derived from parent to stay
+single-tenant).
+
+### Live validation (docker compose up)
+admin→cycle 201; manager→3 goals (weights=100) 201; weight 99.99 → 400 with the
+exact message; employees→own actuals 201, peer actual → 403; manager→recompute 200
+(scored 3); team scores show the exact T/Z/risk; a Globex admin GET of an Acme
+cycle's scores → 404 (cross-tenant isolation).
+
+### Known risks / notes
+- **Weight "=100" is a serializer/service invariant, not a DB constraint** (it
+  spans rows). Direct ORM writes can create an unbalanced set; the API path
+  enforces it. A goal can be saved DRAFT below 100 — the rule binds on the API and
+  is the right place for the live editor.
+- **Recompute is whole-cohort by necessity** (Z needs the tenant+cycle cohort), so
+  a manager triggering a recompute recomputes every employee in that cycle (then
+  only reads their own scope). It's idempotent, so this is safe.
+- **`pace_behind` after a cycle's end** reads elapsed_fraction = 1.0, so anyone
+  below 0.7 raw is "behind" — expected for a closed/past window; the flag is
+  advisory and never changes the risk tier.
+- **DECREASING with actual==0** is credited at the cap (1.5) — a deliberate "drove
+  it to zero" reward; revisit if a metric legitimately bottoms at 0 without being
+  a win.
+- AI nudge composition (Agent 2) and the real Jira/Slack clients are explicitly
+  OUT (seams left + documented above).
+
+### What Module 3 (Reviews) / future modules need from this
+- Extend `PerformanceCycle` for the review state machine (it was kept minimal for
+  exactly this); Goals already FK a cycle.
+- Read scores via `CycleScore` (per tenant+employee+cycle) and goal/KPI evidence
+  via `Goal`/`Kpi`/`KpiMeasurement` for the Review Assistant (Agent 1) evidence
+  gathering.
+- Module 5 (Approvals) generalises the single `goal.approve` transition into the
+  routing matrix.
+- Module 10 (Agent 2) subscribes to `cycle_scores_recomputed`; Module 12 swaps a
+  real provider into `apps.goals.jira.get_provider` via `settings.JIRA_ACTUAL_PROVIDER`.

@@ -48,6 +48,15 @@ class Capability:
     MANAGE_JD_LIBRARY = "manage_jd_library"
     MANAGE_TENANT = "manage_tenant"
     READ_PRIVATE_DATA = "read_private_data"
+    # ── Module 2 — Goals & KPI engine ──
+    VIEW_OWN_GOALS = "view_own_goals"          # all roles, OWN scope
+    UPDATE_OWN_ACTUALS = "update_own_actuals"  # all roles, OWN scope (self-update actuals)
+    APPROVE_GOALS = "approve_goals"            # Manager+, TEAM scope
+    VIEW_TEAM_SCORES = "view_team_scores"      # Manager TEAM / HRBP+Admin TENANT
+    MANAGE_KPI_TEMPLATES = "manage_kpi_templates"  # HRBP, Admin
+    CONFIGURE_SCORING = "configure_scoring"    # Admin only
+    MANAGE_CYCLES = "manage_cycles"            # HRBP, Admin (cycle CRUD)
+    # (Goal create/edit reuses the existing MANAGE_REPORTS_GOALS capability.)
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -86,6 +95,16 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.MANAGE_JD_LIBRARY: _HRBP_UP,
     Capability.MANAGE_TENANT: _ADMIN_ONLY,
     Capability.READ_PRIVATE_DATA: _HRBP_UP,
+    # Module 2 — Goals & KPI engine (scope is enforced separately by WithinScope;
+    # e.g. VIEW_TEAM_SCORES is held by Manager+ but a Manager only sees their
+    # reporting subtree while HRBP/Admin see the whole tenant).
+    Capability.VIEW_OWN_GOALS: _EVERYONE,
+    Capability.UPDATE_OWN_ACTUALS: _EVERYONE,
+    Capability.APPROVE_GOALS: _MANAGER_UP,
+    Capability.VIEW_TEAM_SCORES: _MANAGER_UP,
+    Capability.MANAGE_KPI_TEMPLATES: _HRBP_UP,
+    Capability.CONFIGURE_SCORING: _ADMIN_ONLY,
+    Capability.MANAGE_CYCLES: _HRBP_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

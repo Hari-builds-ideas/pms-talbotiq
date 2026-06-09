@@ -30,6 +30,14 @@ EXPECTED = {
     Capability.MANAGE_JD_LIBRARY: {Role.HRBP, Role.ADMIN},
     Capability.MANAGE_TENANT: {Role.ADMIN},
     Capability.READ_PRIVATE_DATA: {Role.HRBP, Role.ADMIN},
+    # Module 2 — Goals & KPI engine.
+    Capability.VIEW_OWN_GOALS: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.UPDATE_OWN_ACTUALS: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.APPROVE_GOALS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_TEAM_SCORES: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.MANAGE_KPI_TEMPLATES: {Role.HRBP, Role.ADMIN},
+    Capability.CONFIGURE_SCORING: {Role.ADMIN},
+    Capability.MANAGE_CYCLES: {Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

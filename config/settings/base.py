@@ -63,6 +63,9 @@ LOCAL_APPS = [
     "apps.rbac.apps.RbacConfig",
     "apps.audit.apps.AuditConfig",
     "apps.billing.apps.BillingConfig",
+    # Module 2 — Goals & KPI engine
+    "apps.cycles.apps.CyclesConfig",
+    "apps.goals.apps.GoalsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

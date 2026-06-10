@@ -14,6 +14,8 @@ urlpatterns = [
     path("api/reviews/", include("apps.reviews.urls")),
     # Module 4 — 360° Feedback & anonymisation
     path("api/feedback/", include("apps.feedback.urls")),
+    # Module 5 — Approval Workflows
+    path("api/approvals/", include("apps.approvals.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

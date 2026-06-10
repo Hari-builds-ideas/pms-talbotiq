@@ -74,6 +74,16 @@ class Review(TenantScopedModel):
         max_digits=5, decimal_places=4, null=True, blank=True
     )
     citations = models.JSONField(null=True, blank=True)
+    # Module 5 (opt-in): an in-flight approval route when finalize is routed.
+    # Null when no "review" workflow is active (then finalize is single-step,
+    # exactly as Module 3). The Module-3 state machine is otherwise unchanged.
+    approval_route = models.ForeignKey(
+        "approvals.ApprovalRoute",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
 
     class Meta:
         db_table = "reviews_review"

@@ -51,6 +51,10 @@ EXPECTED = {
     Capability.VIEW_OWN_FEEDBACK_SUMMARY: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.APPROVE_FEEDBACK_SUMMARY: {Role.HRBP, Role.ADMIN},
     Capability.MANAGE_ONE_ON_ONE: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    # Module 5 — Approval Workflows.
+    Capability.CONFIGURE_APPROVAL_WORKFLOW: {Role.HRBP, Role.ADMIN},
+    Capability.ACT_ON_APPROVAL_STEP: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_APPROVAL_STATUS: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

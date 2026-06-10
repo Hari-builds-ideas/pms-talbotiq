@@ -768,3 +768,141 @@ contained a colleague's email) → HRBP_HOLD, anonymity_passed=False → peer GE
   may now also consume `build_anonymized_payload` as feedback evidence.
 - **Module 12 (Slack):** push FeedbackRequest invitations + summary-released
   notifications; the audit trail and request rows are already in place.
+
+---
+
+## Module 5 — Approval Workflows (build-order M5 = Doc 2 §Module 6)
+
+**Status:** ✅ Complete. **599 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 4's 538 + 61 new; the 538 stayed green — Module 3 untouched). DELIBERATELY
+AI-FREE (the spec requires deterministic, auditable approvals). Stack unchanged.
+
+### What was built (`apps/approvals`)
+TEMPLATE: `ApprovalWorkflow` (name, artifact_type, mode SEQUENTIAL/PARALLEL,
+active — at most one active per (tenant, artifact_type)) + `ApprovalStep` (order,
+approver_kind ROLE/NAMED, approver_role MANAGER/HRBP/ADMIN, approver_user,
+required, timeout_hours, escalation_role/user). RUNNING INSTANCE: `ApprovalRoute`
+(workflow, artifact_type, artifact_id, mode, status, initiated_by) + 
+`ApprovalStepInstance` (the decision slot — resolved approver / role-slot, status,
+due_at, decided_by/at, comment, escalation snapshot, escalated). All TenantScoped.
+Instances are snapshotted at start, so editing a template never mutates an
+in-flight route.
+
+### Engine contract (`engine.py`, deterministic, tenant-bound, audited)
+- `start_route` resolves the active workflow, checks no route is already in flight
+  for the artifact (one active route per artifact, 409), resolves EVERY step
+  (raising 422 ROUTE_APPROVER_UNRESOLVABLE before writing any row), and creates the
+  route + instances. SEQUENTIAL: only order-1 is active (lowest-order PENDING is
+  computed, not stored) and its clock starts; the rest wait. PARALLEL: all PENDING
+  with clocks at once.
+- `record_decision` — actor must be the assigned approver (NAMED/MANAGER) or an
+  in-scope holder of the role-slot (HRBP/ADMIN, tenant-wide); cross-tenant and the
+  protected subject are 403. Out-of-order / already-decided / route-not-in-progress
+  are 409 (never a silent no-op). Audits BEFORE the effect (crash-injection
+  proven). SEQUENTIAL: approve activates the next step; last approval → APPROVED →
+  `on_route_complete`. PARALLEL: APPROVED when every REQUIRED step is approved
+  (non-required are advisory). REJECT anywhere → REJECTED → `on_route_rejected`.
+- Approver RESOLUTION: ROLE=MANAGER → the subject's direct manager (specific
+  user); ROLE=HRBP/ADMIN → a role-slot (any in-scope holder acts, first owns it);
+  NAMED → the user. SELF-APPROVAL BLOCK: a step resolving to a protected user is
+  reassigned to the escalation target (escalation_user → escalation_role → ADMIN
+  slot fallback, so it is always resolvable).
+- `escalate_step` reassigns an overdue PENDING step in place to its escalation
+  target (escalated=True, new due_at, audits `step.escalated`).
+
+### Escalation (Celery beat)
+`tasks.escalate_overdue_routes()` scans `engine.overdue_pending_steps()`
+cross-tenant (off-request, system escape), escalates each within its own tenant
+context (one failure logged, sweep continues), returns
+`{scanned, escalated, errors}`. Registered in `CELERY_BEAT_SCHEDULE`
+(`APPROVALS_ESCALATION_INTERVAL_SECONDS`, default 300s) on the existing
+celery-beat service.
+
+### Registry + the review finalize seam (filled OPT-IN, Module 3 intact)
+`registry.py` keeps the engine generic: an artifact type registers
+`resolve_context` (subject, the subject's manager, `protected_user_ids`),
+`on_route_complete`, `on_route_rejected`. Dependency is one-way (consumers →
+approvals; the engine never imports a consumer). `apps.reviews` registers "review"
+in `ReviewsConfig.ready()`:
+- `review.finalize` now: HITL gate first (still 422 without an approver); THEN if
+  the tenant has an ACTIVE "review" workflow it ENTERS the route (review stays
+  APPROVED + gains a nullable `approval_route` link) instead of finalising; with NO
+  active workflow it is single-step EXACTLY as Module 3.
+- `on_route_complete` → `state_machine._finalize_apply` (the EXISTING audited
+  APPROVED→FINALIZED path; the Module-3 CHECK constraint still governs).
+- `on_route_rejected` → a new additive `route_rejected` transition (APPROVED→EDITING)
+  returns the review to its author; a re-submission starts a FRESH route.
+- The Module-3 state machine was NOT rewritten and NO review state was added: the
+  only changes are a nullable FK, one additive transition edge, and finalize
+  branching. All 538 prior tests stayed green.
+
+SELF-APPROVAL DESIGN NOTE (reconciling the rule with the Manager→HRBP demo): for a
+review the protected set is `{subject}` (the employee being reviewed) — NOT the
+authoring manager. A review's author IS the subject's manager, so protecting the
+manager would make a "Manager" approval step always self-collide and defeat the
+canonical Manager→HRBP matrix. The manager already human-approved the content in
+Module 3; the route is the additional org sign-off, so the manager is a legitimate
+approver and only the subject is barred from approving their own review.
+
+### Module-5-fills-Module-3 / future routing
+`finalize` is now multi-step via the engine for reviews; the SAME pattern fills
+JD (Module 6) and record-amendments — register the artifact type + wire its
+finalise/return callbacks. ROUTE.ESCALATED status is reserved for a no-target
+dead-end (the ADMIN-slot fallback means it does not occur in a tenant with an
+admin).
+
+### RBAC additions (matrix + oracle)
+`configure_approval_workflow` (Admin/HRBP), `act_on_approval_step` (Manager+; the
+engine enforces assignment on top), `view_approval_status` (all).
+
+### API (mounted at /api/approvals/, RBAC-gated + audited)
+Workflow CRUD + activate/deactivate (the designer backend), the approver `inbox`
+(SEQUENTIAL surfaces only the active step), route `tracker`
+(`/routes/<id>` and `/routes?artifact_type=&artifact_id=`, visible to
+initiator/approver/config-holder), and `steps/<id>/approve|reject` → the engine.
+Audits route.started / step.approved / step.rejected / route.completed /
+route.rejected / step.escalated / workflow.activated/deactivated /
+review.finalize_routed / review.route_rejected — all BEFORE the effect.
+
+### Files
+New: `apps/approvals/` (models, exceptions, registry, engine, tasks, serializers,
+views, urls, migration 0001, tests conftest/test_engine/test_escalation/test_api —
+44 tests). Changed: `apps/reviews/` (models +approval_route FK, migration 0002,
+state_machine finalize/_finalize_apply/route_rejected, apps.ready, new
+approval_integration.py, test_routing_integration.py — 5 tests), rbac matrix +
+oracle, settings (LOCAL_APPS + CELERY_BEAT_SCHEDULE), config/urls, testsupport
+factories.
+
+### Live validation (via nginx)
+Admin configures SEQ Manager→HRBP (employee config → 403); a review reaches
+APPROVED and finalize ROUTES (stays APPROVED, route IN_PROGRESS); out-of-order
+step-2 → 409; manager inbox shows step 1 only, HRBP inbox empty until step-1
+approved; manager→HRBP approve → review FINALIZED; a step-1 REJECT → review back to
+EDITING (not finalised); peer-manager decide → 403, cross-tenant route GET → 404;
+a PARALLEL both-required approve → FINALIZED; a forced-overdue step → the beat task
+escalates it to the HRBP slot, audited; a tenant with NO workflow single-step
+finalises (Module-3 behaviour).
+
+### Known risks / notes
+- **At-most-one-active and one-active-route-per-artifact are enforced in code**
+  (MySQL has no partial unique indexes), with an index to back the lookups.
+- **Escalation reassigns in place** (not a new slot); `escalated` + the
+  `step.escalated` audit record the history. ROUTE/STEP ESCALATED statuses are
+  reserved for the no-escalation-target dead-end (unreachable with the ADMIN
+  fallback).
+- **Step-template edits after creation** aren't exposed via PATCH (workflow
+  name/mode/active only) — re-create the workflow to change steps; in-flight routes
+  are unaffected (snapshotted).
+- **Notifications are in-app** (the inbox / tracker); Slack push is Module 12.
+- **Resolution snapshots managers at start** — a later manager change does not
+  re-resolve an in-flight route (deterministic by design).
+
+### What Modules 6/7/10/12 need from this
+- **Module 6/7 (JD, record-amendments):** register the artifact type with the
+  registry (resolve_context + on_route_complete + on_route_rejected) and add an
+  active workflow; the engine + API + escalation work unchanged.
+- **Module 10 (Fast-AI hints):** "suggested next approver" / "looks like a prior
+  approved item" attach to the inbox/route surfaces — read-only, advisory; the
+  engine stays deterministic.
+- **Module 12 (Slack):** push inbox assignments + escalations; the audit trail and
+  step instances are already in place.

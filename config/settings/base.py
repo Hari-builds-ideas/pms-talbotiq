@@ -70,6 +70,8 @@ LOCAL_APPS = [
     "apps.reviews.apps.ReviewsConfig",
     # Module 4 — 360° Feedback & anonymisation
     "apps.feedback.apps.FeedbackConfig",
+    # Module 5 — Approval Workflows
+    "apps.approvals.apps.ApprovalsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -286,6 +288,15 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 CELERY_TASK_ALWAYS_EAGER = False
+
+# Celery beat: the approval-escalation sweep reassigns overdue PENDING steps to
+# their escalation target (Module 5). Interval in seconds (default 5 min).
+CELERY_BEAT_SCHEDULE = {
+    "approvals-escalate-overdue-routes": {
+        "task": "apps.approvals.tasks.escalate_overdue_routes",
+        "schedule": env.int("APPROVALS_ESCALATION_INTERVAL_SECONDS", default=300),
+    },
+}
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"

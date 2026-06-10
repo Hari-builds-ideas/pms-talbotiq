@@ -189,3 +189,30 @@ class OneOnOneNoteFactory(DjangoModelFactory):
     tenant = factory.SelfAttribute("manager.tenant")
     body = factory.Sequence(lambda n: f"1:1 notes {n}")
     meeting_date = datetime.date(2026, 5, 1)
+
+
+# ── Module 5 — Approval Workflows ───────────────────────────────────────────
+
+
+class ApprovalWorkflowFactory(DjangoModelFactory):
+    class Meta:
+        model = "approvals.ApprovalWorkflow"
+
+    tenant = factory.SubFactory(TenantFactory)
+    name = factory.Sequence(lambda n: f"Workflow {n}")
+    artifact_type = "review"
+    mode = "SEQUENTIAL"
+    active = True
+
+
+class ApprovalStepFactory(DjangoModelFactory):
+    class Meta:
+        model = "approvals.ApprovalStep"
+
+    # Pass workflow= ; tenant derives from the workflow.
+    tenant = factory.SelfAttribute("workflow.tenant")
+    order = factory.Sequence(lambda n: n + 1)
+    approver_kind = "ROLE"
+    approver_role = "HRBP"
+    approver_user = None
+    required = True

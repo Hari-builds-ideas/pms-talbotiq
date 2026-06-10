@@ -71,6 +71,10 @@ class Capability:
     VIEW_OWN_FEEDBACK_SUMMARY = "view_own_feedback_summary"  # all, OWN — released summary
     APPROVE_FEEDBACK_SUMMARY = "approve_feedback_summary"    # HRBP, Admin — clears holds
     MANAGE_ONE_ON_ONE = "manage_one_on_one"                  # all — participants only (object rule)
+    # ── Module 5 — Approval Workflows ──
+    CONFIGURE_APPROVAL_WORKFLOW = "configure_approval_workflow"  # Admin, HRBP — design the matrix
+    ACT_ON_APPROVAL_STEP = "act_on_approval_step"                # Manager+ — engine enforces assignment
+    VIEW_APPROVAL_STATUS = "view_approval_status"                # all — inbox / route tracker
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -134,6 +138,11 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.VIEW_OWN_FEEDBACK_SUMMARY: _EVERYONE,
     Capability.APPROVE_FEEDBACK_SUMMARY: _HRBP_UP,
     Capability.MANAGE_ONE_ON_ONE: _EVERYONE,
+    # Module 5 — Approval Workflows. The engine additionally enforces that the
+    # actor is the assigned approver / in-scope role-slot holder for a step.
+    Capability.CONFIGURE_APPROVAL_WORKFLOW: _HRBP_UP,
+    Capability.ACT_ON_APPROVAL_STEP: _MANAGER_UP,
+    Capability.VIEW_APPROVAL_STATUS: _EVERYONE,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

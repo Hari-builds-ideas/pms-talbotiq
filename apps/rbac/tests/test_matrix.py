@@ -38,6 +38,13 @@ EXPECTED = {
     Capability.MANAGE_KPI_TEMPLATES: {Role.HRBP, Role.ADMIN},
     Capability.CONFIGURE_SCORING: {Role.ADMIN},
     Capability.MANAGE_CYCLES: {Role.HRBP, Role.ADMIN},
+    # Module 3 — Reviews & Appraisal Cycles.
+    Capability.MANAGE_REVIEWS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.FINALIZE_REVIEW: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_OWN_REVIEW: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.SUBMIT_SELF_ASSESSMENT: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.SUBMIT_ASSESSMENT: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.CALIBRATE_REVIEWS: {Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

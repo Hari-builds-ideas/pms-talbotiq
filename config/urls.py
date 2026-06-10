@@ -10,6 +10,8 @@ urlpatterns = [
     # Module 2 — Goals & KPI engine
     path("api/cycles/", include("apps.cycles.urls")),
     path("api/goals/", include("apps.goals.urls")),
+    # Module 3 — Reviews & Appraisal Cycles
+    path("api/reviews/", include("apps.reviews.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

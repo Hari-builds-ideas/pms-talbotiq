@@ -66,6 +66,8 @@ LOCAL_APPS = [
     # Module 2 — Goals & KPI engine
     "apps.cycles.apps.CyclesConfig",
     "apps.goals.apps.GoalsConfig",
+    # Module 3 — Reviews & Appraisal Cycles
+    "apps.reviews.apps.ReviewsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

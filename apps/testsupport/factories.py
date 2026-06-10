@@ -117,3 +117,29 @@ class KpiTemplateFactory(DjangoModelFactory):
     direction = "INCREASING"
     unit = ""
     default_weight = Decimal("100.00")
+
+
+# ── Module 3 — Reviews & Appraisal Cycles ──────────────────────────────────
+
+
+class ReviewFactory(DjangoModelFactory):
+    class Meta:
+        model = "reviews.Review"
+
+    # Pass employee= and cycle= (same tenant); reviewer defaults to the
+    # employee's manager when present. Tenant is derived from the employee.
+    tenant = factory.SelfAttribute("employee.tenant")
+    reviewer = factory.LazyAttribute(lambda o: o.employee.manager)
+    state = "DRAFT"
+    draft_body = ""
+
+
+class ReviewAssessmentFactory(DjangoModelFactory):
+    class Meta:
+        model = "reviews.ReviewAssessment"
+
+    # Pass review= and assessor= (same tenant); tenant derives from the review.
+    tenant = factory.SelfAttribute("review.tenant")
+    assessment_type = "MANAGER"
+    body = factory.Sequence(lambda n: f"Assessment body {n}")
+    submitted_at = factory.LazyFunction(timezone.now)

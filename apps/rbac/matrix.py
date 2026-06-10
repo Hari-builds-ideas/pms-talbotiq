@@ -57,6 +57,14 @@ class Capability:
     CONFIGURE_SCORING = "configure_scoring"    # Admin only
     MANAGE_CYCLES = "manage_cycles"            # HRBP, Admin (cycle CRUD)
     # (Goal create/edit reuses the existing MANAGE_REPORTS_GOALS capability.)
+    # ── Module 3 — Reviews & Appraisal Cycles ──
+    # (The HITL human approval reuses the existing APPROVE_REVIEW capability.)
+    MANAGE_REVIEWS = "manage_reviews"              # Manager+, TEAM — create/edit/draft
+    FINALIZE_REVIEW = "finalize_review"            # Manager+, TEAM — post-approval finalize
+    VIEW_OWN_REVIEW = "view_own_review"            # all roles, OWN — own finalized review
+    SUBMIT_SELF_ASSESSMENT = "submit_self_assessment"  # all roles, OWN
+    SUBMIT_ASSESSMENT = "submit_assessment"        # Manager+ — scoped to the review subject
+    CALIBRATE_REVIEWS = "calibrate_reviews"        # HRBP, Admin — tenant-wide calibration
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -105,6 +113,14 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.MANAGE_KPI_TEMPLATES: _HRBP_UP,
     Capability.CONFIGURE_SCORING: _ADMIN_ONLY,
     Capability.MANAGE_CYCLES: _HRBP_UP,
+    # Module 3 — Reviews (scope enforced separately by WithinScope: Manager =
+    # reporting subtree, HRBP/Admin = tenant, employees = OWN).
+    Capability.MANAGE_REVIEWS: _MANAGER_UP,
+    Capability.FINALIZE_REVIEW: _MANAGER_UP,
+    Capability.VIEW_OWN_REVIEW: _EVERYONE,
+    Capability.SUBMIT_SELF_ASSESSMENT: _EVERYONE,
+    Capability.SUBMIT_ASSESSMENT: _MANAGER_UP,
+    Capability.CALIBRATE_REVIEWS: _HRBP_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

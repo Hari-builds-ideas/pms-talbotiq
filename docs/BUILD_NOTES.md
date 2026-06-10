@@ -511,3 +511,134 @@ cycle's scores → 404 (cross-tenant isolation).
   routing matrix.
 - Module 10 (Agent 2) subscribes to `cycle_scores_recomputed`; Module 12 swaps a
   real provider into `apps.goals.jira.get_provider` via `settings.JIRA_ACTUAL_PROVIDER`.
+
+---
+
+## Module 3 — Reviews & Appraisal Cycles (build-order M3 = Doc 2 §Module 4)
+
+**Status:** ✅ Complete. **467 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 2's 382 + 85 new). The FIRST HITL module: the human-in-the-loop gate and
+the immutable audit from Module 1 are the centrepiece. Stack unchanged.
+
+### What was built (`apps/reviews`)
+- **Models** (all TenantScopedModel): `Review` (employee/reviewer/cycle FK to the
+  EXISTING Module-2 `PerformanceCycle` — no second cycle model; state, draft/final
+  bodies, `human_reviewer` NULL-until-approved, approved_at/finalized_at,
+  rejected_reason, source MANUAL/AI, nullable confidence_score+citations for
+  Agent 1; unique (tenant, employee, cycle)); `ReviewAssessment` (SELF/MANAGER/
+  PEER/UPWARD, unique (tenant, review, assessor), SELF upserts, server-set
+  submitted_at); `ReviewStateTransition` (append-style timeline powering the
+  approval tracker — complements, never replaces, the AuditLog).
+
+### The state machine (`apps/reviews/state_machine.py`)
+Hand-rolled explicit transition table (no library) — the table IS the contract:
+
+    DRAFT                -> AI_DRAFTING          request_ai_draft (Agent-1 seam)
+    DRAFT                -> EDITING              start_edit (manual draft)
+    AI_DRAFTING          -> PENDING_HUMAN_REVIEW ai_draft_ready (system lock)
+    EDITING              -> PENDING_HUMAN_REVIEW submit_for_review
+    PENDING_HUMAN_REVIEW -> EDITING              start_edit (edit again)
+    PENDING_HUMAN_REVIEW -> APPROVED             approve (sets human_reviewer)
+    PENDING_HUMAN_REVIEW -> REJECTED             reject (reason REQUIRED -> 422)
+    REJECTED             -> EDITING              start_edit (revise)
+    APPROVED             -> FINALIZED            finalize (single-step; M5 seam)
+
+Every transition: legality vs the table (illegal → 409 naming from/action),
+RBAC capability + row scope INSIDE the machine (peer manager / cross-tenant →
+403), audit BEFORE the effect (proven by crash-injection: audit row exists, state
+unchanged), persists, appends a timeline row. Transitions are `_tenant_bound`
+(they bind the review's tenant like the Module-2 scoring engine) so they work on
+requests AND off-request (Celery/tests). Re-running terminal/illegal transitions
+(approve twice, finalize twice, edit FINALIZED) is REJECTED — never a no-op.
+
+### THE HITL GATE — three layers, all proven
+1. **State machine:** `finalize()` demands state==APPROVED AND non-null
+   `human_reviewer` → else 422 (checks the reviewer, not just the state).
+2. **Database:** CHECK constraint `ck_review_finalized_has_reviewer`
+   (`state != 'FINALIZED' OR human_reviewer_id IS NOT NULL`) in migration 0001 —
+   MySQL 8 enforces it. Tested AND live-demoed rejecting a direct ORM `save()`
+   AND a queryset `.update()` (MySQL error 3819), the same standard as Module 1's
+   audit-trigger raw-SQL proof.
+3. **API:** finalize-without-approval returns **422 HITL_APPROVAL_REQUIRED**.
+Status contract: 409 = illegal transition / structural conflict (incl. creating a
+review against a non-ACTIVE cycle); 422 = HITL_APPROVAL_REQUIRED /
+REJECTION_REASON_REQUIRED.
+
+### API (mounted at /api/reviews/, all RBAC-gated + audited)
+List/create (scope-filtered; create requires ACTIVE cycle, reviewer defaults to
+the acting manager), detail (no direct PATCH — the machine is the only mutator),
+timeline, assessments (SELF upsert by the subject only; MANAGER/PEER/UPWARD by
+Manager+ in scope — broader peer/upward capture arrives with the Feedback
+module), transitions (start-edit, submit + save-draft alias, approve, reject,
+finalize, request-ai-draft), HRBP/Admin calibration read
+(`/calibration?cycle=&state=`). Audits review.created / edit_started / submitted /
+approved (with human_reviewer) / rejected (with reason) / finalized /
+ai_draft_requested / ai_draft_ready / assessment.submitted.
+
+### Agent-1 seam (Module 10 owns the agent)
+`apps/reviews/agent1.py`: `ReviewAssistantProvider` ABC + `NotConfiguredProvider`
+(raises tested `ReviewAssistantNotConfiguredError`) + `get_provider()` resolving
+`settings.REVIEW_ASSISTANT_PROVIDER` (import string). `apps/reviews/tasks.py`:
+`draft_review_with_agent1(tenant_id, review_id, actor_id=None)` — checks the
+provider BEFORE transitioning (an unconfigured provider leaves the review in
+DRAFT and returns `{"drafted": false, "reason": "no_provider"}`; the endpoint
+surfaces 503 with a "lands in Module 10" detail); with a configured provider it
+runs request_ai_draft (RBAC: an accountable human requester is REQUIRED —
+actor_required otherwise) → provider.draft() → ai_draft_ready LOCKS the result
+PENDING_HUMAN_REVIEW with confidence+citations (Doc 3 §5 pipeline). Module 10
+will implement the provider (evidence gathering from Module-2 goals/scores +
+Feedback, PII scrub, LangGraph via the LLM gateway) and gate its surface with
+`requires_entitlement("agent1")`. The manual path reaches FINALIZED with no AI.
+
+### Module-5 routing seam
+`finalize` is deliberately SINGLE-STEP (APPROVED → FINALIZED). Module 5's
+configurable approval matrix replaces the body of `state_machine.finalize` with
+multi-step sequential/parallel routing, completing with the same audited
+FINALIZED write. Documented in the state-machine module docstring.
+
+### RBAC additions (`apps/rbac/matrix.py` + oracle test)
+`manage_reviews`, `finalize_review` (Manager+), `view_own_review`,
+`submit_self_assessment` (everyone), `submit_assessment` (Manager+),
+`calibrate_reviews` (HRBP/Admin). The HITL approval reuses the pre-existing
+`approve_review`; the AI-draft request reuses `run_ai_review_draft`.
+
+### Files
+New: `apps/reviews/` (models, exceptions, state_machine, services, agent1, tasks,
+serializers, views, urls, migrations/0001 incl. the CHECK constraint, tests
+test_state_machine/test_hitl/test_agent1_seam/test_api — 61 tests). Changed:
+`config/settings/base.py` (+ReviewsConfig), `config/urls.py` (+/api/reviews/),
+`apps/rbac/matrix.py` + `apps/rbac/tests/test_matrix.py`,
+`apps/testsupport/factories.py` (+ReviewFactory, ReviewAssessmentFactory).
+
+### Live validation (docker compose up, via nginx)
+cycle 201 → review 201 (DRAFT) → SELF+MANAGER assessments 201 → start-edit/submit
+200 (PENDING_HUMAN_REVIEW) → **finalize 422 HITL_APPROVAL_REQUIRED** → approve
+200 (human_reviewer set) → finalize 200 (FINALIZED) → employee GET own finalized
+200 → peer-manager GET 403 / transition rejected → Globex admin GET 404 →
+**direct ORM FINALIZED+null-reviewer write rejected by MySQL CHECK 3819** →
+timeline DRAFT→EDITING→PENDING_HUMAN_REVIEW→APPROVED→FINALIZED.
+
+### Known risks / notes
+- **Legality is checked before scope** in transitions, so probing a transition on
+  a terminal review returns 409 even for out-of-scope actors (GET remains 403).
+  State names are not sensitive; acceptable for MVP.
+- **Assessments are capturable in any review state** (incl. after FINALIZED) —
+  the cycle, not the review state, is the natural fence; revisit with Module 4
+  (360 cycles) if capture must close at finalization.
+- **PEER/UPWARD assessors currently require Manager+ capability** — deliberate
+  until the Feedback module brings designated-reviewer flows + anonymization.
+- `ReviewCycleConfig` (review-specific cycle settings) was NOT needed — Module 4
+  adds it one-to-one with PerformanceCycle when cycle-level review config arrives.
+
+### What Modules 4/5/10 need from this
+- **Module 4 (Feedback):** assessments live on `ReviewAssessment` — extend with
+  anonymization + designated reviewers; reviews expose `.assessments` and the
+  state machine remains untouched.
+- **Module 5 (Approvals):** replace the body of `state_machine.finalize` with the
+  routing engine (entering at APPROVED, completing with the same audited
+  FINALIZED write + timeline row). The CHECK constraint keeps holding regardless.
+- **Module 10 (Agent 1):** implement `ReviewAssistantProvider` (evidence from
+  apps.goals + feedback, PII scrub, LangGraph via the LLM gateway), point
+  `settings.REVIEW_ASSISTANT_PROVIDER` at it, and gate the request-ai-draft
+  surface with `requires_entitlement("agent1")`. The state machine already locks
+  its output PENDING_HUMAN_REVIEW.

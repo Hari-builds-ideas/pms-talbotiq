@@ -65,6 +65,12 @@ class Capability:
     SUBMIT_SELF_ASSESSMENT = "submit_self_assessment"  # all roles, OWN
     SUBMIT_ASSESSMENT = "submit_assessment"        # Manager+ — scoped to the review subject
     CALIBRATE_REVIEWS = "calibrate_reviews"        # HRBP, Admin — tenant-wide calibration
+    # ── Module 4 — 360° Feedback & anonymisation ──
+    MANAGE_FEEDBACK_CYCLE = "manage_feedback_cycle"          # Manager+ — open/close 360s, invite
+    GIVE_FEEDBACK = "give_feedback"                          # all — as themselves only
+    VIEW_OWN_FEEDBACK_SUMMARY = "view_own_feedback_summary"  # all, OWN — released summary
+    APPROVE_FEEDBACK_SUMMARY = "approve_feedback_summary"    # HRBP, Admin — clears holds
+    MANAGE_ONE_ON_ONE = "manage_one_on_one"                  # all — participants only (object rule)
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -121,6 +127,13 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.SUBMIT_SELF_ASSESSMENT: _EVERYONE,
     Capability.SUBMIT_ASSESSMENT: _MANAGER_UP,
     Capability.CALIBRATE_REVIEWS: _HRBP_UP,
+    # Module 4 — Feedback (scope via WithinScope + serializer-level identity
+    # stripping; the giver is always server-set to the acting user).
+    Capability.MANAGE_FEEDBACK_CYCLE: _MANAGER_UP,
+    Capability.GIVE_FEEDBACK: _EVERYONE,
+    Capability.VIEW_OWN_FEEDBACK_SUMMARY: _EVERYONE,
+    Capability.APPROVE_FEEDBACK_SUMMARY: _HRBP_UP,
+    Capability.MANAGE_ONE_ON_ONE: _EVERYONE,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

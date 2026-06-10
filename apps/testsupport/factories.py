@@ -143,3 +143,49 @@ class ReviewAssessmentFactory(DjangoModelFactory):
     assessment_type = "MANAGER"
     body = factory.Sequence(lambda n: f"Assessment body {n}")
     submitted_at = factory.LazyFunction(timezone.now)
+
+
+# ── Module 4 — 360° Feedback & anonymisation ───────────────────────────────
+
+
+class FeedbackCycleFactory(DjangoModelFactory):
+    class Meta:
+        model = "feedback.FeedbackCycle"
+
+    # Pass subject= ; tenant derives from the subject.
+    tenant = factory.SelfAttribute("subject.tenant")
+    opened_by = factory.LazyAttribute(lambda o: o.subject.manager)
+    status = "COLLECTING"
+
+
+class FeedbackRequestFactory(DjangoModelFactory):
+    class Meta:
+        model = "feedback.FeedbackRequest"
+
+    # Pass cycle= and giver= (same tenant); tenant derives from the cycle.
+    tenant = factory.SelfAttribute("cycle.tenant")
+    relationship = "PEER"
+    status = "PENDING"
+
+
+class FeedbackFactory(DjangoModelFactory):
+    class Meta:
+        model = "feedback.Feedback"
+
+    # Pass cycle= (or cycle=None + subject=) and giver=; tenant from the giver.
+    tenant = factory.SelfAttribute("giver.tenant")
+    subject = factory.LazyAttribute(lambda o: o.cycle.subject if o.cycle else None)
+    relationship = "PEER"
+    kind = "THREE_SIXTY"
+    body = factory.Sequence(lambda n: f"Feedback body {n}")
+    giver_marked_sensitive = False
+
+
+class OneOnOneNoteFactory(DjangoModelFactory):
+    class Meta:
+        model = "feedback.OneOnOneNote"
+
+    # Pass manager= and employee= (same tenant); tenant from the manager.
+    tenant = factory.SelfAttribute("manager.tenant")
+    body = factory.Sequence(lambda n: f"1:1 notes {n}")
+    meeting_date = datetime.date(2026, 5, 1)

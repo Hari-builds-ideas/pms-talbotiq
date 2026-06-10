@@ -68,6 +68,8 @@ LOCAL_APPS = [
     "apps.goals.apps.GoalsConfig",
     # Module 3 — Reviews & Appraisal Cycles
     "apps.reviews.apps.ReviewsConfig",
+    # Module 4 — 360° Feedback & anonymisation
+    "apps.feedback.apps.FeedbackConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

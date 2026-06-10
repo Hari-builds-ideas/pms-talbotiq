@@ -45,6 +45,12 @@ EXPECTED = {
     Capability.SUBMIT_SELF_ASSESSMENT: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.SUBMIT_ASSESSMENT: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.CALIBRATE_REVIEWS: {Role.HRBP, Role.ADMIN},
+    # Module 4 — 360° Feedback & anonymisation.
+    Capability.MANAGE_FEEDBACK_CYCLE: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.GIVE_FEEDBACK: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_OWN_FEEDBACK_SUMMARY: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.APPROVE_FEEDBACK_SUMMARY: {Role.HRBP, Role.ADMIN},
+    Capability.MANAGE_ONE_ON_ONE: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

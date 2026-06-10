@@ -642,3 +642,129 @@ timeline DRAFT→EDITING→PENDING_HUMAN_REVIEW→APPROVED→FINALIZED.
   `settings.REVIEW_ASSISTANT_PROVIDER` at it, and gate the request-ai-draft
   surface with `requires_entitlement("agent1")`. The state machine already locks
   its output PENDING_HUMAN_REVIEW.
+
+---
+
+## Module 4 — 360° Feedback & Anonymisation (build-order M4 = Doc 2 §Module 5)
+
+**Status:** ✅ Complete. **538 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 3's 467 + 71 new). The second AI-safety module: anonymisation-before-
+any-LLM and the per-group minimum-volume threshold are the centrepiece, as the
+HITL gate was for Module 3. Stack unchanged. ReviewAssessment untouched.
+
+### What was built (`apps/feedback`)
+Models (all TenantScopedModel): `FeedbackCycle` (per-subject 360 window,
+DRAFT/COLLECTING/CLOSED, optional PerformanceCycle alignment, per-cycle
+`min_volume` override), `FeedbackRequest` (the invitation = the
+designated-reviewer flow Module 3 deferred here; unique (tenant, cycle, giver);
+relationship fixed by the inviter), `Feedback` (giver STORED, never egressed;
+360 + cycle-less CONTINUOUS via MySQL NULL-distinct unique semantics; sentiment
+null until Module 10), `OneOnOneNote` (participants-only, not anonymised, not
+summarised), `FeedbackSummary` (sections NULL until Agent 3 — NEVER fabricated;
+status PENDING_HUMAN_REVIEW/HRBP_HOLD/APPROVED/RELEASED; unique per cycle).
+
+### THE ANONYMISATION GUARANTEE (deterministic, proven)
+- Anonymisation at the EGRESS boundary, never in storage:
+  `anonymize.build_anonymized_payload(cycle)` is the only artifact that leaves
+  the sensitive store (recipients, HRBP, and later Agent 3 all consume it). It
+  strips giver UUID/name/email and substitutes opaque per-cycle pseudonyms
+  (PEER#1…) ordered by feedback-row UUID hex (deterministic, uncorrelated with
+  identity or submission time). PROVEN: tests serialize the payload and assert
+  ZERO giver identifiers (the analog of Module 3's CHECK-constraint proof) —
+  the live demo re-proved it over HTTP. `subject_id` is the single declared
+  identifier (recipients know whose 360 it is; SELF is inherently attributed).
+- PER-GROUP min-volume: `MIN_FEEDBACK_VOLUME = 3` (constants.py; 5 documented
+  as the conservative option; per-cycle override on the model). Applied to PEER
+  and UPWARD only (SELF/MANAGER are attributed by nature) and PER GROUP — a
+  cycle with 5 responses but 1 peer still excludes the peer group. Excluded
+  groups never egress and are recorded in `insufficient_groups` (+
+  `insufficient_volume`, the Doc 2 partial-summary-with-warning path).
+- DETERMINISTIC pre-LLM breach guard: `scan_for_identity_leaks` scans every
+  INCLUDED body for any tenant user's full email and for ANY email-like pattern
+  (conservative). Findings (which never carry giver identity) →
+  `anonymity_passed=False`, `status=HRBP_HOLD`, provider NEVER called. NOTE:
+  Users have no name fields (email-only identity), so name-scanning activates
+  if/when profiles gain names — documented in anonymize.py. Agent 3 adds the
+  post-LLM check in Module 10.
+- CROSS-PEER protection at the serializer: the ONLY serializer that renders a
+  Feedback row giver-attributed is the giver's own view; recipients get the
+  anonymised payload or giver-less continuous items; summary serializer omits
+  reviewed_by; giver/opened_by/reviewed_by are always server-set (anti-spoof).
+
+### Summarize pipeline + Agent-3 seam (Module 10 owns the agent)
+`tasks.summarize_feedback(tenant_id, cycle_id, actor_id=None)` — fired by
+close_cycle, in the Doc-2 diagram order: bind tenant → anonymised payload
+(ALWAYS, before any provider logic) → per-group threshold flags → deterministic
+breach guard (breach: HRBP_HOLD + audit, STOP — no provider call, proven by an
+exploding fake provider) → sensitive hold (any giver_marked_sensitive →
+HRBP_HOLD) → provider seam: `agent3.FeedbackSummarizerProvider` ABC +
+NotConfiguredProvider (raises tested FeedbackSummarizerNotConfiguredError) +
+`get_provider()` via `settings.FEEDBACK_SUMMARIZER_PROVIDER`. Unconfigured →
+log-and-skip, summary stays PENDING with sections NULL, POST /summarize returns
+503 "lands in Module 10". A configured provider's sections are stored verbatim
+but the summary STAYS pending-human-release (HITL discipline). Idempotent upsert
+(unique tenant+cycle). Module 10 gates its surface with
+`requires_entitlement("agent3")` (FULL_AI).
+
+### API (mounted at /api/feedback/, all RBAC-gated + audited)
+Cycles CRUD + open/close (+/summarize re-trigger), invitations (cycle requests +
+requests/mine + decline), give (invitation-authorised, giver server-set),
+continuous, mine/received (received is giver-less), the subject's anonymised
+view (CLOSED only) + released summary (403 SUMMARY_NOT_RELEASED until released),
+HRBP review queue + approve (HRBP_HOLD/PENDING → RELEASED), 1:1 notes
+(participants ONLY — even Admin is denied via API). Audits:
+feedback_cycle.opened/closed, feedback_request.sent, feedback.submitted,
+summary.generated, summary.held_for_hrbp, summary.approved, summary.released —
+all BEFORE the effect.
+
+### Slack "notify reviewers" seam (Module 12)
+The PENDING FeedbackRequest row IS the in-app notification for MVP; Module 12
+pushes it to Slack (documented on send_feedback_request).
+
+### RBAC additions (matrix + oracle test)
+`manage_feedback_cycle` (Manager+), `give_feedback`, `view_own_feedback_summary`,
+`manage_one_on_one` (everyone), `approve_feedback_summary` (HRBP/Admin).
+
+### Files
+New: `apps/feedback/` (constants, exceptions, models, anonymize, services,
+agent3, tasks, serializers, views, urls, migration 0001, tests test_anonymize/
+test_services/test_agent3_seam/test_api — 51 tests). Changed: settings
+LOCAL_APPS, config/urls, rbac matrix + oracle, testsupport factories.
+
+### Live validation (via nginx)
+create+open+invite 201s → 6 submissions 201 → spoof re-give 403 → close 200
+(summarize reason=no_provider) → POST /summarize 503 "lands in Module 10" →
+subject GET /anonymized: giver_identifiers_found=[], pseudonyms PEER#1–3,
+UPWARD (1 < 3) excluded + flagged insufficient → subject summary 403 until HRBP
+approve → RELEASED (sections null — never fabricated) → breach cycle (peer body
+contained a colleague's email) → HRBP_HOLD, anonymity_passed=False → peer GET
+/anonymized 403 → Globex admin GET 404.
+
+### Known risks / notes
+- **Breach guard scans emails only** (Users have no name fields). Free-text
+  names ("ask Priya about this") are NOT deterministically detectable today;
+  Agent 3's post-LLM semantic check (Module 10) is the second net. If profiles
+  gain names, extend `scan_for_identity_leaks` immediately.
+- **Pseudonym stability:** pseudonyms are stable per cycle (UUID-hex order). A
+  giver who edits their item keeps the same pseudonym; across cycles pseudonyms
+  do not correlate.
+- **A held (breach/sensitive) summary is released by HRBP approval without
+  body redaction** — the HRBP is the human judging the leak; redaction tooling
+  could come with the Module-10 console.
+- **Continuous feedback is recipient-visible immediately** and giver-less; it
+  bypasses the 360 threshold by design (it is direct, not anonymous-aggregated).
+- The (tenant, cycle, giver) unique constraint relies on MySQL NULL-distinct
+  semantics for continuous rows — documented on the model; revisit if the DB
+  ever changes (it won't; stack is locked).
+
+### What Modules 5/10/12 need from this
+- **Module 5 (Approvals):** the HRBP summary approve is a single step; the
+  routing matrix can generalise `services.approve_summary` the same way it
+  replaces Module 3's finalize.
+- **Module 10 (Agent 3):** implement `FeedbackSummarizerProvider` (consumes the
+  anonymised payload ONLY), set `settings.FEEDBACK_SUMMARIZER_PROVIDER`, gate
+  with `requires_entitlement("agent3")`, add the post-LLM breach check + the
+  Fast-AI sentiment tagger (Feedback.sentiment is waiting). Agent 1 (reviews)
+  may now also consume `build_anonymized_payload` as feedback evidence.
+- **Module 12 (Slack):** push FeedbackRequest invitations + summary-released
+  notifications; the audit trail and request rows are already in place.

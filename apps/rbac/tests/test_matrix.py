@@ -63,6 +63,13 @@ EXPECTED = {
     Capability.VIEW_ORG_CHART: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.MANAGE_POSITIONS: {Role.HRBP, Role.ADMIN},
     Capability.REASSIGN_REPORTING_LINE: {Role.HRBP, Role.ADMIN},
+    # Module 8 — Succession & Talent (management-only: NO employee anywhere).
+    Capability.MANAGE_CRITICAL_ROLES: {Role.HRBP, Role.ADMIN},
+    Capability.MANAGE_BENCH: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.ASSESS_NINE_BOX: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_SUCCESSION: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.GENERATE_SUCCESSION_ANALYSIS: {Role.HRBP, Role.ADMIN},
+    Capability.PUBLISH_SUCCESSION_PLAN: {Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

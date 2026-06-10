@@ -1152,3 +1152,139 @@ JSON; employee create-position / reassign → 403; cross-tenant person + positio
   bound by construction; span-of-control flags (Phase 2) attach as advisory reads.
 - **Module 13 (frontend canvas):** renders `GET /tree` (nodes+edges+roots+rollups),
   `/people/<id>`, `/vacancies`, `/search`, `/export`; all already scoped + cached.
+
+
+## Module 8 — Succession & Talent (build-order M8 = Doc 2 §Module 9)
+
+**Status:** ✅ Complete. **792 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 7's 712 + 80 new; the 712 stayed green — nothing prior was rewritten).
+Holds the MOST SENSITIVE data in the system (readiness, 9-box, flight-risk) —
+MANAGEMENT-ONLY by construction. The deterministic engine is CORE (works with no
+AI); Agent 4 (Module 10) only ENRICHES via a loud seam. Stack unchanged.
+
+### THE SENSITIVITY RULE (the headline)
+Succession is invisible to employees: there is NO employee access to ANY endpoint
+— not even their own 9-box or readiness. An EMPLOYEE hitting any succession
+endpoint gets **404, not 403** (no existence leak). Enforced by
+`apps/succession/permissions.py::SuccessionMixin`, which orders
+`[IsAuthenticated, SuccessionParticipant, HasCapability]` — `SuccessionParticipant`
+raises `NotFound` for any non-management role BEFORE the capability check could
+403. EVERY view subclasses `SuccessionMixin`. A Manager is confined to their
+reporting subtree (out-of-tier target → 404, raised in the services); a Manager
+lacking an HRBP-only capability (critical-role registry / generate / publish) gets
+the normal 403 (they're a participant); cross-tenant → 404.
+
+### Models (`apps/succession/models.py`, all TenantScoped)
+`CriticalRole` (name, optional `position`→org.Position, `incumbent`→User,
+criticality HIGH/CRITICAL, knowledge_risk LOW/MEDIUM/HIGH, risk_notes, marked_by,
+status ACTIVE/ARCHIVED). `BenchCandidate` (critical_role, candidate, readiness
+READY_NOW/READY_SOON/DEVELOPING/NOT_READY, `readiness_overridden`, notes, added_by;
+unique tenant+role+candidate). `NineBoxPlacement` (employee, cycle, performance_band
+DERIVED, potential_band HUMAN-assigned, box 1–9, assessed_by/at; unique
+tenant+employee+cycle). `SuccessionPlan` (critical_role, status DRAFT/
+PENDING_HUMAN_REVIEW/PUBLISHED, ranked_bench JSON, coverage_status RED/AMBER/GREEN,
+red_flags JSON, action_items JSON, source DETERMINISTIC/AI, confidence_score
+nullable, generated_at, reviewed_by, published_at).
+
+### Deterministic engine (`engine.py` + `constants.py`, all tunable)
+- **Performance band from the Module-2 CycleScore T-score:** `t < 40 → LOW`;
+  `40 ≤ t ≤ 60 → MEDIUM`; `t > 60 → HIGH` (tested 39→LOW, 50→MEDIUM, 70→HIGH). No
+  CycleScore → performance UNKNOWN → readiness NOT_READY (never a crash).
+- **9-box numbering:** `box = perf_index*3 + pot_index + 1` (LOW=0/MED=1/HIGH=2),
+  so LOW/LOW=1 … HIGH/HIGH=9 (top-talent). Unique per (employee, cycle), upserts.
+- **Readiness default mapping** (HRBP may OVERRIDE — `readiness_overridden` STICKS,
+  a re-generate never recomputes it): LOW/UNKNOWN perf → NOT_READY; HIGH+HIGH →
+  READY_NOW; (HIGH|MED) perf + (MED|HIGH) potential → READY_SOON; MED perf +
+  (LOW|MED) → DEVELOPING; HIGH+LOW → DEVELOPING. Missing potential treated as LOW
+  (conservative — unassessed potential never inflates readiness).
+- **Coverage per critical role:** any READY_NOW → GREEN; else any READY_SOON →
+  AMBER; else RED (the spec's inadequate-coverage flag; empty bench is RED). RED
+  populates `red_flags`.
+- `compute_analysis(role)` recomputes non-overridden readiness, ranks the bench (by
+  readiness then performance), and returns ranked_bench + coverage + red_flags —
+  deterministic, always available, ungated beyond RBAC.
+
+### SuccessionPlan HITL (`plans.py`)
+`generate_plan` → a NEW plan locked PENDING_HUMAN_REVIEW (source=DETERMINISTIC) →
+HRBP `add_action_item` during review → `publish_plan` → PUBLISHED (to the
+dashboard, sets reviewed_by + published_at). A plan that has NOT been through
+PENDING_HUMAN_REVIEW cannot be published — illegal transition → 409
+ILLEGAL_PLAN_TRANSITION. The scoped `dashboard(actor)` shows each visible role with
+its latest published coverage. All audited before the effect.
+
+### Agent-4 enrichment SEAM (`agent4.py` + `tasks.py`) — Module 10 owns the agent
+`SuccessionAnalyzerProvider` ABC + `NotConfiguredProvider` (raises
+`SuccessionAnalyzerNotConfiguredError`) + `get_provider()` resolving
+`settings.SUCCESSION_ANALYZER_PROVIDER`. `enrich_succession_with_agent4(tenant_id,
+plan_id, actor_id)` binds the tenant, resolves the provider; with NONE configured
+it logs-and-skips → `{"enriched": False, "reason": "no_provider"}` and the endpoint
+surfaces a loud 503. THE KEY DIFFERENCE from prior seams: the deterministic plan
+stays COMPLETELY INTACT (the baseline is core, not faked — proven in tests + the
+live demo). A configured Module-10 provider reads internal CycleScores/goals +
+ANONYMISED Module-4 360 (never raw givers), producing a NEW plan (source=AI) locked
+PENDING_HUMAN_REVIEW with a confidence score for HRBP re-review; its surface will
+be gated with `requires_entitlement("agent4")`.
+
+### RBAC additions (matrix + oracle) — management-only, NO employee anywhere
+`manage_critical_roles` (HRBP/Admin), `manage_bench` (Manager+, own-tier),
+`assess_nine_box` (Manager+, own-tier), `view_succession` (Manager+, own report
+tier ONLY), `generate_succession_analysis` (HRBP/Admin), `publish_succession_plan`
+(HRBP/Admin). Employees hold NONE — and `SuccessionParticipant` turns any employee
+access into 404. Manager-held caps are additionally scoped in the services.
+
+### API (apps/succession, mounted at /api/succession/, RBAC-gated + audited)
+dashboard (view_succession); critical-roles CRUD + knowledge-risk + archive
+(manage_critical_roles); bench list/add (view/manage_bench, scoped) + readiness
+(manage_bench); nine-box list/assess (view/assess_nine_box, scoped); generate
+(generate_succession_analysis); plan detail/action-item/publish
+(view/publish_succession_plan); enrich (the 503 seam). Thin views; services/plans/
+tasks are the sole mutators + scope authority; no PATCH/PUT. Audits
+critical_role.marked/risk_updated/archived, bench.added, readiness.set,
+ninebox.assessed, plan.generated/action_item_added/published — all before the effect.
+
+### Files
+New: `apps/succession/` (models, constants, engine, exceptions, services, plans,
+agent4, tasks, permissions, serializers, views, urls, apps, migration 0001, tests
+test_engine [25] + test_services [20] + test_api [11]). Changed: rbac matrix +
+oracle (6 new caps), settings (LOCAL_APPS + SUCCESSION_ANALYZER_PROVIDER),
+config/urls, testsupport factories (CriticalRole/BenchCandidate/NineBoxPlacement/
+SuccessionPlan).
+
+### Live validation (via nginx)
+HRBP marks "VP Engineering" CRITICAL (knowledge_risk HIGH); assigns 9-box (alice
+perf HIGH→box 9, bob perf MED→box 5, performance pulled from CycleScores); adds 3
+bench candidates (readiness seeded READY_NOW/READY_SOON/DEVELOPING); generates →
+PENDING_HUMAN_REVIEW, ranked alice>bob>eve, coverage GREEN; a second "Lead DBA"
+role with a scoreless candidate → coverage RED + INADEQUATE_COVERAGE red flag; HRBP
+adds an action item → publishes → dashboard shows it; a Manager assesses their own
+report's 9-box but a peer's report → 404 and their dashboard is tier-scoped; an
+EMPLOYEE → 404 on dashboard / critical-roles / their OWN 9-box / create; a Manager
+lacking the HRBP cap → 403 (not 404); enrich-with-agent4 → 503 with the
+deterministic plan verified unchanged; cross-tenant role + plan → 404.
+
+### Known risks / notes
+- **Management-only is enforced at two layers:** capabilities exclude employees,
+  AND `SuccessionParticipant` 404s them first (so even a capability mistake can't
+  turn into a 403 existence-leak). Out-of-tier/cross-tenant → 404 in the services.
+- **Deterministic baseline is core, never faked** — the Agent-4 no-provider path
+  leaves the published plan completely intact (unlike the review/JD seams where the
+  artifact had no content without AI).
+- **HRBP readiness override sticks** (`readiness_overridden=True`); a re-generate
+  recomputes only non-overridden candidates.
+- **Performance is read-only from Module-2 CycleScore**; no CycleScore → UNKNOWN →
+  NOT_READY. 9-box performance for an unscored cycle falls back to the latest score
+  then LOW. Raw Module-4 360 is NOT pulled into the deterministic path (anonymised
+  themes feed Agent 4 only, Module 10).
+- **No `agent4` billing entitlement yet** — added in Module 10 with the real agent.
+
+### What Modules 9/10/13 need from this
+- **Module 9 (Career Roadmap LITE):** readiness + 9-box + the gap to a critical role
+  feed the development path; the bench/plan models are queryable per tenant.
+- **Module 10 (Agent 4 + Chat):** implement `SuccessionAnalyzerProvider.analyze`
+  (LangGraph + LLMGateway over internal CycleScores/goals + ANONYMISED 360, schema-
+  validated weights, confidence), point `SUCCESSION_ANALYZER_PROVIDER` at it, gate
+  with `requires_entitlement("agent4")`. The seam, the new-AI-plan PENDING lock, and
+  `source=AI` are wired. The Fast "who is ready now for role X" lookup reads the
+  deterministic readiness/dashboard services (permission-bound) — no new store.
+- **Module 13 (dashboard UI):** renders `GET /dashboard`, `/critical-roles`,
+  `/plans/<id>`, `/nine-box`, all already scoped + management-gated (employees 404).

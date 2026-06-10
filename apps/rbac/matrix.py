@@ -84,6 +84,13 @@ class Capability:
     VIEW_ORG_CHART = "view_org_chart"    # all — scoped OWN (line) / TEAM (subtree) / TENANT
     MANAGE_POSITIONS = "manage_positions"  # HRBP, Admin — create/fill/close vacancies, link JDs
     REASSIGN_REPORTING_LINE = "reassign_reporting_line"  # HRBP, Admin — move a person (cycle-checked)
+    # ── Module 8 — Succession & Talent (MANAGEMENT-ONLY; no employee access anywhere) ──
+    MANAGE_CRITICAL_ROLES = "manage_critical_roles"  # HRBP, Admin — critical-role registry + risk
+    MANAGE_BENCH = "manage_bench"                    # Manager+ (Manager own-tier) — bench + readiness
+    ASSESS_NINE_BOX = "assess_nine_box"              # Manager+ (Manager own-tier) — assign potential / place
+    VIEW_SUCCESSION = "view_succession"              # Manager+ (Manager own report tier ONLY) — NO employees
+    GENERATE_SUCCESSION_ANALYSIS = "generate_succession_analysis"  # HRBP, Admin
+    PUBLISH_SUCCESSION_PLAN = "publish_succession_plan"            # HRBP, Admin
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -163,6 +170,16 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.VIEW_ORG_CHART: _EVERYONE,
     Capability.MANAGE_POSITIONS: _HRBP_UP,
     Capability.REASSIGN_REPORTING_LINE: _HRBP_UP,
+    # Module 8 — Succession & Talent. MANAGEMENT-ONLY: employees hold NONE of
+    # these (and the SuccessionParticipant permission turns any employee access
+    # into a 404, not a 403). Manager-held caps are additionally scoped to the
+    # manager's reporting subtree by the services (out-of-tier target → 404).
+    Capability.MANAGE_CRITICAL_ROLES: _HRBP_UP,
+    Capability.MANAGE_BENCH: _MANAGER_UP,
+    Capability.ASSESS_NINE_BOX: _MANAGER_UP,
+    Capability.VIEW_SUCCESSION: _MANAGER_UP,
+    Capability.GENERATE_SUCCESSION_ANALYSIS: _HRBP_UP,
+    Capability.PUBLISH_SUCCESSION_PLAN: _HRBP_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

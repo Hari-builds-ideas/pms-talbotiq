@@ -20,6 +20,8 @@ urlpatterns = [
     path("api/jd/", include("apps.jd.urls")),
     # Module 7 — Live Org Chart
     path("api/org/", include("apps.org.urls")),
+    # Module 8 — Succession & Talent
+    path("api/succession/", include("apps.succession.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

@@ -76,6 +76,8 @@ LOCAL_APPS = [
     "apps.jd.apps.JdConfig",
     # Module 7 — Live Org Chart
     "apps.org.apps.OrgConfig",
+    # Module 8 — Succession & Talent
+    "apps.succession.apps.SuccessionConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -309,6 +311,14 @@ CELERY_BEAT_SCHEDULE = {
 JD_GENERATOR_PROVIDER = env(
     "JD_GENERATOR_PROVIDER",
     default="apps.jd.generator.NotConfiguredProvider",
+)
+
+# The Agent-4 (Successor Planning) enrichment provider. Unset ->
+# NotConfiguredProvider, so the enrich endpoint surfaces a loud 503 and the
+# DETERMINISTIC plan stays intact; the real agent lands in Module 10.
+SUCCESSION_ANALYZER_PROVIDER = env(
+    "SUCCESSION_ANALYZER_PROVIDER",
+    default="apps.succession.agent4.NotConfiguredProvider",
 )
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────

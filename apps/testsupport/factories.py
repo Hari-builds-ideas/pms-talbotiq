@@ -296,3 +296,55 @@ class PositionFactory(DjangoModelFactory):
     department = "Engineering"
     status = "OPEN"
     opened_at = factory.LazyFunction(timezone.now)
+
+
+# ── Module 8 — Succession & Talent ───────────────────────────────────────────
+
+
+class CriticalRoleFactory(DjangoModelFactory):
+    class Meta:
+        model = "succession.CriticalRole"
+
+    # Pass marked_by= (a User); tenant is derived from that HRBP/Admin.
+    tenant = factory.SelfAttribute("marked_by.tenant")
+    name = factory.Sequence(lambda n: f"Critical Role {n}")
+    criticality = "HIGH"
+    knowledge_risk = "LOW"
+    status = "ACTIVE"
+
+
+class BenchCandidateFactory(DjangoModelFactory):
+    class Meta:
+        model = "succession.BenchCandidate"
+
+    # Pass critical_role= and candidate= (same tenant); tenant from the role.
+    tenant = factory.SelfAttribute("critical_role.tenant")
+    readiness = "NOT_READY"
+    readiness_overridden = False
+
+
+class NineBoxPlacementFactory(DjangoModelFactory):
+    class Meta:
+        model = "succession.NineBoxPlacement"
+
+    # Pass employee= and cycle= (same tenant); tenant from the employee.
+    tenant = factory.SelfAttribute("employee.tenant")
+    performance_band = "MEDIUM"
+    potential_band = "MEDIUM"
+    box = 5
+    assessed_at = factory.LazyFunction(timezone.now)
+
+
+class SuccessionPlanFactory(DjangoModelFactory):
+    class Meta:
+        model = "succession.SuccessionPlan"
+
+    # Pass critical_role= ; tenant from the role.
+    tenant = factory.SelfAttribute("critical_role.tenant")
+    status = "PENDING_HUMAN_REVIEW"
+    ranked_bench = factory.LazyFunction(list)
+    coverage_status = "RED"
+    red_flags = factory.LazyFunction(list)
+    action_items = factory.LazyFunction(list)
+    source = "DETERMINISTIC"
+    generated_at = factory.LazyFunction(timezone.now)

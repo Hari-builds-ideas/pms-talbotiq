@@ -16,6 +16,8 @@ urlpatterns = [
     path("api/feedback/", include("apps.feedback.urls")),
     # Module 5 — Approval Workflows
     path("api/approvals/", include("apps.approvals.urls")),
+    # Module 6 — JD Library & AI JD Generator
+    path("api/jd/", include("apps.jd.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

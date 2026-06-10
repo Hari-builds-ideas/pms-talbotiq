@@ -216,3 +216,66 @@ class ApprovalStepFactory(DjangoModelFactory):
     approver_role = "HRBP"
     approver_user = None
     required = True
+
+
+# ── Module 6 — JD Library & AI JD Generator ─────────────────────────────────
+# tenant is derived from created_by / jd via SelfAttribute so the JD + its
+# versions stay in one tenant; callers pass the parent objects explicitly.
+
+
+def _sample_jd_body(n):
+    return {
+        "summary": f"Owns delivery for role {n}.",
+        "responsibilities": ["Ship features", "Mentor peers"],
+        "must_haves": ["3+ years experience"],
+        "nice_to_haves": ["Domain knowledge"],
+    }
+
+
+class JobDescriptionFactory(DjangoModelFactory):
+    class Meta:
+        model = "jd.JobDescription"
+
+    # Pass created_by= ; tenant is derived from the author.
+    tenant = factory.SelfAttribute("created_by.tenant")
+    title = factory.Sequence(lambda n: f"Engineer {n}")
+    level = "L3"
+    department = "Engineering"
+    status = "DRAFT"
+    source = "MANUAL"
+
+
+class JDVersionFactory(DjangoModelFactory):
+    class Meta:
+        model = "jd.JDVersion"
+
+    # Pass jd= ; tenant is derived from the JD. created_by defaults to its author.
+    tenant = factory.SelfAttribute("jd.tenant")
+    created_by = factory.SelfAttribute("jd.created_by")
+    version_number = factory.Sequence(lambda n: n + 1)
+    body = factory.Sequence(_sample_jd_body)
+    inputs_snapshot = factory.LazyFunction(dict)
+    is_published = False
+
+
+class JDTemplateFactory(DjangoModelFactory):
+    class Meta:
+        model = "jd.JDTemplate"
+
+    tenant = factory.SubFactory(TenantFactory)
+    role_family = "Engineering"
+    title_pattern = factory.Sequence(lambda n: f"Engineer {n}")
+    level = "L3"
+    default_body = factory.Sequence(_sample_jd_body)
+
+
+class JDRequestFactory(DjangoModelFactory):
+    class Meta:
+        model = "jd.JDRequest"
+
+    # Pass requested_by= ; tenant is derived from the requester.
+    tenant = factory.SelfAttribute("requested_by.tenant")
+    title = factory.Sequence(lambda n: f"Requested role {n}")
+    level = "L3"
+    notes = ""
+    status = "OPEN"

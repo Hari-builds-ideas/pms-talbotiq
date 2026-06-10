@@ -906,3 +906,132 @@ finalises (Module-3 behaviour).
   engine stays deterministic.
 - **Module 12 (Slack):** push inbox assignments + escalations; the audit trail and
   step instances are already in place.
+
+
+## Module 6 — JD Library & AI JD Generator (build-order M6 = Doc 2 §Module 7)
+
+**Status:** ✅ Complete. **657 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 5's 599 + 58 new; the 599 stayed green — nothing prior was rewritten).
+JD is the FIRST NEW CONSUMER of the Module-5 approval engine — registering "jd"
+proves the engine is generic. NO LLM / LangGraph / actual generator (loud seam
+only; the generator lands in Module 10). Stack unchanged.
+
+### What was built (`apps/jd`)
+- `JobDescription` — the stable library entry. `status` (DRAFT /
+  PENDING_HUMAN_REVIEW / IN_REVIEW / PUBLISHED / ARCHIVED) tracks the WORKING
+  version's lifecycle; `current_version` FK points at the live PUBLISHED version
+  (null until first publish). `source` MANUAL/AI, `created_by`, nullable
+  `approval_route` (opt-in routing). Indexes ix_jd_status, ix_jd_title_level.
+- `JDVersion` — an immutable-once-published body `{summary, responsibilities[],
+  must_haves[], nice_to_haves[]}` + `inputs_snapshot`, nullable
+  `confidence_score`/`citations` (generator-only), `is_published`. Unique
+  (tenant, jd, version_number).
+- `JDTemplate` — deterministic role-family scaffolds (Engineering ×2, Sales,
+  People), seeded idempotently per tenant + instantiated into a DRAFT JD.
+- `JDRequest` — a Manager's OPEN→FULFILLED/DECLINED ask that HRBP author a JD.
+All TenantScoped (UUID pk, tenant FK).
+
+### Lifecycle (`lifecycle.py`, hand-rolled, guarded, audited, tenant-bound)
+`create_jd` → DRAFT + v1. `save_draft` edits the working version (DRAFT/PENDING;
+never a published version). `submit_for_review` DRAFT→PENDING_HUMAN_REVIEW,
+validating title+level + body summary/responsibilities/must_haves first (422
+INVALID_JD_INPUT). `approve` (THE HITL human gate) PENDING→ either ENTERS a route
+(active "jd" workflow → IN_REVIEW + `approval_route` link) or single-step
+PUBLISHES. `_publish` marks the working version `is_published=True`, sets
+`current_version`, status PUBLISHED. `route_rejected` IN_REVIEW→PENDING (engine
+callback). `revise` PUBLISHED→a NEW DRAFT version (copies the published body;
+`current_version` stays live + immutable so the library never loses content
+mid-revision). `archive` →ARCHIVED. Illegal transitions → 409
+ILLEGAL_JD_TRANSITION. Every entry binds the tenant (off-request safe) and audits
+BEFORE the effect (jd.created/drafted/submitted/approved/routed/published/
+route_rejected/archived).
+
+### "jd" approval registration (`approval_integration.py`) — engine is generic
+Registered in `JdConfig.ready()`. `resolve_context` returns
+`protected_user_ids={created_by}` (the author can never approve their own JD's
+route) and `subject=None, manager=None`. `on_route_complete` → `_publish`;
+`on_route_rejected` → `route_rejected`. Routing is OPT-IN exactly like reviews:
+no active workflow → single-step publish; an active "jd" workflow → route.
+NOTE: because a JD has no employee subject, a ROLE=MANAGER step has no manager to
+resolve to and falls back to the engine's universal ADMIN slot (escalated) — it
+is NOT unresolvable. The genuine 422 ROUTE_APPROVER_UNRESOLVABLE path is an
+unrecognised approver config (a ROLE that is neither MANAGER nor an HRBP/ADMIN
+slot); both are tested. JD workflows should use ROLE=HRBP/ADMIN or NAMED.
+
+### JD-Generator SEAM (`generator.py` + `tasks.py`) — Module 10 owns the LLM
+`JDGeneratorProvider` ABC + `NotConfiguredProvider` (raises
+`JDGeneratorNotConfiguredError`) + `get_provider()` resolving
+`settings.JD_GENERATOR_PROVIDER` (import string; defaults to NotConfigured).
+`tasks.generate_jd(tenant_id, jd_id, actor_id)` — (a) binds the tenant, (b)
+VALIDATES generation inputs (title+level+non-empty inputs snapshot) BEFORE any
+provider call → 422 INVALID_JD_INPUT, (c) no provider → returns
+`{"generated": False, "reason": "no_provider"}` and leaves the JD UNTOUCHED (the
+endpoint surfaces a loud 503; NEVER fabricates a body). A configured provider's
+body is written (source=AI) and locked PENDING_HUMAN_REVIEW via the lifecycle —
+a generated JD is never published directly. Same shape as the Module-3 Agent-1
+seam and the Module-2 Jira seam.
+
+### Services (`services.py`)
+Template seed (`seed_templates_for_tenant`, idempotent) + `instantiate_template`
+(deep-copies the scaffold via `create_jd`). `visible_jds` / `search_jds` apply
+the §2 scope rule (managers+ see the whole library; everyone else PUBLISHED
+only — non-managers 404 on a draft, never a 403 that leaks existence).
+`render_jd_text` + `jd_export` (plain text + structured JSON; NO binary
+PDF/docx — Module 14). JD-request services `create_jd_request` /
+`fulfil_jd_request` (409 if not OPEN) / `decline_jd_request` /
+`visible_jd_requests` (Manager sees own; HRBP/Admin all). Management command
+`seed_jd_templates --tenant-slug`.
+
+### RBAC additions (matrix + oracle)
+`generate_jd` / `manage_jd_library` ALREADY existed (HRBP+) from Module 1 — reused
+(library write + lifecycle + templates + request fulfil/decline ride on
+`manage_jd_library`). NEW: `request_jd` (Manager+), `view_jd_library` (everyone;
+WithinScope restricts non-managers to PUBLISHED). Oracle table extended.
+
+### API (mounted at /api/jd/, RBAC-gated + audited; views are the SOLE RBAC gate)
+JD CRUD (`GET/POST /`), detail/`versions`/`export` (VIEW_JD_LIBRARY, scoped via
+`visible_jds`), lifecycle transitions `save-draft|submit|approve|revise|archive`
+(MANAGE_JD_LIBRARY), `generate` (GENERATE_JD; 503 seam / 422 inputs / 409 / 200),
+`templates` + `templates/<id>/instantiate` (MANAGE_JD_LIBRARY), `requests`
+(GET/POST, REQUEST_JD) + `requests/<id>/fulfil|decline` (MANAGE_JD_LIBRARY).
+Thin views; lifecycle/services are the only mutators; NO PATCH/PUT.
+created_by/requested_by/tenant always server-set.
+
+### Files
+New: `apps/jd/` (models, exceptions, lifecycle, approval_integration, generator,
+tasks, services, serializers, views, urls, apps, migration 0001,
+management/commands/seed_jd_templates, tests test_lifecycle/test_routing/
+test_generator_seam/test_services/test_api — 53 tests). Changed: rbac matrix +
+oracle (2 new caps), settings (LOCAL_APPS + JD_GENERATOR_PROVIDER), config/urls,
+testsupport factories (JobDescription/JDVersion/JDTemplate/JDRequest).
+
+### Live validation (via nginx)
+HRBP manual flow create→save-draft→submit→approve→PUBLISHED; employee reads the
+published JD + versions + export, but 404s on a draft (manager sees it); the
+generator seam → 503 with the JD left DRAFT (never fabricated); employee/manager
+create → 403, employee generate → 403; a Manager JD-request → HRBP fulfil → 409
+on re-fulfil; templates seeded + instantiated; an ACTIVE "jd" workflow makes
+approve ENTER the route (IN_REVIEW), the author's own step-decision → 403
+self-approval block, a second HRBP approves → route APPROVED → JD PUBLISHED;
+cross-tenant JD GET → 404.
+
+### Known risks / notes
+- **Working version vs current_version:** `status` follows the latest (working)
+  version; `current_version` is the live published one. Revising a published JD
+  opens a new draft while the published version stays live + frozen.
+- **MANAGER steps on a JD** silently resolve to the ADMIN slot (no subject →
+  engine's universal fallback), not a 422 — document HRBP/ADMIN/NAMED as the
+  recommended JD-workflow approvers.
+- **Export is text + JSON only**; binary PDF/docx is Module 14.
+- **No `jd_generator` billing entitlement yet** — added in Module 10 with the real
+  generator (kept out of billing now per scope).
+
+### What Modules 7/10/14 need from this
+- **Module 7 (Org Chart) / later:** the JD library + published versions are queryable
+  per tenant; link roles → published JDs as needed.
+- **Module 10 (real generator):** implement `JDGeneratorProvider.generate` (LangGraph
+  + LLMGateway, PII-safe, confidence + citations), point `JD_GENERATOR_PROVIDER` at
+  it, and gate the endpoint with the `jd_generator` entitlement. The seam, the
+  HITL lock, and `source=AI` are already wired — no lifecycle change needed.
+- **Module 14 (export):** a binary renderer plugs into `services.jd_export` (already
+  returns rendered text + structured body).

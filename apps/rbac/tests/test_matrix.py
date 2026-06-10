@@ -55,6 +55,10 @@ EXPECTED = {
     Capability.CONFIGURE_APPROVAL_WORKFLOW: {Role.HRBP, Role.ADMIN},
     Capability.ACT_ON_APPROVAL_STEP: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_APPROVAL_STATUS: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    # Module 6 — JD Library & AI JD Generator (generate_jd / manage_jd_library
+    # are reused from the rows above).
+    Capability.REQUEST_JD: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_JD_LIBRARY: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

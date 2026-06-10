@@ -72,6 +72,8 @@ LOCAL_APPS = [
     "apps.feedback.apps.FeedbackConfig",
     # Module 5 — Approval Workflows
     "apps.approvals.apps.ApprovalsConfig",
+    # Module 6 — JD Library & AI JD Generator
+    "apps.jd.apps.JdConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -297,6 +299,15 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": env.int("APPROVALS_ESCALATION_INTERVAL_SECONDS", default=300),
     },
 }
+
+# ─── AI seams (the real providers land in Module 10) ──────────────────
+# The JD Generator provider is resolved by import-string at call time
+# (apps.jd.generator.get_provider). Unset -> NotConfiguredProvider, which makes
+# the generate endpoint surface a loud 503 and NEVER fabricates a JD body.
+JD_GENERATOR_PROVIDER = env(
+    "JD_GENERATOR_PROVIDER",
+    default="apps.jd.generator.NotConfiguredProvider",
+)
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"

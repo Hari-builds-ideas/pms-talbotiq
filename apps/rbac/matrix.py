@@ -75,6 +75,11 @@ class Capability:
     CONFIGURE_APPROVAL_WORKFLOW = "configure_approval_workflow"  # Admin, HRBP — design the matrix
     ACT_ON_APPROVAL_STEP = "act_on_approval_step"                # Manager+ — engine enforces assignment
     VIEW_APPROVAL_STATUS = "view_approval_status"                # all — inbox / route tracker
+    # ── Module 6 — JD Library & AI JD Generator ──
+    # (generate_jd / manage_jd_library already exist above — HRBP+Admin — and are
+    # reused. The library write/lifecycle verbs ride on manage_jd_library.)
+    REQUEST_JD = "request_jd"            # Manager+ — request HRBP author/generate a JD
+    VIEW_JD_LIBRARY = "view_jd_library"  # all — but non-managers see PUBLISHED only (scope)
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -143,6 +148,11 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.CONFIGURE_APPROVAL_WORKFLOW: _HRBP_UP,
     Capability.ACT_ON_APPROVAL_STEP: _MANAGER_UP,
     Capability.VIEW_APPROVAL_STATUS: _EVERYONE,
+    # Module 6 — JD Library. generate_jd / manage_jd_library (HRBP+) are reused
+    # from the rows above; these two are new. VIEW_JD_LIBRARY is held by everyone
+    # but WithinScope restricts non-managers to PUBLISHED entries.
+    Capability.REQUEST_JD: _MANAGER_UP,
+    Capability.VIEW_JD_LIBRARY: _EVERYONE,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

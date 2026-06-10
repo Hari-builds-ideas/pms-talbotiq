@@ -1035,3 +1035,120 @@ cross-tenant JD GET → 404.
   HITL lock, and `source=AI` are already wired — no lifecycle change needed.
 - **Module 14 (export):** a binary renderer plugs into `services.jd_export` (already
   returns rendered text + structured body).
+
+
+## Module 7 — Live Org Chart (build-order M7 = Doc 2 §Module 8)
+
+**Status:** ✅ Complete. **712 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 6's 657 + 55 new; the 657 stayed green — nothing prior was rewritten).
+AI-FREE (the "who reports to X" NL lookup is the Module-10 Chat Assistant;
+span-of-control insight is Phase 2 — NEITHER built, no agent seam). A DATA API,
+not a UI — the canvas is Module 13. Stack unchanged. This is the first
+substantial use of the Phase-1.5a cache framework beyond billing.
+
+### Design — reads from `User.manager`, `Position` only for vacancies
+The reporting hierarchy is READ from the live identity graph (`User.manager`, the
+self-FK that has powered RBAC scope + approver resolution since Module 1) — NOT
+duplicated. Module 7 adds exactly ONE model — `Position` (an approved headcount
+slot / vacancy unit: title, reports_to→User, department, status OPEN/FILLED/
+CLOSED, filled_by→User, published_jd→jd.JobDescription, opened_at, filled_at,
+created_by) — and ONE explicit tree mutation (cycle-checked reassignment of
+`User.manager`). Positions model the approved plan / vacancies, NOT the roster —
+there is no Position per employee.
+
+### Org tree + rollups (`services.py`), computed live + cached
+`build_org_tree(actor)` returns `{nodes, edges, roots}` from active users only
+(the scoped manager hides soft-deleted; `is_active=True` is filtered explicitly —
+deactivated users never appear in the tree or rollups). Per node: `headcount` =
+active users in the subtree (inclusive, transitive); `vacancies` = OPEN positions
+whose `reports_to` is anywhere in the subtree. Rollups are a post-order DFS with a
+cycle guard. The EXPENSIVE full-tenant tree+rollups is cached once per tenant
+under `tenant:<id>:org:tree` (TTL 600s) via `tenant_cache_key`; per-actor SCOPE
+filtering is then a PURE in-memory pass over the cached structure — so one cache
+entry serves every scope without a per-manager key explosion (a second `/tree`
+read issues 0 DB queries; proven by `django_assert_num_queries(0)`).
+
+### Scope (mirrors `apps.rbac.scope`; person-card/search/export bounded the same)
+- Employee (OWN)    → own node + ancestor chain to the root (their reporting line).
+- Manager  (TEAM)   → own `reporting_subtree_ids` + self + ancestor chain.
+- HRBP/Admin(TENANT)→ the full tenant tree (multiple roots: users with manager=null).
+`person_card`/`search_people`/`export_org`/`list_vacancies` apply the same tier; an
+out-of-scope (or inactive / cross-tenant) target is a 404, never a 403 that leaks
+existence (the Module-6 rule). `User` carries only email/role, so a person's
+"title" comes from a FILLED Position; search matches email OR filled-position title.
+
+### Writes (HRBP/Admin) — guarded, audited BEFORE the effect, cache-invalidating
+- Positions (`positions.py`): `create_position` (OPEN; reports_to must be active +
+  in-tenant), `fill_position` (→ FILLED + filled_at; filling a FILLED one → 409
+  POSITION_ALREADY_FILLED, a CLOSED one → 409 ILLEGAL_POSITION_TRANSITION),
+  `close_position` (OPEN/FILLED → CLOSED, clears the vacancy; CLOSED again → 409),
+  `link_jd`/`unlink_jd` (a linked JD must be PUBLISHED + in-tenant else 422
+  INVALID_ORG_INPUT). EVERY position write invalidates the org cache — including
+  create (a regression the live demo caught: `/vacancies` reads live so it was
+  right, but the cached tree's vacancy rollup was stale until create also
+  invalidated).
+- `reassign.py::reassign_reporting_line(actor, user, new_manager)` — the ONLY place
+  Module 7 mutates the tree. CYCLE DETECTION: new_manager must not be the user, nor
+  anyone in the user's own `reporting_subtree_ids` (the transitive case — moving a
+  grandparent under a grandchild → 422 REPORTING_CYCLE). new_manager must be active
+  + in-tenant. Audits before; invalidates the org cache. RBAC scope is computed live
+  from `User.manager`, so clearing the `org` cache namespace is sufficient (no
+  separate scope cache exists). Does NOT touch positions.
+
+Audit actions: position.created/filled/closed/jd_linked/jd_unlinked,
+reporting_line.reassigned. Cache-invalidation triggers: any position
+create/fill/close/link/unlink and any reassignment.
+
+### RBAC additions (matrix + oracle)
+`view_org_chart` (everyone; the services scope the rows OWN/TEAM/TENANT),
+`manage_positions` (HRBP/Admin — vacancies + JD link), `reassign_reporting_line`
+(HRBP/Admin). Oracle table extended.
+
+### API (apps/org, mounted at /api/org/, RBAC-gated + audited; views are the SOLE RBAC gate)
+Reads (view_org_chart, scope-filtered by the services): GET `/tree`, `/people/<id>`
+(404 out-of-scope), `/search?q=`, `/export`, `/vacancies`. Position management
+(manage_positions): GET/POST `/positions`, GET `/positions/<id>`, POST
+`/positions/<id>/fill|close|link-jd|unlink-jd`. Reassignment
+(reassign_reporting_line): POST `/reassign`. Thin views; services/positions/reassign
+are the sole mutators; no blind PATCH of `User.manager`. actor/tenant server-set.
+
+### Files
+New: `apps/org/` (models, exceptions, services, positions, reassign, serializers,
+views, urls, apps, migration 0001, tests test_services [25] + test_api [18]).
+Changed: rbac matrix + oracle (3 new caps), settings (LOCAL_APPS), config/urls,
+testsupport factories (PositionFactory).
+
+### Live validation (via nginx)
+HRBP `/tree` → 7-node tenant tree (hrbp headcount 7); an employee sees only their
+line {self, manager, hrbp}; a manager sees their subtree; HRBP creates an OPEN
+position under a manager → `/vacancies` shows it and the cached tree's vacancy
+rollup updates; fill → vacancy clears, fill again → 409; reassign an employee to a
+new manager → both subtree headcounts update on the next read (cache invalidation
+proven); a transitive cycle + a self-reassign → 422 REPORTING_CYCLE; an employee
+drilling into an out-of-scope person → 404; scoped search; `/export` → scoped tree
+JSON; employee create-position / reassign → 403; cross-tenant person + position →
+404.
+
+### Known risks / notes
+- **Tree is read live from `User.manager`** — Module 7 never forks the hierarchy;
+  positions are a separate plan/vacancy layer (no auto-rewiring of `User.manager`
+  from positions, per scope).
+- **Cache is per-tenant (full tree), scope-filtered in memory** — avoids a
+  per-manager key explosion; every write clears the `org` namespace so reads are
+  never stale (create-position included).
+- **Rollup DFS recurses by tree depth** with a cycle guard; org depth far below
+  Python's recursion limit. Real cycles are prevented at the reassign boundary.
+- **`reports_to`/`filled_by` are SET_NULL** so soft-deleting a user never blocks; a
+  null-`reports_to` OPEN position is a tenant-level vacancy visible only to
+  HRBP/Admin.
+- **Export is text/JSON only** (no binary); **no BusinessUnit model** yet, so HRBP
+  scope = tenant-wide (the Module-1 simplification).
+
+### What Modules 8/10/13 need from this
+- **Module 8 (Succession):** the live tree + `reporting_subtree_ids` + person cards
+  give the report tier per manager; critical-role registry can reference Positions.
+- **Module 10 (Chat Assistant):** the "who reports to X" NL lookup reads the SAME
+  scoped `build_org_tree` / `person_card` / `search_people` services — permission-
+  bound by construction; span-of-control flags (Phase 2) attach as advisory reads.
+- **Module 13 (frontend canvas):** renders `GET /tree` (nodes+edges+roots+rollups),
+  `/people/<id>`, `/vacancies`, `/search`, `/export`; all already scoped + cached.

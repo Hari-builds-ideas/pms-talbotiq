@@ -74,6 +74,8 @@ LOCAL_APPS = [
     "apps.approvals.apps.ApprovalsConfig",
     # Module 6 — JD Library & AI JD Generator
     "apps.jd.apps.JdConfig",
+    # Module 7 — Live Org Chart
+    "apps.org.apps.OrgConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

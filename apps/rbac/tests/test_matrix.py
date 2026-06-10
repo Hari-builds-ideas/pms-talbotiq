@@ -59,6 +59,10 @@ EXPECTED = {
     # are reused from the rows above).
     Capability.REQUEST_JD: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_JD_LIBRARY: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    # Module 7 — Live Org Chart.
+    Capability.VIEW_ORG_CHART: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.MANAGE_POSITIONS: {Role.HRBP, Role.ADMIN},
+    Capability.REASSIGN_REPORTING_LINE: {Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

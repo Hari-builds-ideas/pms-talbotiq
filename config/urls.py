@@ -18,6 +18,8 @@ urlpatterns = [
     path("api/approvals/", include("apps.approvals.urls")),
     # Module 6 — JD Library & AI JD Generator
     path("api/jd/", include("apps.jd.urls")),
+    # Module 7 — Live Org Chart
+    path("api/org/", include("apps.org.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

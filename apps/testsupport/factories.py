@@ -279,3 +279,20 @@ class JDRequestFactory(DjangoModelFactory):
     level = "L3"
     notes = ""
     status = "OPEN"
+
+
+# ── Module 7 — Live Org Chart ────────────────────────────────────────────────
+
+
+class PositionFactory(DjangoModelFactory):
+    class Meta:
+        model = "org.Position"
+
+    # Pass reports_to= (a User); tenant is derived from that manager. created_by
+    # defaults to the same manager unless overridden.
+    tenant = factory.SelfAttribute("reports_to.tenant")
+    created_by = factory.SelfAttribute("reports_to")
+    title = factory.Sequence(lambda n: f"Open Role {n}")
+    department = "Engineering"
+    status = "OPEN"
+    opened_at = factory.LazyFunction(timezone.now)

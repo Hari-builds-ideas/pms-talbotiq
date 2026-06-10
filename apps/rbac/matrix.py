@@ -80,6 +80,10 @@ class Capability:
     # reused. The library write/lifecycle verbs ride on manage_jd_library.)
     REQUEST_JD = "request_jd"            # Manager+ — request HRBP author/generate a JD
     VIEW_JD_LIBRARY = "view_jd_library"  # all — but non-managers see PUBLISHED only (scope)
+    # ── Module 7 — Live Org Chart ──
+    VIEW_ORG_CHART = "view_org_chart"    # all — scoped OWN (line) / TEAM (subtree) / TENANT
+    MANAGE_POSITIONS = "manage_positions"  # HRBP, Admin — create/fill/close vacancies, link JDs
+    REASSIGN_REPORTING_LINE = "reassign_reporting_line"  # HRBP, Admin — move a person (cycle-checked)
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -153,6 +157,12 @@ CAPABILITIES: dict[str, frozenset] = {
     # but WithinScope restricts non-managers to PUBLISHED entries.
     Capability.REQUEST_JD: _MANAGER_UP,
     Capability.VIEW_JD_LIBRARY: _EVERYONE,
+    # Module 7 — Live Org Chart. view_org_chart is held by everyone but the
+    # services scope the rows (OWN line / TEAM subtree / TENANT); position
+    # management + reporting-line reassignment are HRBP/Admin (TENANT).
+    Capability.VIEW_ORG_CHART: _EVERYONE,
+    Capability.MANAGE_POSITIONS: _HRBP_UP,
+    Capability.REASSIGN_REPORTING_LINE: _HRBP_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

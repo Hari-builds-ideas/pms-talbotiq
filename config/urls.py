@@ -29,6 +29,8 @@ urlpatterns = [
     path("api/audit/", include("apps.audit.urls")),
     # Module A — Analytics & Reporting
     path("api/analytics/", include("apps.analytics.urls")),
+    # Module 12 — Integrations (Jira + Slack) config
+    path("api/integrations/", include("apps.integrations.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

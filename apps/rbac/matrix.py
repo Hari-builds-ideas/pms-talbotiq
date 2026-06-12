@@ -110,6 +110,8 @@ class Capability:
     VIEW_INDIVIDUAL_ANALYTICS = "view_individual_analytics"    # all (own); Manager reports; HRBP/Admin tenant
     VIEW_DEPARTMENT_ANALYTICS = "view_department_analytics"    # Manager line; HRBP/Admin tenant — NEVER Employee
     VIEW_CALIBRATION_GRID = "view_calibration_grid"            # HRBP, Admin
+    # ── Module 12 — Integrations (Jira + Slack) ──
+    MANAGE_INTEGRATIONS = "manage_integrations"                # Admin — configure/enable per tenant
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -218,6 +220,9 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.VIEW_INDIVIDUAL_ANALYTICS: _EVERYONE,
     Capability.VIEW_DEPARTMENT_ANALYTICS: _MANAGER_UP,
     Capability.VIEW_CALIBRATION_GRID: _HRBP_UP,
+    # Module 12 — Integrations. Configuring/enabling a tenant's Jira/Slack is
+    # Admin-only; the actual syncs/sends are system-driven (signals / tasks).
+    Capability.MANAGE_INTEGRATIONS: _ADMIN_ONLY,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

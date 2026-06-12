@@ -84,6 +84,8 @@ EXPECTED = {
     Capability.VIEW_INDIVIDUAL_ANALYTICS: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_DEPARTMENT_ANALYTICS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_CALIBRATION_GRID: {Role.HRBP, Role.ADMIN},
+    # Module 12 — Integrations (Jira + Slack).
+    Capability.MANAGE_INTEGRATIONS: {Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

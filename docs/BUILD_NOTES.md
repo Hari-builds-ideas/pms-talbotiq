@@ -1631,3 +1631,96 @@ calibration grid (box 9 = 1, box 5 = 1) while an employee → 403; export return
 - Implement `AnalyticsInsightsProvider.summarize` (the Fast-AI at-risk/anomaly
   narrative over the deterministic rollup), point `ANALYTICS_INSIGHTS_PROVIDER` at
   it, surface it read-only/advisory. The deterministic rollup is the baseline.
+
+
+## Module 12 — Integrations: Jira + Slack (build-order M12)
+
+**Status:** ✅ Complete. **985 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module A's 957 + 28 new; the 957 stayed green — the signal additions to M4/M5 did
+not regress anything). Fills the REAL provider/client behind the seams left in M2
+(Jira actuals) and M4/M5 (Slack notifications). NO real Jira/Slack credentials are
+used or required — everything external is behind per-tenant config + injectable
+clients, tested with in-repo FAKES; unconfigured = the existing no-op/NotConfigured
+behaviour. Stack unchanged.
+
+### Secrets (NEVER in plaintext) — `NEEDS_HARI_secrets.md`
+`TenantIntegration` stores only NON-secret `config` + a `secret_ref` — the NAME of
+an env var holding the token, never the token. `secrets.resolve_secret(integration)`
+reads `os.environ[secret_ref]` (else the convention `<KIND>_TOKEN_<SLUG>`); the value
+is NEVER logged and NEVER serialized out of any endpoint. Unset env → `None` → clean
+no-op. `NEEDS_HARI_secrets.md` recommends a real secrets manager (KMS/Vault) for
+production — `resolve_secret` is the single swap point.
+
+### Jira (fills `apps.goals.jira.get_provider` via `settings.JIRA_ACTUAL_PROVIDER`)
+`jira_provider.JiraActualProvider` (subclasses the M2 ABC) resolves the current
+tenant's enabled JIRA `TenantIntegration` and fetches a `source=JIRA` KPI's actual
+via an INJECTABLE HTTP client (`JIRA_HTTP_CLIENT_FACTORY` — a FAKE in tests, the real
+`JiraHTTPClient` inert without a token). The value is written through the EXISTING
+`record_actual` path (the M2 single write path). A tenant with NO enabled Jira
+integration → `fetch_actual` raises `JiraNotConfiguredError` → the M2
+`sync_jira_actuals` log-and-skips (`no_provider`) UNCHANGED. `JIRA_ACTUAL_PROVIDER`
+is deliberately LEFT UNSET in base settings so PRODUCTION stays on the M2
+NotConfigured path; tests/real deployments set it.
+
+### Slack (fills the M4/M5 notification touchpoints) — decoupled via SIGNALS
+The emitters fire signals; integrations subscribes (one-way, the M2 Agent-2
+pattern — the core apps never import integrations):
+- `apps/feedback/signals.feedback_request_sent` fired in `send_feedback_request`.
+- `apps/approvals/signals.approval_step_assigned` fired in `start_route` (initial
+  active step) AND `_advance_after_approval` (next step activates);
+  `approval_step_escalated` fired in `escalate_step`.
+- All emitted with `send_robust` so a misbehaving receiver can NEVER break the
+  action. `apps/integrations/receivers.py` (wired in `apps.ready`) calls the
+  best-effort `notifications.notify_*`, which resolve the tenant's enabled SLACK
+  integration and post via an INJECTABLE client (`SLACK_CLIENT_FACTORY` — a FAKE in
+  tests). Every send is wrapped/logged/swallowed: a Slack failure leaves the
+  triggering action intact (proven in tests + the live demo); unconfigured/disabled
+  → clean no-op. `notify_kpi_nudge` is ready for the Module-10 Agent-2 surface.
+
+### RBAC additions (matrix + oracle)
+`manage_integrations` (Admin only — configure/enable per tenant). The syncs/sends
+are system-driven (signals / the M2 Celery task), not user endpoints.
+
+### API (apps/integrations, mounted at /api/integrations/, Admin-only)
+`GET /api/integrations/` (list the tenant's integrations) + `GET, PUT
+/api/integrations/<kind>` (kind = JIRA|SLACK; PUT upserts enabled / non-secret
+config / `secret_ref`, audited `integration.configured`). The serializer exposes NO
+token/secret value — only the env-var NAME. Thin RBACMixin views; `upsert_integration`
+is the audited mutator. A raw token is never accepted.
+
+### Files
+New: `apps/integrations/` (models, secrets, clients, jira_provider, notifications,
+receivers, services, serializers, views, urls, apps [signal wiring], migration 0001,
+tests fakes + test_jira [4] + test_slack [12] + test_api [7]);
+`apps/feedback/signals.py`; `apps/approvals/signals.py`;
+`apps/approvals/tests/test_signals.py` [2]; `NEEDS_HARI_secrets.md`. Changed:
+`apps/feedback/services.py` (fire signal), `apps/approvals/engine.py` (fire signals +
+`_notify_assigned`), rbac matrix + oracle, settings (LOCAL_APPS + client-factory
+settings), config/urls, testsupport factories (TenantIntegration).
+
+### Live validation (config via nginx; sync + Slack in-process with FAKE clients)
+Admin PUTs Jira + Slack config (200; the response carries NO token — only the
+`secret_ref` NAME); a `source=JIRA` KPI's actual is pulled (fake client → 87) and
+written via `record_actual`, and a recompute reflects it (raw_score 0.8700 for
+target 100); a feedback request + an approval assignment + an escalation each record
+a Slack send (3 total); a forced Slack outage records 0 sends but the feedback
+request is STILL created (best-effort, the failure is logged not raised); an
+unconfigured tenant → notify returns False (clean no-op, no crash).
+
+### Known risks / notes
+- **Secrets via env-var convention for the MVP** — swap `resolve_secret` for a real
+  secrets manager in production (`NEEDS_HARI_secrets.md`).
+- **Slack sends are synchronous in the signal receiver for the MVP** (best-effort,
+  fast POST / fake in tests). Production should move the send to a Celery task (the
+  notify functions already bind the tenant, so they are task-safe) to avoid holding
+  the request/transaction during the network call.
+- **The real `JiraHTTPClient` reads one field** (`config['value_field']`, default a
+  custom field) from the issue JSON — adjust per the tenant's Jira schema; JQL
+  aggregation is a later enhancement (`external_ref` currently = issue key).
+- **`approval_step_assigned` fires for the active step(s)** at start + on
+  next-step activation; role-slot steps carry `approver_id=None` (any in-scope
+  holder acts) — the Slack message names the route/step, not a DM.
+
+### What Module 10 needs from this
+- Agent 2 (KPI nudges) calls `notifications.notify_kpi_nudge(tenant_id, message=...)`
+  to deliver to Slack (best-effort, no-op when unconfigured) — the seam is ready.

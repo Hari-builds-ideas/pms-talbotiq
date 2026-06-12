@@ -84,6 +84,8 @@ LOCAL_APPS = [
     "apps.administration.apps.AdministrationConfig",
     # Module A — Analytics & Reporting
     "apps.analytics.apps.AnalyticsConfig",
+    # Module 12 — Integrations (Jira + Slack)
+    "apps.integrations.apps.IntegrationsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -340,6 +342,19 @@ CAREER_ROADMAP_PROVIDER = env(
 ANALYTICS_INSIGHTS_PROVIDER = env(
     "ANALYTICS_INSIGHTS_PROVIDER",
     default="apps.analytics.insights_agent.NotConfiguredProvider",
+)
+
+# ─── Integrations (Module 12 — Jira + Slack) ──────────────────────────
+# JIRA_ACTUAL_PROVIDER is deliberately LEFT UNSET in base settings so production
+# stays on the Module-2 NotConfigured/log-and-skip path. To activate the real
+# integration, set it to "apps.integrations.jira_provider.JiraActualProvider"
+# (tests set it explicitly). The HTTP/Slack client factories are injectable so
+# tests substitute deterministic fakes — no real network call ever runs in tests.
+JIRA_HTTP_CLIENT_FACTORY = env(
+    "JIRA_HTTP_CLIENT_FACTORY", default="apps.integrations.clients.build_jira_client"
+)
+SLACK_CLIENT_FACTORY = env(
+    "SLACK_CLIENT_FACTORY", default="apps.integrations.clients.build_slack_client"
 )
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────

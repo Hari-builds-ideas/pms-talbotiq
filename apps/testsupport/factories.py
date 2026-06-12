@@ -420,3 +420,17 @@ class TenantConfigFactory(DjangoModelFactory):
 
     tenant = factory.SubFactory(TenantFactory)
     settings = factory.LazyFunction(dict)
+
+
+# ── Module 12 — Integrations (Jira + Slack) ───────────────────────────────────
+
+
+class TenantIntegrationFactory(DjangoModelFactory):
+    class Meta:
+        model = "integrations.TenantIntegration"
+
+    tenant = factory.SubFactory(TenantFactory)
+    kind = "SLACK"
+    enabled = True
+    config = factory.LazyFunction(dict)
+    secret_ref = ""

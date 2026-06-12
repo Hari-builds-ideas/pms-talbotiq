@@ -104,12 +104,23 @@ def send_feedback_request(*, cycle, giver, relationship, actor):
             metadata={"relationship": relationship},
             tenant=cycle.tenant_id,
         )
-        return FeedbackRequest.objects.create(
+        request_obj = FeedbackRequest.objects.create(
             tenant_id=cycle.tenant_id,
             cycle=cycle,
             giver=giver,
             relationship=relationship,
         )
+        # Module-12 Slack push seam (best-effort; a receiver can never break this).
+        from .signals import feedback_request_sent
+
+        feedback_request_sent.send_robust(
+            sender=send_feedback_request,
+            tenant_id=str(cycle.tenant_id),
+            request_id=str(request_obj.id),
+            giver_id=str(giver.id),
+            relationship=relationship,
+        )
+        return request_obj
 
 
 def decline_request(request_obj, actor):

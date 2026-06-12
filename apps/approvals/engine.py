@@ -38,6 +38,7 @@ from .models import (
     ApprovalStepInstance,
     ApprovalWorkflow,
 )
+from .signals import approval_step_assigned, approval_step_escalated
 
 logger = logging.getLogger("pms.approvals")
 
@@ -180,13 +181,14 @@ def start_route(artifact_type, artifact_id, *, initiated_by, tenant_id=None):
         )
 
         sequential = workflow.mode == ApprovalWorkflow.Mode.SEQUENTIAL
+        active_instances = []
         for idx, (step, approver, approver_role, escalated) in enumerate(resolved):
             # SEQUENTIAL: only the first step's clock starts now. PARALLEL: all.
             is_active_now = (not sequential) or idx == 0
             due_at = None
             if is_active_now and step.timeout_hours:
                 due_at = now + timezone.timedelta(hours=step.timeout_hours)
-            ApprovalStepInstance.objects.create(
+            instance = ApprovalStepInstance.objects.create(
                 tenant_id=tenant_id,
                 route=route,
                 order=step.order,
@@ -200,6 +202,8 @@ def start_route(artifact_type, artifact_id, *, initiated_by, tenant_id=None):
                 escalation_user=step.escalation_user,
                 escalated=escalated,
             )
+            if is_active_now:
+                active_instances.append(instance)
 
         record(
             action="route.started",
@@ -214,7 +218,24 @@ def start_route(artifact_type, artifact_id, *, initiated_by, tenant_id=None):
             },
             tenant=tenant_id,
         )
+        # Module-12 Slack push seam: notify the initially-active assignee(s)
+        # (best-effort; send_robust so a receiver can never break the route).
+        for instance in active_instances:
+            _notify_assigned(route, instance)
         return route
+
+
+def _notify_assigned(route, step_instance):
+    """Fire the ``approval_step_assigned`` signal for an active step (best-effort —
+    ``send_robust`` so a receiver bug can never break the approval flow)."""
+    approval_step_assigned.send_robust(
+        sender=start_route,
+        tenant_id=str(route.tenant_id),
+        route_id=str(route.id),
+        order=step_instance.order,
+        artifact_type=route.artifact_type,
+        approver_id=str(step_instance.approver_id) if step_instance.approver_id else None,
+    )
 
 
 # ── deciding a step ─────────────────────────────────────────────────────────
@@ -324,6 +345,8 @@ def _advance_after_approval(route, step_instance, actor):
             if nxt.timeout_hours and nxt.due_at is None:
                 nxt.due_at = timezone.now() + timezone.timedelta(hours=nxt.timeout_hours)
                 nxt.save(update_fields=["due_at", "updated_at"])
+            # Notify the newly-active assignee (best-effort Slack push seam).
+            _notify_assigned(route, nxt)
         return
 
     # PARALLEL: complete when every REQUIRED step is approved; a required reject
@@ -423,6 +446,14 @@ def escalate_step(step_instance):
             )
         step_instance.save(
             update_fields=["approver", "approver_role", "escalated", "due_at", "updated_at"]
+        )
+        # Module-12 Slack push seam: notify that the step was escalated/reassigned
+        # (best-effort; send_robust so a receiver can never break the sweep).
+        approval_step_escalated.send_robust(
+            sender=escalate_step,
+            tenant_id=str(route.tenant_id),
+            route_id=str(route.id),
+            order=step_instance.order,
         )
         return step_instance
 

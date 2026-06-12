@@ -201,7 +201,25 @@ def summarize_feedback(tenant_id, cycle_id, actor_id=None):
         # still required (the HITL discipline).
         summary.sections = result["sections"]
         summary.confidence_score = result.get("confidence_score")
-        summary.save(update_fields=["sections", "confidence_score", "updated_at"])
+        update_fields = ["sections", "confidence_score", "updated_at"]
+        # Agent 3's POST-LLM anonymity-breach check (Module 10) is load-bearing:
+        # the Module-4 pre-LLM guard is email-only and ran on the source bodies, so
+        # a leak in the GENERATED text is caught now -> HOLD for an HRBP (the summary
+        # is never auto-released). Absent the key (the no-provider / Module-4 fake
+        # paths), this is a clean no-op.
+        if result.get("anonymity_breach"):
+            record(
+                action="summary.held_for_hrbp",
+                actor=actor,
+                target_type="feedback_cycle",
+                target_id=cycle.id,
+                metadata={"reason": "post_llm_breach"},
+                tenant=cycle.tenant_id,
+            )
+            summary.status = FeedbackSummary.Status.HRBP_HOLD
+            summary.anonymity_passed = False
+            update_fields += ["status", "anonymity_passed"]
+        summary.save(update_fields=update_fields)
         return {
             "summarized": True,
             "summary_id": str(summary.id),

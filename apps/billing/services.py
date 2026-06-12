@@ -114,6 +114,13 @@ def tenant_has_agent(tenant, agent_code: str) -> bool:
     return entitlement.has_agent(agent_code)
 
 
+def tenant_has_feature(tenant, feature_code: str) -> bool:
+    """True iff ``tenant``'s entitlement unlocks ``feature_code`` — the SUPERSET that
+    covers both agents (agent1..5) and the non-agent features (chat / jd_generator /
+    career_roadmap). Reads through the entitlement cache (the gate's hot path)."""
+    return get_entitlement_cached(tenant).has_feature(feature_code)
+
+
 def rate_limits_for(tenant_id) -> dict:
     """Return the DRF rate strings for ``tenant_id``, derived from its entitlement.
 

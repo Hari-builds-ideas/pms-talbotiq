@@ -112,6 +112,11 @@ class Capability:
     VIEW_CALIBRATION_GRID = "view_calibration_grid"            # HRBP, Admin
     # ── Module 12 — Integrations (Jira + Slack) ──
     MANAGE_INTEGRATIONS = "manage_integrations"                # Admin — configure/enable per tenant
+    # ── Module 10 — AI Agents (Chat Assistant) ──
+    # Chat is READ-ONLY + RBAC-bound: this gates "may use chat at all" (everyone);
+    # the DATA it can return is bounded by the caller's own scope in the services,
+    # and the surface is additionally entitlement-gated ("chat", STARTER).
+    USE_CHAT = "use_chat"
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -223,6 +228,9 @@ CAPABILITIES: dict[str, frozenset] = {
     # Module 12 — Integrations. Configuring/enabling a tenant's Jira/Slack is
     # Admin-only; the actual syncs/sends are system-driven (signals / tasks).
     Capability.MANAGE_INTEGRATIONS: _ADMIN_ONLY,
+    # Module 10 — Chat Assistant. Everyone may use chat; data is scope-bounded in
+    # the services + the surface is entitlement-gated ("chat").
+    Capability.USE_CHAT: _EVERYONE,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

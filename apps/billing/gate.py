@@ -17,11 +17,13 @@ from __future__ import annotations
 
 from rest_framework.permissions import BasePermission
 
-from .services import tenant_has_agent
+from .services import tenant_has_feature
 
 
-def requires_entitlement(agent_code: str) -> type[BasePermission]:
-    """Build a permission class that admits only tenants entitled to ``agent_code``.
+def requires_entitlement(feature_code: str) -> type[BasePermission]:
+    """Build a permission class that admits only tenants entitled to ``feature_code``
+    — any gated FEATURE: an agent (agent1..5) OR a non-agent feature (chat /
+    jd_generator / career_roadmap). Resolution is over the entitlement's packs.
 
     Usage::
 
@@ -30,8 +32,8 @@ def requires_entitlement(agent_code: str) -> type[BasePermission]:
     """
 
     class _RequiresEntitlement(BasePermission):
-        message = f"Your plan does not include this feature ({agent_code})."
-        _agent_code = agent_code
+        message = f"Your plan does not include this feature ({feature_code})."
+        _feature_code = feature_code
 
         def has_permission(self, request, view) -> bool:
             user = getattr(request, "user", None)
@@ -40,8 +42,8 @@ def requires_entitlement(agent_code: str) -> type[BasePermission]:
             tenant = getattr(user, "tenant", None)
             if tenant is None:
                 return False
-            return tenant_has_agent(tenant, self._agent_code)
+            return tenant_has_feature(tenant, self._feature_code)
 
-    _RequiresEntitlement.__name__ = f"RequiresEntitlement[{agent_code}]"
+    _RequiresEntitlement.__name__ = f"RequiresEntitlement[{feature_code}]"
     _RequiresEntitlement.__qualname__ = _RequiresEntitlement.__name__
     return _RequiresEntitlement

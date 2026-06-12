@@ -86,6 +86,8 @@ LOCAL_APPS = [
     "apps.analytics.apps.AnalyticsConfig",
     # Module 12 — Integrations (Jira + Slack)
     "apps.integrations.apps.IntegrationsConfig",
+    # Module 10 — AI Agents (LLM Gateway + LangGraph)
+    "apps.ai.apps.AiConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -356,6 +358,16 @@ JIRA_HTTP_CLIENT_FACTORY = env(
 SLACK_CLIENT_FACTORY = env(
     "SLACK_CLIENT_FACTORY", default="apps.integrations.clients.build_slack_client"
 )
+
+# ─── AI / LLM Gateway (Module 10) ─────────────────────────────────────
+# The single LLM provider, resolved by the LLMGateway (CLAUDE.md rule 6: all LLM
+# calls go through the gateway). DEFAULTS TO NotConfiguredProvider, so PRODUCTION
+# stays on a loud 503 (no fabricated AI output) until Hari sets a real provider +
+# key — see NEEDS_HARI_llm_provider.md. Tests set this to the deterministic
+# FakeLLMProvider to exercise the full agent graphs with no network call.
+LLM_PROVIDER = env("LLM_PROVIDER", default="apps.ai.providers.NotConfiguredProvider")
+# LangSmith tracing is opt-in: a no-op until a key is set (it is unset tonight).
+LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"

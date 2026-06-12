@@ -1724,3 +1724,114 @@ unconfigured tenant → notify returns False (clean no-op, no crash).
 ### What Module 10 needs from this
 - Agent 2 (KPI nudges) calls `notifications.notify_kpi_nudge(tenant_id, message=...)`
   to deliver to Slack (best-effort, no-op when unconfigured) — the seam is ready.
+
+
+## Module 10 — AI Agents via LangGraph + LLM Gateway (build-order M10)
+
+**Status:** ✅ Complete. **1026 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 12's 985 + 41 new; the 985 stayed green). The biggest module, built
+AGENT BY AGENT and committed separately for durability. **No real LLM key is used
+or required** — production stays on `NotConfiguredProvider` (loud 503, no
+fabrication); the full agent graphs are exercised in tests + the demo via a
+deterministic in-repo `FakeLLMProvider` (no network). Stack note below.
+
+### Stack decision (transparent) — LangGraph NOT installed tonight
+`langgraph` / `langsmith` / an LLM SDK are NOT in the image. Per contract rule 10
+(no external deps tonight) and the paramount "leave all prior modules green," a
+heavy LangChain dependency tree was NOT added to the unattended build (version-
+conflict risk against Django 4.2). Instead the LangGraph node sequences are
+implemented as deterministic Python (`apps/ai/graph.run_graph` — a faithful
+`StateGraph` stand-in; the node FUNCTIONS are the real logic) and LangSmith tracing
+is a no-op behind env. `NEEDS_HARI_llm_provider.md` documents the one-step swap to
+real LangGraph + a provider SDK at go-live (the node functions don't change).
+
+### The LLM Gateway (`apps/ai`, committed first) — the single choke (CLAUDE.md rule 6)
+`LLMGateway.run(tenant, agent_code, prompt, schema, ...)` does, on EVERY call:
+resolve the provider (`settings.LLM_PROVIDER`) → reserve the per-tenant agent
+BUDGET (M11 `check_and_reserve_budget`) BEFORE the call → PII-scrub the prompt
+(`pii.scrub`) → call the provider in a LangSmith trace span (no-op) → meter usage to
+the M11 `TokenLedger` → schema-validate the output → attach confidence +
+low-confidence flag. It NEVER raises to its caller — it returns a structured
+`GatewayResult` (OK / NOT_CONFIGURED / BUDGET_EXCEEDED / SCHEMA_INVALID /
+PROVIDER_ERROR). Providers: `LLMProvider` ABC, `NotConfiguredProvider` (prod
+default), `FakeLLMProvider` (deterministic, per-agent output registry),
+`HTTPLLMProvider` (inert scaffold). Each agent provider's `configured` delegates to
+`llm_configured()`, so pointing a seam at an agent provider is SAFE in production
+(503 until `LLM_PROVIDER` is set) and in existing tests.
+
+### The seven agents (each committed separately)
+- **Agent 1 — Review Assistant** (Large): node sequence (validate → gather evidence
+  → gateway 5-section draft → structure → confidence/citations); fills the M3 seam;
+  the M3 state machine locks the draft PENDING_HUMAN_REVIEW (HITL); confidence < 0.70
+  attaches a warning but still locks pending.
+- **Agent 2 — KPI Intelligence** (Fast): subscribes to the M2 `cycle_scores_recomputed`
+  signal (+ weekly-beat callable); deterministic nudge rules (ON_TRACK→none;
+  CRITICAL→critical; AT_RISK & ≤14d→suppress+warning; AT_RISK→standard); delivers via
+  the M12 Slack notifier (best-effort); `manager_nudges` is the scoped read-only
+  dashboard. NEVER mutates scoring.
+- **Agent 3 — Feedback Summarization** (Large): consumes the M4 ANONYMISED payload →
+  gateway 4-section summary → LOAD-BEARING post-LLM anonymity-breach check (catches a
+  free-text leak the M4 email-only pre-LLM guard missed) → the M4 task (additively)
+  holds the summary HRBP_HOLD + `anonymity_passed=False`. Sections stay HITL-gated.
+- **Agent 4 — Successor Planning** (Large): enriches the deterministic M8 analysis
+  (internal CycleScore signals only — NEVER raw 360 givers) with a gateway narrative
+  + confidence; the M8 task locks a NEW `source=AI` plan PENDING, deterministic plan
+  intact.
+- **JD Generator** (Large): validated inputs → gateway JD body → the M6 lifecycle
+  locks `source=AI` PENDING.
+- **Career Roadmap** (Large): deterministic gap (M9) + baseline → gateway enriched
+  tiers → a NEW `source=AI` DRAFT for human acceptance; the M9 `advisory` DB CHECK
+  still holds (never auto-promotion).
+- **Chat Assistant** (Fast, READ-ONLY — the safety-critical one): `POST /api/ai/chat`.
+  The LLM classifies read-vs-write intent; reads route DETERMINISTICALLY against the
+  existing scoped data using the CALLER's identity + RBAC (`actor_can_access` /
+  tenant-scoped managers), so it can NEVER surface data the caller couldn't already
+  see (employee→peer goals = nothing; cross-tenant = nothing — identical to a direct
+  scoped API call); write/approval intents are BLOCKED. Gated `USE_CHAT` (everyone) +
+  `requires_entitlement("chat")`; the chat budget trips 429 via the gateway.
+
+### Entitlements
+`requires_entitlement` now resolves FEATURES (`tenant_has_feature` — the superset
+covering agents + chat/jd_generator/career_roadmap), so the same gate works for every
+agent. Chat is gated live (`chat`, STARTER). The other agent surfaces' gates
+(agent1 STARTER; agent3/agent4/jd_generator/career_roadmap FULL_AI) are wired at
+go-live alongside the provider — documented in `NEEDS_HARI_llm_provider.md` — to keep
+every agent commit self-contained with zero prior-module test churn (adding a FULL_AI
+gate to an existing seam surface would 403 its STARTER 503-test).
+
+### RBAC additions (matrix + oracle)
+`use_chat` (everyone; data scope-bounded in the services + entitlement-gated).
+
+### Files
+New: `apps/ai/` (apps [signal wiring + fake registration], exceptions, pii, tracing,
+graph, schemas, providers, gateway, views [Chat], urls, agents/{review,kpi,feedback,
+succession,jd,career,chat}, tests test_gateway + per-agent tests). Changed:
+`apps/feedback/tasks.py` (+post-LLM breach → HRBP_HOLD), `apps/billing/{gate,services}.py`
+(requires_entitlement → tenant_has_feature), rbac matrix + oracle (use_chat), settings
+(LOCAL_APPS + LLM_PROVIDER + LANGSMITH_API_KEY), config/urls. NEEDS_HARI_llm_provider.md.
+
+### Live validation (chat-503 via nginx; agents in-process with FakeLLMProvider)
+Authenticated chat through nginx with no LLM provider → 503; Agent 1 → a 5-section
+draft PENDING (confidence 0.9) → manager approve+finalize → FINALIZED (human_reviewer
+set); Chat → an employee asking for a peer's goals gets `[]` (RBAC-bound) and a write
+intent is blocked; Agent 3 → a planted free-text email leak in the generated summary
+→ HRBP_HOLD (anonymity_passed False); the TokenLedger metered every gateway call (4
+rows across agent1/chat/agent3).
+
+### Known risks / notes
+- **LangGraph/LangSmith/LLM SDK not installed** (deliberate, documented) — the node
+  functions are the real logic; the library swap is config (NEEDS_HARI_llm_provider.md).
+- **Production is 503 by design** until `LLM_PROVIDER` + the per-seam provider settings
+  are set + FULL_AI provisioned for paid agents — the single source of truth for "is
+  AI live" is `llm_configured()`.
+- **Budget enforcement is tested at the gateway** (clean BUDGET_EXCEEDED result) and
+  surfaced as 429 by the Chat view; agents routed through the pre-existing M3/M4/M6/M8/M9
+  seam tasks meter usage + reserve budget, and an over-budget result there surfaces as a
+  task skip (those tasks' broad except predates the budget concept) — documented.
+- **Agent 2 nudge composition is deterministic** (the M2 risk classification is the
+  intelligence); optional LLM phrasing via the gateway is a later enhancement.
+
+### What going live needs (NEEDS_HARI_llm_provider.md)
+Pick a provider; `pip install langgraph langsmith <sdk>` + rebuild; set `LLM_PROVIDER`
+(+ key) and each seam provider setting; provision FULL_AI for paid agents; confirm the
+per-tenant agent budgets. Until then: 503 everywhere, by design.

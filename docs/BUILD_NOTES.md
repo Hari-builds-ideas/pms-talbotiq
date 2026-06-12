@@ -1427,3 +1427,115 @@ report's roadmap (200); the employee viewing a peer's roadmap → 404; progress 
   the FULL_AI pack so `feature_flags_for` resolves it.
 - **Module 13 (frontend):** renders `GET /roadmap`, `/roadmaps/<id>` (tiers +
   skill_gap), `/roadmaps/<id>/skill-gap`, `/progress`; all already scoped.
+
+
+## Module 11 — Entitlements, Billing & Admin (+ Audit Console) (build-order M11 = Doc 2 §Module 13 + §Module 14 console)
+
+**Status:** ✅ Complete. **919 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 9's 850 + 69 new; the 850 stayed green — nothing prior was rewritten).
+Completes the decoupled commercial model (seat_count × feature_packs) from Module 1,
+adds usage metering + per-tenant agent budgets that Module 10 will write to, and the
+searchable READ-ONLY audit console. Deterministic, AI-free (the "which packs would
+help" advisory is a Module-10 seam). Stack unchanged. Three touchpoints: `apps/billing`
+(extended), `apps/audit` (console added), `apps/administration` (NEW app).
+
+### Feature flags + the AI upgrade switch (`apps/billing`)
+- `packs.py`: added the non-agent feature codes `chat` / `jd_generator` /
+  `career_roadmap` and a `PACK_FEATURES` map (a SUPERSET of the Module-1
+  `FEATURE_PACKS`, which is kept byte-for-byte so every Module-1 billing test stays
+  green). `STARTER → {agent1, agent2, chat}`; `FULL_AI` adds agents 3-5 +
+  jd_generator + career_roadmap. `features_for_packs` + `ALL_FEATURES` back the flag
+  map. (See `NEEDS_HARI_pack_mapping.md` re: the Agent-1 STARTER-vs-FULL_AI nuance.)
+- `feature_flags_for(tenant) -> {feature: bool}` over EVERY `ALL_FEATURES` code,
+  derived from the tenant's PACKS (NOT seat_count — the two axes stay independent).
+  Cached 300s under `tenant_cache_key(tid, "feature_flags")`; the existing
+  upgrade/set_seats already clear the whole tenant namespace, so an upgrade flips
+  flags instantly.
+- `add_pack` / `remove_pack` (generic, audited, cache-invalidated) generalise the
+  Module-1 `upgrade_to_full_ai`; `upgrade_prompt(tenant)` returns locked features +
+  what FULL_AI would unlock — CONCEPTUAL only, no pricing/payment (Phase 2).
+- Endpoints (Admin / MANAGE_ENTITLEMENTS): `GET /api/billing/feature-flags`,
+  `GET /api/billing/upgrade-prompt`. The existing entitlement/upgrade/seats stay on
+  MANAGE_TENANT (untouched).
+
+### Usage metering + agent budgets (`apps/billing`)
+- `TokenLedger` (TenantScoped): tenant, agent_code, model, prompt/completion/total
+  tokens, occurred_at — the meter the Module-10 LLMGateway writes to.
+  `record_usage(...)` binds the tenant (off-request safe) and computes the total.
+- `AgentBudget` (TenantScoped): tenant, agent_code (or `"all"`), window
+  {DAILY, MONTHLY}, limit; unique per (tenant, agent_code, window).
+  `check_and_reserve_budget(tenant, agent_code, window)` reserves one call against a
+  CACHE counter whose key EMBEDS THE TENANT ID (+ agent + window + period stamp) —
+  cross-tenant budget isolation is a security control. Over budget → `BudgetExceeded`
+  (429) with an `upgrade_hint`. `resolve_budget_limit` resolves an explicit per-agent
+  row → a tenant-wide `"all"` row → the entitlement-derived default
+  (`DEFAULT_AGENT_BUDGETS`, STARTER < FULL_AI, so an upgrade lifts budgets too). The
+  M10 LLMGateway calls this BEFORE running an agent. Fixed-window approximation (same
+  documented precision caveat as the Module-1.5b throttle; the precise path is a
+  Redis Lua INCR).
+
+### Audit Console (`apps/audit`, fills Doc 2 §Module 14)
+`GET /api/audit/logs` (VIEW_AUDIT_CONSOLE — HRBP + Admin) — a DRF `ListAPIView`, so
+READ-ONLY BY CONSTRUCTION (only GET is exposed; POST/PUT/DELETE → 405; there is NO
+write surface). Paginated (50/page, `page_size` up to 200). Tenant-scoped
+automatically by the append-only `AuditLog.objects` manager (the bound tenant —
+HRBP = tenant in the MVP). Optional filters: actor / action / target_type /
+target_id / date_from / date_to. The M1 immutability still governs every write path
+(re-proven in the console tests: a direct `.update()` raises
+`AuditLogImmutableError`). Nobody can write/alter the log via any surface.
+
+### Admin Hub (`apps/administration`, NEW app — label "administration", NOT "admin")
+Avoids the `django.contrib.admin` label clash. One new model `TenantConfig`
+(TenantScoped, per-tenant `settings` JSON, unique per tenant). Services (Admin-only
+at the view, audited before effect): `create_user` (422 on dupe email / unknown
+role), `set_role`, `set_active` (de/reactivate), `set_reporting_line` (DELEGATES to
+the Module-7 `reassign_reporting_line` with its cycle check — reused, not
+duplicated), `list_users`, `get_tenant_config` / `update_tenant_config`. Endpoints
+(`/api/admin/`): `GET,POST /users`, `POST /users/<id>/role|deactivate|reactivate|
+reporting-line`, `GET,PUT /tenant-config`. Referenced user UUIDs resolve through the
+tenant-scoped manager → cross-tenant id is 404; a reporting cycle → 422.
+
+### RBAC additions (matrix + oracle)
+`manage_entitlements`, `manage_tenant_config`, `manage_users_roles` (all
+ADMIN-only), `view_audit_console` (HRBP + Admin, read-only). `MANAGE_TENANT` remains
+the umbrella Admin capability on the existing billing endpoints. Oracle extended.
+
+### Files
+New: `apps/administration/` (apps, models, exceptions, services, serializers, views,
+urls, migration 0001, tests test_services [11] + test_api [~14]); `apps/audit/`
+(views, serializers, urls, tests test_console [~9]); `apps/billing/` migration 0002
+(TokenLedger + AgentBudget), exceptions.py, tests test_feature_flags [7] +
+test_budgets [8] + test_module11_api [~6]. Changed: `apps/billing/{packs,models,
+services}.py`, rbac matrix + oracle (4 caps), settings (LOCAL_APPS), config/urls,
+testsupport factories (TokenLedger/AgentBudget/TenantConfig).
+
+### Live validation (via nginx + live Redis)
+A STARTER tenant's `feature-flags` shows agent4/jd_generator/career_roadmap False
+(agent2/chat True); Admin `upgrade` → all flags True with seat_count unchanged
+(10→10), audited; an AgentBudget(limit=2) trips on the 3rd reserve (429) while
+another tenant's counter is independent (1); `record_usage` writes a TokenLedger row
+(total 420); Admin creates a user + assigns a role; HRBP reads the audit console
+filtered by action (count 1), an EMPLOYEE → 403, `POST /api/audit/logs` → 405
+(read-only); a non-Admin → 403 on tenant-config; an other-tenant Admin acting on
+org's user → 404.
+
+### Known risks / notes
+- **Agent-1 pack placement** is flagged in `NEEDS_HARI_pack_mapping.md` (kept in
+  STARTER per the registry; M10 prose suggested FULL_AI — a one-line commercial
+  toggle, non-blocking).
+- **HRBP audit-console scope = tenant-wide** (the Module-1 MVP HRBP simplification);
+  when BusinessUnit lands, narrow it in the queryset.
+- **Budget counters are fixed-window approximations** in the cache (documented; the
+  precise path is a Redis Lua INCR, same as the throttle). Counters live in the
+  cache DB; under a future allkeys-lru cache split they could be evicted (fail-open)
+  — keep them on a non-evicting DB if strict enforcement is required.
+- **No payment gateway** (entitlements are demoable without it — Phase 2); the
+  upgrade prompt is conceptual (no pricing).
+
+### What Module 10 needs from this
+- The LLMGateway calls `check_and_reserve_budget(tenant, agent_code)` BEFORE running
+  an agent (429 + upgrade hint over budget) and `record_usage(...)` AFTER each call.
+- Gate each agent surface with `requires_entitlement(<feature_code>)` — the codes
+  (`agent1..agent5`, `jd_generator`, `career_roadmap`, `chat`) and `feature_flags_for`
+  are ready; `jd_generator` + `career_roadmap` are already in the FULL_AI pack.
+- The `AIThrottle` (Phase 1.5b) + these budgets are complementary (rate vs quota).

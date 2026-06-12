@@ -22,7 +22,7 @@ from django.db import models
 
 from apps.tenancy.models import TenantScopedModel
 
-from .packs import STARTER, agents_for_packs, tier_label
+from .packs import STARTER, agents_for_packs, features_for_packs, tier_label
 
 
 class Entitlement(TenantScopedModel):
@@ -62,6 +62,21 @@ class Entitlement(TenantScopedModel):
         if code not in self.feature_packs:
             self.feature_packs.append(code)
 
+    def unlocked_features(self) -> set[str]:
+        """The set of ALL feature codes (agents + non-agent) this entitlement
+        unlocks. The superset behind ``feature_flags_for``."""
+        return features_for_packs(self.feature_packs)
+
+    def has_feature(self, feature_code: str) -> bool:
+        """True iff ``feature_code`` is unlocked by one of this tenant's packs."""
+        return feature_code in self.unlocked_features()
+
+    def remove_pack(self, code: str) -> None:
+        """Remove ``code`` from ``feature_packs`` in place (no-op if absent). Does
+        not persist — the caller saves. Touches only packs, never seats."""
+        if self.feature_packs and code in self.feature_packs:
+            self.feature_packs = [c for c in self.feature_packs if c != code]
+
     @property
     def tier_label(self) -> str:
         """DISPLAY ONLY label derived from the packs — never used to gate access."""
@@ -70,3 +85,62 @@ class Entitlement(TenantScopedModel):
 
 # Default pack a freshly provisioned tenant starts on.
 DEFAULT_PACKS = [STARTER]
+
+
+class TokenLedger(TenantScopedModel):
+    """One recorded LLM-usage event — the meter the Module-10 ``LLMGateway`` writes
+    to on EVERY call. Captures the agent, model, and prompt/completion/total tokens
+    so usage can be rolled up per tenant + agent. Append-style (no edits); reads are
+    tenant-scoped like every other ``TenantScopedModel``."""
+
+    agent_code = models.CharField(max_length=32)
+    model = models.CharField(max_length=64)
+    prompt_tokens = models.PositiveIntegerField(default=0)
+    completion_tokens = models.PositiveIntegerField(default=0)
+    total_tokens = models.PositiveIntegerField(default=0)
+    occurred_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "billing_token_ledger"
+        ordering = ["-occurred_at"]
+        indexes = [
+            models.Index(
+                fields=["tenant", "agent_code", "-occurred_at"],
+                name="ix_ledger_tenant_agent",
+            ),
+        ]
+
+    def __str__(self):
+        return f"usage(tenant={self.tenant_id}, agent={self.agent_code})={self.total_tokens}t"
+
+
+class AgentBudget(TenantScopedModel):
+    """A per-tenant cap on agent CALLS within a rolling window. An explicit row for
+    a specific ``agent_code`` overrides the entitlement-derived default; an
+    ``agent_code="all"`` row is a tenant-wide fallback. The Module-10 LLMGateway
+    reserves against this BEFORE running an agent (``check_and_reserve_budget``);
+    over budget → a clear 429 with an upgrade hint."""
+
+    class Window(models.TextChoices):
+        DAILY = "DAILY", "Daily"
+        MONTHLY = "MONTHLY", "Monthly"
+
+    #: Sentinel agent_code for a tenant-wide budget that applies to every agent.
+    AGENT_ALL = "all"
+
+    agent_code = models.CharField(max_length=32, default=AGENT_ALL)
+    window = models.CharField(max_length=8, choices=Window.choices, default=Window.DAILY)
+    limit = models.PositiveIntegerField()
+
+    class Meta:
+        db_table = "billing_agent_budget"
+        ordering = ["agent_code", "window"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "agent_code", "window"],
+                name="uq_agentbudget_tenant_agent_window",
+            ),
+        ]
+
+    def __str__(self):
+        return f"budget(tenant={self.tenant_id}, {self.agent_code}/{self.window})={self.limit}"

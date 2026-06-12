@@ -75,6 +75,11 @@ EXPECTED = {
     Capability.SELECT_TARGET_ROLE: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_CAREER_ROADMAP: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.MANAGE_CAREER_ROADMAP: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    # Module 11 — Entitlements, Billing & Admin (+ Audit Console).
+    Capability.MANAGE_ENTITLEMENTS: {Role.ADMIN},
+    Capability.MANAGE_TENANT_CONFIG: {Role.ADMIN},
+    Capability.MANAGE_USERS_ROLES: {Role.ADMIN},
+    Capability.VIEW_AUDIT_CONSOLE: {Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

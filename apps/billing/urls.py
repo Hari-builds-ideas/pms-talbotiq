@@ -6,7 +6,13 @@ Paths are declared WITHOUT a leading slash because they are appended to the
 """
 from django.urls import path
 
-from .views import EntitlementView, SeatsView, UpgradeView
+from .views import (
+    EntitlementView,
+    FeatureFlagsView,
+    SeatsView,
+    UpgradePromptView,
+    UpgradeView,
+)
 
 app_name = "billing"
 
@@ -14,4 +20,6 @@ urlpatterns = [
     path("entitlement", EntitlementView.as_view(), name="entitlement"),
     path("upgrade", UpgradeView.as_view(), name="upgrade"),
     path("seats", SeatsView.as_view(), name="seats"),
+    path("feature-flags", FeatureFlagsView.as_view(), name="feature-flags"),
+    path("upgrade-prompt", UpgradePromptView.as_view(), name="upgrade-prompt"),
 ]

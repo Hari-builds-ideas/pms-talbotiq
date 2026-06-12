@@ -24,6 +24,9 @@ urlpatterns = [
     path("api/succession/", include("apps.succession.urls")),
     # Module 9 — Career Development (Roadmap LITE)
     path("api/career/", include("apps.career.urls")),
+    # Module 11 — Administration (Admin Hub) + Audit Console
+    path("api/admin/", include("apps.administration.urls")),
+    path("api/audit/", include("apps.audit.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

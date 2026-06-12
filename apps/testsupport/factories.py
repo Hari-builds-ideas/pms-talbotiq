@@ -386,3 +386,37 @@ class RoadmapProgressFactory(DjangoModelFactory):
     tenant = factory.SelfAttribute("roadmap.tenant")
     tier_index = 0
     status = "NOT_STARTED"
+
+
+# ── Module 11 — Entitlements, Billing & Admin ─────────────────────────────────
+
+
+class TokenLedgerFactory(DjangoModelFactory):
+    class Meta:
+        model = "billing.TokenLedger"
+
+    tenant = factory.SubFactory(TenantFactory)
+    agent_code = "agent1"
+    model = "fake-llm-1"
+    prompt_tokens = 100
+    completion_tokens = 50
+    total_tokens = 150
+    occurred_at = factory.LazyFunction(timezone.now)
+
+
+class AgentBudgetFactory(DjangoModelFactory):
+    class Meta:
+        model = "billing.AgentBudget"
+
+    tenant = factory.SubFactory(TenantFactory)
+    agent_code = "all"
+    window = "DAILY"
+    limit = 100
+
+
+class TenantConfigFactory(DjangoModelFactory):
+    class Meta:
+        model = "administration.TenantConfig"
+
+    tenant = factory.SubFactory(TenantFactory)
+    settings = factory.LazyFunction(dict)

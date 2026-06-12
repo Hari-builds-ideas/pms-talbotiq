@@ -98,6 +98,14 @@ class Capability:
     SELECT_TARGET_ROLE = "select_target_role"        # all (own); Manager/HRBP for reports
     VIEW_CAREER_ROADMAP = "view_career_roadmap"      # all (own); Manager TEAM; HRBP TENANT
     MANAGE_CAREER_ROADMAP = "manage_career_roadmap"  # all (own gen/regen); Manager for reports
+    # ── Module 11 — Entitlements, Billing & Admin (+ Audit Console) ──
+    # MANAGE_TENANT (Admin, above) remains the umbrella admin capability and still
+    # gates the existing entitlement/upgrade/seats endpoints; these are granular
+    # Admin-only subsets for the new admin surfaces, plus a scoped console read.
+    MANAGE_ENTITLEMENTS = "manage_entitlements"      # Admin — feature flags / packs / budgets
+    MANAGE_TENANT_CONFIG = "manage_tenant_config"    # Admin — tenant settings
+    MANAGE_USERS_ROLES = "manage_users_roles"        # Admin — create/deactivate users, roles, line
+    VIEW_AUDIT_CONSOLE = "view_audit_console"        # HRBP (scoped) + Admin (tenant) — READ-ONLY
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -193,6 +201,13 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.SELECT_TARGET_ROLE: _EVERYONE,
     Capability.VIEW_CAREER_ROADMAP: _EVERYONE,
     Capability.MANAGE_CAREER_ROADMAP: _EVERYONE,
+    # Module 11 — Entitlements, Billing & Admin. The three management verbs are
+    # Admin-only; the audit console READ is HRBP (scoped tenant-wide in the MVP) +
+    # Admin. Nobody can WRITE the audit log (the M1 immutability still governs).
+    Capability.MANAGE_ENTITLEMENTS: _ADMIN_ONLY,
+    Capability.MANAGE_TENANT_CONFIG: _ADMIN_ONLY,
+    Capability.MANAGE_USERS_ROLES: _ADMIN_ONLY,
+    Capability.VIEW_AUDIT_CONSOLE: _HRBP_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

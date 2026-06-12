@@ -21,7 +21,13 @@ from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
 from .serializers import EntitlementSerializer
-from .services import get_entitlement_cached, set_seats, upgrade_to_full_ai
+from .services import (
+    feature_flags_for,
+    get_entitlement_cached,
+    set_seats,
+    upgrade_prompt,
+    upgrade_to_full_ai,
+)
 
 
 class EntitlementView(RBACMixin, APIView):
@@ -77,3 +83,31 @@ class SeatsView(RBACMixin, APIView):
             )
         entitlement = set_seats(request.user.tenant, seat_count, actor=request.user)
         return Response(EntitlementSerializer(entitlement).data)
+
+
+class FeatureFlagsView(RBACMixin, APIView):
+    """``GET /api/billing/feature-flags`` (MANAGE_ENTITLEMENTS) — the tenant's
+    complete ``{feature: bool}`` flag map, derived from its entitlement packs.
+
+    A STARTER tenant reads agents 3-5 (and the paid generative seams) as ``False``;
+    a FULL_AI tenant reads them ``True``. The map is the single source the frontend
+    gates UI on; the upgrade switch flips it instantly (the cache is cleared on any
+    entitlement change).
+    """
+
+    required_capability = Capability.MANAGE_ENTITLEMENTS
+
+    def get(self, request):
+        return Response(feature_flags_for(request.user.tenant))
+
+
+class UpgradePromptView(RBACMixin, APIView):
+    """``GET /api/billing/upgrade-prompt`` (MANAGE_ENTITLEMENTS) — data for an
+    in-app upgrade prompt: the current packs/flags, the features still LOCKED, and
+    what unlocking with FULL_AI would add. Conceptual only — no pricing/payment
+    (Phase 2)."""
+
+    required_capability = Capability.MANAGE_ENTITLEMENTS
+
+    def get(self, request):
+        return Response(upgrade_prompt(request.user.tenant))

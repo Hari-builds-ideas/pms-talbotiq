@@ -80,6 +80,8 @@ LOCAL_APPS = [
     "apps.succession.apps.SuccessionConfig",
     # Module 9 — Career Development (Roadmap LITE)
     "apps.career.apps.CareerConfig",
+    # Module 11 — Administration (Admin Hub: tenant/user/role config)
+    "apps.administration.apps.AdministrationConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

@@ -27,12 +27,41 @@ AGENT3 = "agent3"
 AGENT4 = "agent4"
 AGENT5 = "agent5"
 
+# --- Non-agent gated feature codes (Module 11 surfaces these as feature flags) -
+#: The Chat Assistant (Module 10, Fast + read-only) — ships in STARTER.
+CHAT = "chat"
+#: The AI JD Generator (Module 6 seam, filled in Module 10) — FULL_AI only.
+JD_GENERATOR = "jd_generator"
+#: The Career Roadmap agent (Module 9 seam, filled in Module 10) — FULL_AI only.
+CAREER_ROADMAP = "career_roadmap"
+
 #: pack code -> the agents that pack unlocks. STARTER ships agents 1-2; FULL_AI
 #: unlocks the whole suite (1-5). These sets are independent of seat_count.
+#: (Kept exactly as Module 1 defined it so ``agents_for_packs`` / ``has_agent``
+#: and every Module-1 billing test stay unchanged.)
 FEATURE_PACKS: dict[str, frozenset[str]] = {
     STARTER: frozenset({AGENT1, AGENT2}),
     FULL_AI: frozenset({AGENT1, AGENT2, AGENT3, AGENT4, AGENT5}),
 }
+
+#: pack code -> the FULL feature set it unlocks (agents PLUS the non-agent
+#: features chat / jd_generator / career_roadmap). A SUPERSET of ``FEATURE_PACKS``
+#: and what ``feature_flags_for`` (Module 11) resolves. The agent assignments
+#: mirror ``FEATURE_PACKS`` (so agents 3-5 stay FULL_AI-only — the headline
+#: "STARTER locks agents 3-5" property); chat ships in STARTER while the paid
+#: generative surfaces (JD generator, career roadmap) are FULL_AI-only.
+PACK_FEATURES: dict[str, frozenset[str]] = {
+    STARTER: frozenset({AGENT1, AGENT2, CHAT}),
+    FULL_AI: frozenset(
+        {AGENT1, AGENT2, AGENT3, AGENT4, AGENT5, CHAT, JD_GENERATOR, CAREER_ROADMAP}
+    ),
+}
+
+#: Every gated feature code in the system — the stable key set ``feature_flags_for``
+#: always returns a boolean for (so the frontend can rely on a complete map).
+ALL_FEATURES: frozenset[str] = frozenset(
+    {AGENT1, AGENT2, AGENT3, AGENT4, AGENT5, CHAT, JD_GENERATOR, CAREER_ROADMAP}
+)
 
 
 def agents_for_packs(pack_codes) -> set[str]:
@@ -46,6 +75,33 @@ def agents_for_packs(pack_codes) -> set[str]:
     for code in pack_codes or ():
         unlocked |= FEATURE_PACKS.get(code, frozenset())
     return unlocked
+
+
+def features_for_packs(pack_codes) -> set[str]:
+    """Return the union of ALL features (agents + non-agent) unlocked by
+    ``pack_codes``. Unknown codes contribute nothing (never raises)."""
+    unlocked: set[str] = set()
+    for code in pack_codes or ():
+        unlocked |= PACK_FEATURES.get(code, frozenset())
+    return unlocked
+
+
+#: Default per-agent call budgets per window, by pack tier (Module 11). STARTER
+#: caps lower than FULL_AI. Used by ``check_and_reserve_budget`` when a tenant has
+#: no explicit ``AgentBudget`` row. Derived from the entitlement (FULL_AI present
+#: → the higher cap), so an upgrade lifts budgets along with feature flags.
+DEFAULT_AGENT_BUDGETS: dict[str, dict[str, int]] = {
+    "DAILY": {STARTER: 50, FULL_AI: 500},
+    "MONTHLY": {STARTER: 1000, FULL_AI: 10000},
+}
+
+
+def default_budget_limit(window: str, has_full_ai: bool) -> int:
+    """The entitlement-derived default budget limit for ``window`` (DAILY/MONTHLY),
+    choosing the FULL_AI cap when the tenant holds that pack, else the STARTER cap.
+    An unknown window falls back to the DAILY caps (never raises)."""
+    tier = FULL_AI if has_full_ai else STARTER
+    return DEFAULT_AGENT_BUDGETS.get(window, DEFAULT_AGENT_BUDGETS["DAILY"])[tier]
 
 
 def tier_label(pack_codes) -> str:

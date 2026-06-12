@@ -1539,3 +1539,95 @@ org's user → 404.
   (`agent1..agent5`, `jd_generator`, `career_roadmap`, `chat`) and `feature_flags_for`
   are ready; `jd_generator` + `career_roadmap` are already in the FULL_AI pack.
 - The `AIThrottle` (Phase 1.5b) + these budgets are complementary (rate vs quota).
+
+
+## Module A — Analytics & Reporting (build-order insert = Doc 2 §Module 12)
+
+**Status:** ✅ Complete. **957 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 11's 919 + 38 new; the 919 stayed green — nothing prior was rewritten).
+Deterministic, cache-backed reporting over already-built data — NO new persisted
+model. Scope-flagged in `NEEDS_HARI_analytics_scope.md` (Analytics is ✅ MVP in
+Doc 2 §Module 12 but absent from CLAUDE.md's 14-step order; built tonight because
+it is deterministic + MVP-marked + builds only on completed modules — Hari to
+confirm scope). Stack unchanged. The Fast-AI anomaly narrative is a Module-10 seam.
+
+### THE HEADLINE SAFETY PROPERTY — MIN-COHORT SUPPRESSION (≥ 5)
+`apps/analytics/constants.MIN_COHORT = 5`. Any department/cohort view with FEWER
+than 5 members returns AGGREGATE-ONLY with individual values SUPPRESSED, so a small
+team can never be de-anonymised by its manager. This is a DIFFERENT, larger
+threshold than the Module-4 360 per-group min-volume of 3 — both are kept and the
+distinction is documented in `constants.py`. Proven at the boundary (a 4-person
+dept exposes NO individuals; a 5-person dept does) in tests AND the live demo.
+
+### No new model — computed + cached from existing data
+- Performance from the Module-2 `CycleScore`; the calibration grid REUSES the
+  Module-8 9-box `NineBoxPlacement`; a "department" is a manager + their reporting
+  subtree (the Module-1/7 `User.manager` tree — no `Department` model yet).
+- Department aggregates are cached under `tenant_cache_key(tid, "analytics", "dept",
+  head, cycle)` (TTL 300) and INVALIDATED on a Module-2 recompute: `apps.py` connects
+  a receiver to the `cycle_scores_recomputed` signal (→ `invalidate_analytics_cache`),
+  so rollups never serve stale numbers. Proven in tests (cache hit returns the
+  stale-by-design value; invalidation forces a fresh compute).
+
+### Services (`services.py`, read-only, scoped)
+- `individual_trend(actor, employee)` — an employee's performance trend across
+  cycles (their OWN data; no cohort, no suppression). Scoped: Employee self / Manager
+  reports / HRBP+Admin tenant; out-of-scope → 404.
+- `department_analytics(actor, head, cycle)` — the cohort rollup with min-cohort
+  suppression (aggregate = headcount, scored, mean/median T, risk distribution;
+  individuals only when cohort ≥ 5). `head` must be in the actor's scope (404).
+- `calibration_grid(actor, cycle)` — 9-box box-counts + placements (HRBP/Admin;
+  reuses already-management-only succession data).
+- `export_department(actor, head, cycle, fmt)` — text/JSON only (NO binary),
+  honouring the same scope + suppression.
+
+### Insights SEAM (`insights_agent.py`) — Module 10 owns the LLM
+`AnalyticsInsightsProvider` ABC + `NotConfiguredProvider` (raises tested
+`AnalyticsInsightsNotConfiguredError`) + `get_provider()` resolving
+`settings.ANALYTICS_INSIGHTS_PROVIDER`. The DETERMINISTIC at-risk rollup (the
+`risk_distribution`) is the always-available baseline; the AI anomaly/highlight
+narrative lands in Module 10. No 503 endpoint yet (no AI surface) — just the seam.
+
+### RBAC additions (matrix + oracle)
+`view_individual_analytics` (all roles; scoped OWN for an employee),
+`view_department_analytics` (Manager+; NEVER an employee — the employee-403 on
+department analytics), `view_calibration_grid` (HRBP/Admin). Min-cohort suppression
+applies ON TOP of scope.
+
+### API (apps/analytics, mounted at /api/analytics/, RBAC-gated; views are the SOLE gate)
+`GET /individual[?employee=]` (VIEW_INDIVIDUAL_ANALYTICS), `GET /department?head=&cycle=`
+(VIEW_DEPARTMENT_ANALYTICS), `GET /calibration?cycle=` (VIEW_CALIBRATION_GRID),
+`GET /export?head=&cycle=&format=json|text` (VIEW_DEPARTMENT_ANALYTICS). Thin views;
+the service is the sole scope + suppression authority; UUIDs resolve through
+tenant-scoped managers (cross-tenant → 404); a missing `?cycle` → 400. The export
+view installs a small `_ExportContentNegotiation` so DRF's `?format=` override does
+not intercept the endpoint's own `?format` param (it returns a raw HttpResponse).
+
+### Files
+New: `apps/analytics/` (apps [signal wiring], constants, services, insights_agent,
+views, urls, tests test_services [13] + test_api [14]). Changed: rbac matrix +
+oracle (3 caps), settings (LOCAL_APPS + ANALYTICS_INSIGHTS_PROVIDER), config/urls.
+No migration (no model). NEEDS_HARI_analytics_scope.md at repo root.
+
+### Live validation (via nginx)
+A 4-person department → `suppressed=True`, `individuals=[]`, aggregate mean_T 49.5
+(aggregate-only); a 5-person department → `suppressed=False`, all 5 individuals; an
+employee reads their OWN individual trend (200) but is 403 on department analytics;
+a manager pulling a peer manager's department → 404 (own line only); HRBP reads the
+calibration grid (box 9 = 1, box 5 = 1) while an employee → 403; export returns
+`text/plain` and `application/json`; an other-tenant admin → 404.
+
+### Known risks / notes
+- **"Department" = a manager + reporting subtree** (no `Department`/`BusinessUnit`
+  model yet — flagged in NEEDS_HARI_analytics_scope.md alongside the HRBP-scope
+  approximation carried since Module 1).
+- **Suppressed cohorts still return the aggregate** (mean/median/risk counts) per the
+  Doc-2 "aggregate-only" allowance; only INDIVIDUAL values are hidden. Tighten to a
+  bare marker if even small-cohort aggregates are deemed sensitive.
+- **Calibration is not min-cohort-suppressed** (it is HRBP/Admin-only over data they
+  already see via succession) — documented; revisit if calibration is ever widened.
+
+### What Module 10 needs from this
+- Implement `AnalyticsInsightsProvider.summarize` (the Fast-AI at-risk/anomaly
+  narrative over the deterministic rollup), point `ANALYTICS_INSIGHTS_PROVIDER` at
+  it, surface it read-only/advisory. The deterministic rollup is the baseline.

@@ -27,6 +27,8 @@ urlpatterns = [
     # Module 11 — Administration (Admin Hub) + Audit Console
     path("api/admin/", include("apps.administration.urls")),
     path("api/audit/", include("apps.audit.urls")),
+    # Module A — Analytics & Reporting
+    path("api/analytics/", include("apps.analytics.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

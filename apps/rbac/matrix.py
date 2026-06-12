@@ -106,6 +106,10 @@ class Capability:
     MANAGE_TENANT_CONFIG = "manage_tenant_config"    # Admin — tenant settings
     MANAGE_USERS_ROLES = "manage_users_roles"        # Admin — create/deactivate users, roles, line
     VIEW_AUDIT_CONSOLE = "view_audit_console"        # HRBP (scoped) + Admin (tenant) — READ-ONLY
+    # ── Module A — Analytics & Reporting (deterministic; min-cohort ≥ 5) ──
+    VIEW_INDIVIDUAL_ANALYTICS = "view_individual_analytics"    # all (own); Manager reports; HRBP/Admin tenant
+    VIEW_DEPARTMENT_ANALYTICS = "view_department_analytics"    # Manager line; HRBP/Admin tenant — NEVER Employee
+    VIEW_CALIBRATION_GRID = "view_calibration_grid"            # HRBP, Admin
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -208,6 +212,12 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.MANAGE_TENANT_CONFIG: _ADMIN_ONLY,
     Capability.MANAGE_USERS_ROLES: _ADMIN_ONLY,
     Capability.VIEW_AUDIT_CONSOLE: _HRBP_UP,
+    # Module A — Analytics. Individual analytics is held by everyone (scoped to
+    # OWN for an employee); department analytics is Manager+ (NEVER an employee);
+    # the calibration grid is HRBP/Admin. Min-cohort suppression applies on top.
+    Capability.VIEW_INDIVIDUAL_ANALYTICS: _EVERYONE,
+    Capability.VIEW_DEPARTMENT_ANALYTICS: _MANAGER_UP,
+    Capability.VIEW_CALIBRATION_GRID: _HRBP_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

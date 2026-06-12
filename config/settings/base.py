@@ -82,6 +82,8 @@ LOCAL_APPS = [
     "apps.career.apps.CareerConfig",
     # Module 11 — Administration (Admin Hub: tenant/user/role config)
     "apps.administration.apps.AdministrationConfig",
+    # Module A — Analytics & Reporting
+    "apps.analytics.apps.AnalyticsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -331,6 +333,13 @@ SUCCESSION_ANALYZER_PROVIDER = env(
 CAREER_ROADMAP_PROVIDER = env(
     "CAREER_ROADMAP_PROVIDER",
     default="apps.career.roadmap_agent.NotConfiguredProvider",
+)
+
+# The analytics insights agent (Module 10 — the Fast-AI anomaly/at-risk narrative
+# on top of the deterministic rollup). Unset -> NotConfiguredProvider.
+ANALYTICS_INSIGHTS_PROVIDER = env(
+    "ANALYTICS_INSIGHTS_PROVIDER",
+    default="apps.analytics.insights_agent.NotConfiguredProvider",
 )
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────

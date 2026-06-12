@@ -80,6 +80,10 @@ EXPECTED = {
     Capability.MANAGE_TENANT_CONFIG: {Role.ADMIN},
     Capability.MANAGE_USERS_ROLES: {Role.ADMIN},
     Capability.VIEW_AUDIT_CONSOLE: {Role.HRBP, Role.ADMIN},
+    # Module A — Analytics & Reporting.
+    Capability.VIEW_INDIVIDUAL_ANALYTICS: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_DEPARTMENT_ANALYTICS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_CALIBRATION_GRID: {Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

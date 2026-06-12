@@ -70,6 +70,11 @@ EXPECTED = {
     Capability.VIEW_SUCCESSION: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.GENERATE_SUCCESSION_ANALYSIS: {Role.HRBP, Role.ADMIN},
     Capability.PUBLISH_SUCCESSION_PLAN: {Role.HRBP, Role.ADMIN},
+    # Module 9 — Career Development (Roadmap LITE) — all roles; scope is enforced
+    # in the services (Employee OWN / Manager TEAM / HRBP+Admin TENANT).
+    Capability.SELECT_TARGET_ROLE: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_CAREER_ROADMAP: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.MANAGE_CAREER_ROADMAP: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

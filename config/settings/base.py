@@ -78,6 +78,8 @@ LOCAL_APPS = [
     "apps.org.apps.OrgConfig",
     # Module 8 — Succession & Talent
     "apps.succession.apps.SuccessionConfig",
+    # Module 9 — Career Development (Roadmap LITE)
+    "apps.career.apps.CareerConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -319,6 +321,14 @@ JD_GENERATOR_PROVIDER = env(
 SUCCESSION_ANALYZER_PROVIDER = env(
     "SUCCESSION_ANALYZER_PROVIDER",
     default="apps.succession.agent4.NotConfiguredProvider",
+)
+
+# The Career Roadmap agent (Module 10). Unset -> NotConfiguredProvider, so the
+# AI-enrich endpoint surfaces a loud 503 and the DETERMINISTIC roadmap (the
+# working baseline) stays intact; the real agent lands in Module 10.
+CAREER_ROADMAP_PROVIDER = env(
+    "CAREER_ROADMAP_PROVIDER",
+    default="apps.career.roadmap_agent.NotConfiguredProvider",
 )
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────

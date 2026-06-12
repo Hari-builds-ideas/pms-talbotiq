@@ -1288,3 +1288,142 @@ deterministic plan verified unchanged; cross-tenant role + plan → 404.
   deterministic readiness/dashboard services (permission-bound) — no new store.
 - **Module 13 (dashboard UI):** renders `GET /dashboard`, `/critical-roles`,
   `/plans/<id>`, `/nine-box`, all already scoped + management-gated (employees 404).
+
+
+## Module 9 — Career Development (Roadmap LITE) (build-order M9 = Doc 2 §Module 10)
+
+**Status:** ✅ Complete. **850 tests passing** on MySQL 8 + Redis 7 in Docker
+(Module 8's 792 + 46 new career tests + 12 matrix-oracle params for the 3 new
+capabilities; the 792 stayed green — nothing prior was rewritten). Advisory-only,
+NEVER auto-promotion. Reuses the Module-8 readiness band-math + Module-2 attainment
+WITHOUT exposing succession's sensitive surface to the viewer. AI-free (the LLM
+roadmap drafting is the Module-10 seam). Stack unchanged.
+
+### THE DATA BOUNDARY (the headline safety property)
+Career reuses the readiness COMPUTATION only — it must NEVER surface the
+management-only succession surface (bench / 9-box potential / coverage / other
+employees). Enforced structurally:
+- The engine (`engine.py`) reads ONLY the subject employee's OWN performance data:
+  their `CycleScore` (via the Module-8 `performance_band_from_tscore` band math —
+  literally `from apps.succession.engine import performance_band_for`) and their
+  `Goal`/`Kpi` attainment (via the Module-2 `goal_raw_score`). It does NOT read
+  `BenchCandidate` / `CriticalRole` / `SuccessionPlan` / `NineBoxPlacement`.
+- The career response vocabulary is kept LITERALLY free of succession terms: the
+  advisory tier copy says "preparedness"/"growth", never "readiness"/"potential",
+  so "a career response can never contain a succession token" is a trivially
+  auditable invariant (the same spirit as Module 4's "zero giver identifiers").
+- PROVEN three ways: a structured API test (no succession FIELD key, no seeded
+  succession VALUE like `READY_NOW`/`potential_band`, no other-employee id appears),
+  a service test, and the live demo — all with full succession data SEEDED for the
+  employee, and all showing zero leakage.
+
+### Models (`apps/career/models.py`, all TenantScoped)
+- `TargetRoleSelection` — an employee's chosen target role: a nullable FK PAIR
+  (`target_jd` → a PUBLISHED `jd.JobDescription`, `target_position` → an
+  `org.Position`), EXACTLY ONE set (service-validated, 422). `selected_by` +
+  `selected_at` server-set.
+- `DevelopmentRoadmap` — the advisory tiered path. `status` {DRAFT, ACTIVE,
+  ARCHIVED}, `tiers` JSON, `skill_gap` JSON snapshot, `source` {DETERMINISTIC, AI},
+  `advisory` (ALWAYS True), `confidence_score` (AI only). **`advisory` is enforced
+  at the DB by a CHECK constraint `ck_roadmap_advisory_always_true`** — a structural
+  guarantee the feature can never become auto-promotion (tested: an `advisory=False`
+  insert is rejected by MySQL, the same standard as Module 3's HITL CHECK). "One
+  ACTIVE deterministic roadmap per (tenant, employee, target)" is a code-enforced
+  invariant (the service upserts the ACTIVE row) — MySQL's NULL-distinct semantics
+  make a unique key over a nullable FK pair unable to express it (the documented
+  Module-5/7 pattern).
+- `RoadmapProgress` — per-tier progress {NOT_STARTED, IN_PROGRESS, DONE}, unique per
+  (tenant, roadmap, tier_index).
+
+### Deterministic engine (`engine.py` + `constants.py`, all tunable)
+- `compute_skill_gap(employee_id)` → `{current_performance_band,
+  required_performance_band, performance_band_gap, weak_categories}`. The
+  performance band is the Module-8 band of the employee's latest CycleScore T-score
+  (UNKNOWN when unscored → maximal gap). The LITE requirement is sustained HIGH
+  performance (`REQUIRED_PERFORMANCE_BAND = HIGH`); the gap is the 0/1/2 band
+  distance. Deliberately contains NO potential band / readiness / bench.
+- `weak_goal_categories(employee_id)` → the employee's ACTIVE goals (in their latest
+  scored cycle) whose Module-2 `goal_raw_score` is below `WEAK_GOAL_THRESHOLD`
+  (= the Module-2 `ABS_AT_RISK` 0.8 — one definition of underperformance).
+- `build_roadmap_tiers(gap, target_label)` → an ordered, reproducible advisory path:
+  a performance tier per band to climb, a tier per weak category, a "demonstrate
+  growth via a stretch assignment" tier, and a final stretch-goal tier — each with a
+  `basis` provenance code. Pure + deterministic (same input → identical output).
+
+### Career Roadmap agent SEAM (`roadmap_agent.py` + `tasks.py`) — Module 10 owns the LLM
+`CareerRoadmapProvider` ABC + `NotConfiguredProvider` (raises tested
+`CareerRoadmapNotConfiguredError`) + `get_provider()` resolving
+`settings.CAREER_ROADMAP_PROVIDER`. `tasks.generate_roadmap(tenant_id, employee_id,
+target_ref, actor_id)` binds the tenant off-request, computes the deterministic gap
+ALWAYS, then resolves the provider; with NONE configured it returns
+`{"generated": False, "reason": "no_provider"}` and the DETERMINISTIC roadmap (the
+working baseline, produced by `select_target_role`) is left COMPLETELY INTACT — the
+endpoint surfaces a loud 503, never a fabricated roadmap. A configured provider
+drafts an enriched, still-ADVISORY path and locks a NEW `source=AI` roadmap as a
+DRAFT (the human accepts it before ACTIVE); the baseline is never overwritten. Same
+shape as the M3/M6/M8 seams; its surface gets `requires_entitlement("career_roadmap")`
+in Module 10.
+
+### Scope (employee-visible, unlike succession)
+An Employee acts on / sees ONLY themselves; a Manager covers their reporting subtree
+(`reporting_subtree_ids` + self); HRBP/Admin the tenant. Enforced in the services via
+`actor_can_access`; an out-of-scope / cross-tenant target raises `NotFound` (404),
+never a 403 (no existence leak — the project rule). Employees DO see their own
+roadmap + gap (the friendly counterpart to succession's employee-404).
+
+### RBAC additions (matrix + oracle)
+`select_target_role`, `view_career_roadmap`, `manage_career_roadmap` — all held by
+EVERY role; the services restrict the rows by scope. Oracle table extended (the
+`test_expected_table_covers_every_capability` guard).
+
+### API (apps/career, mounted at /api/career/, RBAC-gated + audited; views are the SOLE RBAC gate)
+`POST /target` (SELECT_TARGET_ROLE) → 201 `{selection, roadmap}`; `GET /roadmap`
+(own) + `GET /roadmaps[?employee=]` (scoped) + `GET /roadmaps/<id>` (404 out-of-scope)
++ `GET /roadmaps/<id>/skill-gap` (VIEW_CAREER_ROADMAP); `POST /roadmaps/<id>/regenerate`
+(refresh deterministic) + `POST /roadmaps/<id>/enrich` (the 503 seam) +
+`GET,POST /roadmaps/<id>/progress` (MANAGE_CAREER_ROADMAP for writes). Thin views;
+services/tasks are the sole mutators + scope authority; no PATCH/PUT. Audits
+career.target_selected / roadmap_generated / progress_updated / roadmap_ai_drafted —
+all BEFORE the effect.
+
+### Files
+New: `apps/career/` (constants, models, exceptions, engine, roadmap_agent, services,
+tasks, serializers, views, urls, apps, migration 0001, tests test_engine [13] +
+test_services [16] + test_api [17]). Changed: rbac matrix + oracle (3 new caps),
+settings (LOCAL_APPS + CAREER_ROADMAP_PROVIDER), config/urls, testsupport factories
+(TargetRoleSelection/DevelopmentRoadmap/RoadmapProgress).
+
+### Live validation (via nginx)
+An employee (MEDIUM performer, t=50) selects a PUBLISHED-JD target → 201 deterministic
+roadmap (advisory True, band_gap 1, 3 tiers: "Reach HIGH sustained performance" →
+"Demonstrate growth…" → "Complete a stretch goal aligned to Staff Engineer (L5)");
+skill-gap shows current MEDIUM / required HIGH / gap 1; with a READY_NOW bench
+candidate + HIGH 9-box potential SEEDED for the employee the roadmap leaks ZERO
+succession tokens and no other-employee id; enrich → 503 no_provider with the
+deterministic roadmap intact (source DETERMINISTIC, ACTIVE); a manager views the
+report's roadmap (200); the employee viewing a peer's roadmap → 404; progress mark →
+200; an other-tenant admin → 404.
+
+### Known risks / notes
+- **The "required band" is a LITE rule (sustained HIGH).** A genuine per-role
+  required profile (parsed from the target JD's level/competencies) is a Phase-2 /
+  Agent (Module 10) refinement; the gap math is band-distance to HIGH for now.
+- **The data boundary is enforced by NOT READING the sensitive surface** (the engine
+  imports only `performance_band_for`/`goal_raw_score`) AND by keeping career copy
+  free of succession vocabulary, so the leak-scan invariant is literally true.
+- **The deterministic roadmap is the working baseline** (ACTIVE, ungated beyond RBAC
+  + scope); the AI variant lands as a separate `source=AI` DRAFT for human
+  acceptance (Module 10) — honouring CLAUDE.md rule 4 without an over-heavy HITL flow
+  on the advisory deterministic path.
+- **Export / a binary roadmap PDF is out** (Module 14).
+
+### What Modules 10/13 need from this
+- **Module 10 (Career Roadmap agent):** implement `CareerRoadmapProvider.draft`
+  (LangGraph + LLMGateway over the deterministic gap + baseline tiers, PII-safe,
+  confidence), point `CAREER_ROADMAP_PROVIDER` at it, gate the enrich surface with
+  `requires_entitlement("career_roadmap")`. The seam, the AI-DRAFT lock, and
+  `source=AI` are already wired — never auto-promotion (the advisory CHECK holds).
+- **Module 11 (entitlements):** add `career_roadmap` to the feature-flag registry +
+  the FULL_AI pack so `feature_flags_for` resolves it.
+- **Module 13 (frontend):** renders `GET /roadmap`, `/roadmaps/<id>` (tiers +
+  skill_gap), `/roadmaps/<id>/skill-gap`, `/progress`; all already scoped.

@@ -91,6 +91,13 @@ class Capability:
     VIEW_SUCCESSION = "view_succession"              # Manager+ (Manager own report tier ONLY) — NO employees
     GENERATE_SUCCESSION_ANALYSIS = "generate_succession_analysis"  # HRBP, Admin
     PUBLISH_SUCCESSION_PLAN = "publish_succession_plan"            # HRBP, Admin
+    # ── Module 9 — Career Development (Roadmap LITE; advisory, employee-visible) ──
+    # Career is the friendly counterpart to succession: employees DO see their OWN
+    # roadmap/gap. Scope (Employee OWN / Manager TEAM / HRBP+Admin TENANT) is
+    # enforced in the services; an out-of-scope target → 404.
+    SELECT_TARGET_ROLE = "select_target_role"        # all (own); Manager/HRBP for reports
+    VIEW_CAREER_ROADMAP = "view_career_roadmap"      # all (own); Manager TEAM; HRBP TENANT
+    MANAGE_CAREER_ROADMAP = "manage_career_roadmap"  # all (own gen/regen); Manager for reports
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -180,6 +187,12 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.VIEW_SUCCESSION: _MANAGER_UP,
     Capability.GENERATE_SUCCESSION_ANALYSIS: _HRBP_UP,
     Capability.PUBLISH_SUCCESSION_PLAN: _HRBP_UP,
+    # Module 9 — Career Development. All roles hold these capabilities; the
+    # services restrict the rows by scope (an Employee acts only on themselves, a
+    # Manager on their reporting subtree, HRBP/Admin tenant-wide).
+    Capability.SELECT_TARGET_ROLE: _EVERYONE,
+    Capability.VIEW_CAREER_ROADMAP: _EVERYONE,
+    Capability.MANAGE_CAREER_ROADMAP: _EVERYONE,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

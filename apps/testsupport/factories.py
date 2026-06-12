@@ -348,3 +348,41 @@ class SuccessionPlanFactory(DjangoModelFactory):
     action_items = factory.LazyFunction(list)
     source = "DETERMINISTIC"
     generated_at = factory.LazyFunction(timezone.now)
+
+
+# ── Module 9 — Career Development (Roadmap LITE) ──────────────────────────────
+
+
+class TargetRoleSelectionFactory(DjangoModelFactory):
+    class Meta:
+        model = "career.TargetRoleSelection"
+
+    # Pass employee= and exactly one of target_jd= / target_position=; tenant
+    # derives from the employee.
+    tenant = factory.SelfAttribute("employee.tenant")
+    selected_by = factory.SelfAttribute("employee")
+    selected_at = factory.LazyFunction(timezone.now)
+
+
+class DevelopmentRoadmapFactory(DjangoModelFactory):
+    class Meta:
+        model = "career.DevelopmentRoadmap"
+
+    # Pass employee= and a target; tenant derives from the employee.
+    tenant = factory.SelfAttribute("employee.tenant")
+    status = "ACTIVE"
+    tiers = factory.LazyFunction(list)
+    skill_gap = factory.LazyFunction(dict)
+    source = "DETERMINISTIC"
+    advisory = True
+    generated_at = factory.LazyFunction(timezone.now)
+
+
+class RoadmapProgressFactory(DjangoModelFactory):
+    class Meta:
+        model = "career.RoadmapProgress"
+
+    # Pass roadmap= ; tenant derives from the roadmap.
+    tenant = factory.SelfAttribute("roadmap.tenant")
+    tier_index = 0
+    status = "NOT_STARTED"

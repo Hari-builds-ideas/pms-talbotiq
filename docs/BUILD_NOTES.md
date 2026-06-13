@@ -1877,3 +1877,36 @@ Module 13 against WITHOUT reading Python (no visual-design opinions):
   a manager `nudges` endpoint, list pagination, a user display-name).
 
 **Out of scope (NOT done, by instruction):** any React/frontend code.
+
+
+## Pre-frontend backend follow-ups (FE #1, #6, #7, #10)
+
+**Status:** ✅ Complete. **1050 tests passing** on MySQL 8 + Redis 7 in Docker
+(1037 prior + 13 new). Four small, contract-driven follow-ups closing the gaps
+`docs/frontend-contract/05_open_questions.md` flagged, so Module 13 builds against a
+complete API with no work-arounds. Each was built + tested + committed separately;
+all marked RESOLVED in 05_open_questions.md. No React.
+
+- **FE #6 — `GET /api/billing/my-features`** (commit `my-features endpoint`): a
+  read-only feature-flag map `{feature: bool}` for ANY authenticated role (not
+  Admin-only), reusing `feature_flags_for`; the caller's own tenant only
+  (cross-tenant isolated). Lets any UI pre-disable locked premium controls.
+- **FE #7 — `GET /api/ai/nudges`** (commit `nudges endpoint`): Agent-2 KPI nudges
+  over HTTP, gated `VIEW_TEAM_SCORES` (Manager+; Employee 403). Scope-aware
+  `team_nudges(actor)` (Manager = subtree, HRBP/Admin = tenant) reusing the existing
+  `classify_nudge` — no recompute; `manager_nudges` kept intact.
+- **FE #10 — User `display_name`** (commit `user display_name`): optional, nullable,
+  NOT unique `display_name` on `identity.User` (migration `0002`) + a `display`
+  property (= display_name or email fallback). Wired into admin create + a new
+  `POST /api/admin/users/<id>/display-name`, the `me` response, and the org person
+  card + search; `UserAdminSerializer` exposes both. Data dictionary updated.
+- **FE #1 — list pagination** (commit `list pagination`): shared
+  `apps/core/pagination.StandardResultsSetPagination` (`{count,next,previous,results}`,
+  50/page, `?page_size=` ≤ 200) on the growth-prone lists (goals, reviews +
+  calibration, feedback cycles/items/HRBP-queue, org search + positions, JD list +
+  requests, career roadmaps, succession critical-roles/bench/nine-box); config /
+  sub-detail / small lists stay plain arrays. Scoping unchanged; 19 array-shape test
+  assertions updated + core pagination proof tests added.
+
+The backend is now feature-complete for Module 13; `docs/frontend-contract/` is
+gap-free for #1/#6/#7/#10.

@@ -259,19 +259,19 @@ def test_hrbp_tenant_scope_detail_and_calibration(org):
 
     cal = hrbp.get(f"{REVIEWS}calibration?cycle={cycle.id}")
     assert cal.status_code == 200
-    assert str(review.id) in {row["id"] for row in cal.json()}
+    assert str(review.id) in {row["id"] for row in cal.json()["results"]}
 
     # ?state= filter narrows the rows.
     none = hrbp.get(f"{REVIEWS}calibration?cycle={cycle.id}&state=FINALIZED")
     assert none.status_code == 200
-    assert none.json() == []
+    assert none.json()["results"] == []
 
 
 def test_calibration_hides_final_body_until_finalized(org):
     cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
     _make_review(org, cycle=cycle, state="PENDING_HUMAN_REVIEW", draft_body="secret")
     hrbp = _client_for(org.hrbp)
-    rows = hrbp.get(f"{REVIEWS}calibration?cycle={cycle.id}").json()
+    rows = hrbp.get(f"{REVIEWS}calibration?cycle={cycle.id}").json()["results"]
     assert rows[0]["final_body"] is None
 
 
@@ -288,20 +288,20 @@ def test_review_list_scopes_and_filters(org):
     peer_review = _make_review(org, employee=org.peer, cycle=cycle)
 
     # OWN: the employee sees only their own review.
-    emp_rows = _client_for(org.report).get(REVIEWS).json()
+    emp_rows = _client_for(org.report).get(REVIEWS).json()["results"]
     assert {r["id"] for r in emp_rows} == {str(report_review.id)}
 
     # TEAM: the manager sees the subtree (the report), not the peer.
-    mgr_rows = _client_for(org.manager).get(f"{REVIEWS}?cycle={cycle.id}").json()
+    mgr_rows = _client_for(org.manager).get(f"{REVIEWS}?cycle={cycle.id}").json()["results"]
     assert {r["id"] for r in mgr_rows} == {str(report_review.id)}
 
     # TENANT: HRBP sees both; ?state= filters.
     hrbp = _client_for(org.hrbp)
-    assert {r["id"] for r in hrbp.get(REVIEWS).json()} == {
+    assert {r["id"] for r in hrbp.get(REVIEWS).json()["results"]} == {
         str(report_review.id),
         str(peer_review.id),
     }
-    assert hrbp.get(f"{REVIEWS}?state=FINALIZED").json() == []
+    assert hrbp.get(f"{REVIEWS}?state=FINALIZED").json()["results"] == []
 
 
 # ── cross-tenant isolation ─────────────────────────────────────────────────

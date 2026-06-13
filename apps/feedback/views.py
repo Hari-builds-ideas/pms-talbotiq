@@ -26,6 +26,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.rbac.matrix import Capability, role_has_capability
@@ -87,7 +88,11 @@ class FeedbackCycleListCreateView(RBACMixin, APIView):
             visible = reporting_subtree_ids(request.user) | {request.user.id}
             cycles = cycles.filter(subject_id__in=visible)
         # Scope.TENANT → all in tenant (scoped manager already isolates).
-        return Response(FeedbackCycleSerializer(cycles, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(cycles, request, view=self)
+        return paginator.get_paginated_response(
+            FeedbackCycleSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = FeedbackCycleCreateSerializer(data=request.data)
@@ -292,7 +297,11 @@ class MyFeedbackView(RBACMixin, APIView):
 
     def get(self, request):
         items = Feedback.objects.filter(giver_id=request.user.id)
-        return Response(OwnFeedbackSerializer(items, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(items, request, view=self)
+        return paginator.get_paginated_response(
+            OwnFeedbackSerializer(page, many=True).data
+        )
 
 
 class FeedbackItemEditView(RBACMixin, APIView):
@@ -325,8 +334,10 @@ class ReceivedFeedbackView(RBACMixin, APIView):
         items = Feedback.objects.filter(
             subject_id=request.user.id, kind=Feedback.Kind.CONTINUOUS
         )
-        return Response(
-            ReceivedContinuousFeedbackSerializer(items, many=True).data
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(items, request, view=self)
+        return paginator.get_paginated_response(
+            ReceivedContinuousFeedbackSerializer(page, many=True).data
         )
 
 
@@ -401,7 +412,11 @@ class SummaryReviewQueueView(RBACMixin, APIView):
                 FeedbackSummary.Status.PENDING_HUMAN_REVIEW,
             ]
         )
-        return Response(FeedbackSummarySerializer(queue, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(queue, request, view=self)
+        return paginator.get_paginated_response(
+            FeedbackSummarySerializer(page, many=True).data
+        )
 
 
 class SummaryApproveView(RBACMixin, APIView):

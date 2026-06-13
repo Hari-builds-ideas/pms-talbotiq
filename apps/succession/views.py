@@ -40,6 +40,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.org.models import Position
@@ -103,7 +104,11 @@ class CriticalRoleListCreateView(SuccessionMixin, APIView):
 
     def get(self, request):
         roles = services.list_critical_roles(request.user)
-        return Response(CriticalRoleSerializer(roles, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(roles, request, view=self)
+        return paginator.get_paginated_response(
+            CriticalRoleSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = CriticalRoleCreateSerializer(data=request.data)
@@ -199,7 +204,11 @@ class BenchListCreateView(SuccessionMixin, APIView):
     def get(self, request, pk):
         role = services.get_critical_role_in_scope(request.user, pk)
         bench = services.list_bench(request.user, role)
-        return Response(BenchCandidateSerializer(bench, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(bench, request, view=self)
+        return paginator.get_paginated_response(
+            BenchCandidateSerializer(page, many=True).data
+        )
 
     def post(self, request, pk):
         role = services.get_critical_role_in_scope(request.user, pk)
@@ -261,7 +270,11 @@ class NineBoxListCreateView(SuccessionMixin, APIView):
         if cycle_id:
             cycle = get_object_or_404(PerformanceCycle.objects.all(), pk=cycle_id)
         placements = services.list_nine_box(request.user, cycle=cycle)
-        return Response(NineBoxSerializer(placements, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(placements, request, view=self)
+        return paginator.get_paginated_response(
+            NineBoxSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = NineBoxAssessSerializer(data=request.data)

@@ -233,7 +233,7 @@ def test_goal_list_scope_employee_sees_only_own(org):
     rep = _client_for(org.report)
     resp = rep.get(GOALS)
     assert resp.status_code == 200
-    emp_ids = {g["employee"] for g in resp.json()}
+    emp_ids = {g["employee"] for g in resp.json()["results"]}
     assert emp_ids == {str(org.report.id)}
 
 
@@ -247,8 +247,8 @@ def test_goal_list_cycle_filter(org):
     rep = _client_for(org.report)
     resp = rep.get(f"{GOALS}?cycle={c1.id}")
     assert resp.status_code == 200
-    assert all(g["cycle"] == str(c1.id) for g in resp.json())
-    assert len(resp.json()) == 1
+    assert all(g["cycle"] == str(c1.id) for g in resp.json()["results"])
+    assert resp.json()["count"] == 1
 
 
 # ── approve ────────────────────────────────────────────────────────────────

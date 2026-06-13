@@ -33,6 +33,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.pagination import StandardResultsSetPagination
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
@@ -72,7 +73,11 @@ class JDListCreateView(RBACMixin, APIView):
             q=request.query_params.get("q", ""),
             status=request.query_params.get("status"),
         )
-        return Response(JobDescriptionSerializer(jds, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(jds, request, view=self)
+        return paginator.get_paginated_response(
+            JobDescriptionSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = JobDescriptionCreateSerializer(data=request.data)
@@ -294,7 +299,11 @@ class JDRequestListCreateView(RBACMixin, APIView):
 
     def get(self, request):
         requests = services.visible_jd_requests(request.user)
-        return Response(JDRequestSerializer(requests, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(requests, request, view=self)
+        return paginator.get_paginated_response(
+            JDRequestSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = JDRequestCreateSerializer(data=request.data)

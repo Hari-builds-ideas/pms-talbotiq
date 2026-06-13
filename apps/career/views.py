@@ -33,6 +33,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.pagination import StandardResultsSetPagination
 from apps.identity.models import User
 from apps.jd.models import JobDescription
 from apps.org.models import Position
@@ -110,7 +111,11 @@ class MyRoadmapsView(RBACMixin, APIView):
 
     def get(self, request):
         roadmaps = services.list_roadmaps(request.user, employee=request.user)
-        return Response(DevelopmentRoadmapSerializer(roadmaps, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(roadmaps, request, view=self)
+        return paginator.get_paginated_response(
+            DevelopmentRoadmapSerializer(page, many=True).data
+        )
 
 
 class RoadmapListView(RBACMixin, APIView):
@@ -126,7 +131,11 @@ class RoadmapListView(RBACMixin, APIView):
         if employee_id:
             employee = get_object_or_404(User.objects.all(), pk=employee_id)
         roadmaps = services.list_roadmaps(request.user, employee=employee)
-        return Response(DevelopmentRoadmapSerializer(roadmaps, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(roadmaps, request, view=self)
+        return paginator.get_paginated_response(
+            DevelopmentRoadmapSerializer(page, many=True).data
+        )
 
 
 class RoadmapDetailView(RBACMixin, APIView):

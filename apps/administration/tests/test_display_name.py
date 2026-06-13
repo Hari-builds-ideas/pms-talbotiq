@@ -126,7 +126,7 @@ def test_search_returns_display(org):
         f"{ADMIN_USERS}/{org.report.id}/display-name",
         {"display_name": "Reporta Smith"}, format="json",
     )
-    results = _client_for(org.admin).get("/api/org/search", {"q": "report@acme"}).json()
+    results = _client_for(org.admin).get("/api/org/search", {"q": "report@acme"}).json()["results"]
     row = next(r for r in results if r["id"] == str(org.report.id))
     assert row["display_name"] == "Reporta Smith"
     assert row["display"] == "Reporta Smith"

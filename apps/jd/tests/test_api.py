@@ -107,7 +107,7 @@ def test_e2e_manual_jd_flow(org):
     assert detail.json()["status"] == "PUBLISHED"
     listing = emp.get(JD)
     assert listing.status_code == 200
-    assert jd_id in {row["id"] for row in listing.json()}
+    assert jd_id in {row["id"] for row in listing.json()["results"]}
 
     # 6. versions: one published version.
     versions = emp.get(f"{JD}{jd_id}/versions")
@@ -290,12 +290,12 @@ def test_jd_request_create_list_and_fulfil(org):
     # Manager sees their own request.
     mine = mgr.get(f"{JD}requests")
     assert mine.status_code == 200
-    assert req_id in {r["id"] for r in mine.json()}
+    assert req_id in {r["id"] for r in mine.json()["results"]}
 
     # HRBP sees it tenant-wide.
     theirs = hrbp.get(f"{JD}requests")
     assert theirs.status_code == 200
-    assert req_id in {r["id"] for r in theirs.json()}
+    assert req_id in {r["id"] for r in theirs.json()["results"]}
 
     # HRBP fulfils with a JD they author.
     jd = JD_published(org, hrbp_client=hrbp)

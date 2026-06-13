@@ -25,6 +25,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
@@ -77,7 +78,9 @@ class ReviewListCreateView(RBACMixin, APIView):
         state = request.query_params.get("state")
         if state:
             reviews = reviews.filter(state=state)
-        return Response(ReviewSerializer(reviews, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(reviews, request, view=self)
+        return paginator.get_paginated_response(ReviewSerializer(page, many=True).data)
 
     def post(self, request):
         serializer = ReviewCreateSerializer(data=request.data)
@@ -319,4 +322,8 @@ class ReviewCalibrationView(RBACMixin, APIView):
         state = request.query_params.get("state")
         if state:
             reviews = reviews.filter(state=state)
-        return Response(CalibrationRowSerializer(reviews, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(reviews, request, view=self)
+        return paginator.get_paginated_response(
+            CalibrationRowSerializer(page, many=True).data
+        )

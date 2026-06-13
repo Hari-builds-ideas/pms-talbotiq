@@ -27,6 +27,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import record
+from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
@@ -76,7 +77,9 @@ class GoalListCreateView(RBACMixin, APIView):
         cycle_id = request.query_params.get("cycle")
         if cycle_id:
             goals = goals.filter(cycle_id=cycle_id)
-        return Response(GoalSerializer(goals, many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(goals, request, view=self)
+        return paginator.get_paginated_response(GoalSerializer(page, many=True).data)
 
     def post(self, request):
         serializer = GoalSerializer(data=request.data)

@@ -302,7 +302,7 @@ def test_manager_views_report_roadmap_in_tier(org):
     # GET /roadmaps?employee=report.id → 200 with the roadmap.
     resp = mgr.get(f"{CAREER}roadmaps", {"employee": str(org.report.id)})
     assert resp.status_code == 200, resp.content
-    ids = {r["id"] for r in resp.json()}
+    ids = {r["id"] for r in resp.json()["results"]}
     assert roadmap_id in ids
 
 
@@ -440,7 +440,7 @@ def test_my_roadmaps_returns_own_only(org):
 
     resp = report_client.get(f"{CAREER}roadmap")
     assert resp.status_code == 200, resp.content
-    rows = resp.json()
+    rows = resp.json()["results"]
     assert rows
     assert all(r["employee"] == str(org.report.id) for r in rows)
 

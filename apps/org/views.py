@@ -33,6 +33,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.pagination import StandardResultsSetPagination
 from apps.identity.models import User
 from apps.jd.models import JobDescription
 from apps.rbac.matrix import Capability
@@ -83,9 +84,13 @@ class OrgSearchView(RBACMixin, APIView):
     required_capability = Capability.VIEW_ORG_CHART
 
     def get(self, request):
-        return Response(
-            services.search_people(request.user, request.query_params.get("q", ""))
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(
+            services.search_people(request.user, request.query_params.get("q", "")),
+            request,
+            view=self,
         )
+        return paginator.get_paginated_response(page)
 
 
 class OrgExportView(RBACMixin, APIView):
@@ -129,7 +134,11 @@ class PositionListCreateView(RBACMixin, APIView):
         return super().get_permissions()
 
     def get(self, request):
-        return Response(PositionSerializer(Position.objects.all(), many=True).data)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(Position.objects.all(), request, view=self)
+        return paginator.get_paginated_response(
+            PositionSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = PositionCreateSerializer(data=request.data)

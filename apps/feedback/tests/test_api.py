@@ -146,7 +146,7 @@ def test_e2e_360_flow(org):
     # HRBP review queue contains it (PENDING_HUMAN_REVIEW — clean path).
     queue = hrbp.get(FB + "summaries/review")
     assert queue.status_code == 200
-    row = next(r for r in queue.json() if r["cycle"] == cycle_id)
+    row = next(r for r in queue.json()["results"] if r["cycle"] == cycle_id)
     assert row["status"] == "PENDING_HUMAN_REVIEW"
     assert row["anonymity_passed"] is True
     assert "reviewed_by" not in row  # reviewer identity never egresses
@@ -187,7 +187,7 @@ def test_client_supplied_giver_is_ignored(org):
         assert item.giver_id == org.peer.id
 
     # And the giver sees it under /mine (their own attributed list).
-    mine = _client_for(org.peer).get(FB + "mine").json()
+    mine = _client_for(org.peer).get(FB + "mine").json()["results"]
     assert item_id in {row["id"] for row in mine}
 
 
@@ -258,7 +258,7 @@ def test_no_surface_leaks_another_givers_identity(org):
     assert str(peer_a.id) not in blob
 
     # /mine shows B only B's own item — never A's.
-    mine = b.get(FB + "mine").json()
+    mine = b.get(FB + "mine").json()["results"]
     assert {row["id"] for row in mine} == {b_item.json()["id"]}
 
     # The cycle's invitation list (the only giver-bearing listing) is for the
@@ -308,7 +308,7 @@ def test_breach_holds_summary_until_hrbp_approves(org):
 
     hrbp = _client_for(org.hrbp)
     row = next(
-        r for r in hrbp.get(FB + "summaries/review").json() if r["cycle"] == str(cycle.id)
+        r for r in hrbp.get(FB + "summaries/review").json()["results"] if r["cycle"] == str(cycle.id)
     )
     assert row["status"] == "HRBP_HOLD"
     assert row["anonymity_passed"] is False
@@ -337,7 +337,7 @@ def test_marked_sensitive_holds_summary(org):
 
     row = next(
         r
-        for r in _client_for(org.hrbp).get(FB + "summaries/review").json()
+        for r in _client_for(org.hrbp).get(FB + "summaries/review").json()["results"]
         if r["cycle"] == str(cycle.id)
     )
     assert row["status"] == "HRBP_HOLD"
@@ -359,12 +359,12 @@ def test_continuous_feedback_recipient_never_sees_the_giver(org):
     # The recipient sees the words — and NO giver field anywhere.
     received = _client_for(org.report).get(FB + "received")
     assert received.status_code == 200
-    [row] = [r for r in received.json() if r["body"] == body]
+    [row] = [r for r in received.json()["results"] if r["body"] == body]
     assert "giver" not in row
     assert str(org.peer.id) not in json.dumps(received.json())
 
     # The giver sees it attributed under their own /mine.
-    mine = giver.get(FB + "mine").json()
+    mine = giver.get(FB + "mine").json()["results"]
     assert any(r["body"] == body and r["subject"] == str(org.report.id) for r in mine)
 
     # Self-directed continuous feedback is rejected.
@@ -467,7 +467,7 @@ def test_rbac_and_tenant_isolation(org, other_tenant):
     # And a foreign manager's listing never contains our cycles.
     ours = FeedbackCycleFactory(subject=org.report)
     foreign_admin = UserFactory(tenant=other_tenant, role="ADMIN")
-    listed = _client_for(foreign_admin).get(FB + "cycles").json()
+    listed = _client_for(foreign_admin).get(FB + "cycles").json()["results"]
     assert str(ours.id) not in {row["id"] for row in listed}
 
 
@@ -542,7 +542,7 @@ def test_full_flow_writes_the_audit_trail(org):
     )
     assert _give(giver, cycle_id, "Audit-worthy diligence.").status_code == 201
     assert mgr.post(f"{FB}cycles/{cycle_id}/close").status_code == 200
-    row = next(r for r in hrbp.get(FB + "summaries/review").json() if r["cycle"] == cycle_id)
+    row = next(r for r in hrbp.get(FB + "summaries/review").json()["results"] if r["cycle"] == cycle_id)
     assert hrbp.post(f"{FB}summaries/{row['id']}/approve").status_code == 200
 
     with tenant_context(org.tenant):

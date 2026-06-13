@@ -127,11 +127,11 @@ def test_person_card_cross_tenant_is_404(org, other_tenant):
 def test_search_scopes_results(org):
     # HRBP (TENANT) finds the peer; report (OWN) is bounded to their own line.
     hrbp = _client_for(org.hrbp)
-    hits = hrbp.get(f"{ORG}search?q=acme.test").json()
+    hits = hrbp.get(f"{ORG}search?q=acme.test").json()["results"]
     assert "peer@acme.test" in {h["email"] for h in hits}
 
     emp = _client_for(org.report)
-    emp_hits = emp.get(f"{ORG}search?q=acme.test").json()
+    emp_hits = emp.get(f"{ORG}search?q=acme.test").json()["results"]
     emails = {h["email"] for h in emp_hits}
     assert "peer@acme.test" not in emails
     assert emails <= {"report@acme.test", "manager@acme.test", "hrbp@acme.test"}

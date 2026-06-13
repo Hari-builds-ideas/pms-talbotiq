@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.ai.agents.chat import chat_answer
+from apps.ai.agents.kpi import team_nudges
 from apps.billing.gate import requires_entitlement
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -51,3 +52,19 @@ class ChatView(RBACMixin, APIView):
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         # ok / blocked-write → 200 (a blocked write is a valid, informative answer).
         return Response(result)
+
+
+class NudgesView(RBACMixin, APIView):
+    """``GET /api/ai/nudges`` (VIEW_TEAM_SCORES — Manager+) — Agent 2's current KPI
+    nudges for the caller's tier: a Manager sees their reporting subtree, HRBP/Admin
+    the whole tenant. READ-ONLY (reuses ``team_nudges`` — no recompute). An Employee
+    lacks VIEW_TEAM_SCORES → 403 (consistent with the team-scores surface).
+
+    Returns a list of ``{employee, level, message}`` (level ∈ CRITICAL / STANDARD /
+    SUPPRESSED); empty when no one is at risk.
+    """
+
+    required_capability = Capability.VIEW_TEAM_SCORES
+
+    def get(self, request):
+        return Response(team_nudges(request.user))

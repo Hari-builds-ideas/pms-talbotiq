@@ -80,22 +80,44 @@ def on_cycle_scores_recomputed(sender, **kwargs):
         logger.warning("Agent-2 KPI nudge failed (best-effort).", exc_info=True)
 
 
+def _nudges_for_employee_ids(employee_ids) -> list[dict]:
+    """Classify the current nudge for each employee id from their LATEST CycleScore
+    (reusing ``classify_nudge`` — no recompute). Caller is inside ``tenant_context``."""
+    from apps.goals.models import CycleScore
+
+    out = []
+    for eid in employee_ids:
+        score = CycleScore.objects.filter(employee_id=eid).order_by("-computed_at").first()
+        if score is None:
+            continue
+        nudge = classify_nudge(score.risk_status, _days_remaining_for_cycle(score.cycle_id))
+        if nudge is not None:
+            out.append({"employee": str(eid), **nudge})
+    return out
+
+
 def manager_nudges(manager) -> list[dict]:
     """The manager dashboard read: current nudges for the manager's reports' latest
     scores (deterministic, scope-bounded). READ-ONLY."""
-    from apps.goals.models import CycleScore
     from apps.rbac.scope import reporting_subtree_ids
     from apps.tenancy.context import tenant_context
 
-    out = []
     with tenant_context(manager.tenant_id):
-        report_ids = reporting_subtree_ids(manager)
-        for eid in report_ids:
-            score = CycleScore.objects.filter(employee_id=eid).order_by("-computed_at").first()
-            if score is None:
-                continue
-            days = _days_remaining_for_cycle(score.cycle_id)
-            nudge = classify_nudge(score.risk_status, days)
-            if nudge is not None:
-                out.append({"employee": str(eid), **nudge})
-    return out
+        return _nudges_for_employee_ids(reporting_subtree_ids(manager))
+
+
+def team_nudges(actor) -> list[dict]:
+    """The scope-aware dashboard read used by the HTTP surface: a Manager (TEAM) sees
+    their reporting subtree; HRBP/Admin (TENANT) see the whole active tenant. Reuses
+    the SAME nudge classification (``classify_nudge`` over the latest CycleScore) — it
+    never recomputes scoring. READ-ONLY."""
+    from apps.identity.models import User
+    from apps.rbac.scope import Scope, reporting_subtree_ids, scope_for_role
+    from apps.tenancy.context import tenant_context
+
+    with tenant_context(actor.tenant_id):
+        if scope_for_role(actor.role) is Scope.TENANT:
+            ids = set(User.objects.filter(is_active=True).values_list("id", flat=True))
+        else:
+            ids = reporting_subtree_ids(actor)
+        return _nudges_for_employee_ids(ids)

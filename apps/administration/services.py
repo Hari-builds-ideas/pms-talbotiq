@@ -28,10 +28,12 @@ _VALID_ROLES = set(User.Role.values)
 # ── user / role management ─────────────────────────────────────────────────────
 
 
-def create_user(actor, *, email, role, manager=None, password=None, mfa_enabled=False) -> User:
+def create_user(
+    actor, *, email, role, manager=None, password=None, mfa_enabled=False, display_name=None
+) -> User:
     """Create a user in the actor's tenant with ``role`` (Admin-only at the view).
     Audited before the create. 422 on an unknown role or an email already in use in
-    the tenant."""
+    the tenant. ``display_name`` is optional (empty → email fallback)."""
     if role not in _VALID_ROLES:
         raise InvalidAdminInput(f"Unknown role '{role}'.", code="UNKNOWN_ROLE")
     tid = actor.tenant_id
@@ -57,7 +59,25 @@ def create_user(actor, *, email, role, manager=None, password=None, mfa_enabled=
             role=role,
             manager=manager,
             mfa_enabled=mfa_enabled,
+            display_name=(display_name or None),
         )
+
+
+def set_display_name(actor, user, display_name) -> User:
+    """Set/clear ``user``'s display name (Admin-only). Audited. Blank/None clears it
+    (→ the email fallback via ``User.display``)."""
+    with tenant_context(user.tenant_id):
+        record(
+            action="admin.display_name_set",
+            actor=actor,
+            target_type="user",
+            target_id=user.id,
+            metadata={"display_name": display_name or None},
+            tenant=user.tenant_id,
+        )
+        user.display_name = display_name or None
+        user.save(update_fields=["display_name", "updated_at"])
+        return user
 
 
 def set_role(actor, user, role) -> User:

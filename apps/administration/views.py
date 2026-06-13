@@ -30,6 +30,7 @@ from apps.rbac.mixins import RBACMixin
 from . import services
 from .serializers import (
     CreateUserSerializer,
+    DisplayNameSerializer,
     ReportingLineSerializer,
     SetRoleSerializer,
     TenantConfigSerializer,
@@ -71,6 +72,7 @@ class UserListCreateView(RBACMixin, APIView):
             role=data["role"],
             manager=manager,
             password=data.get("password"),
+            display_name=data.get("display_name"),
         )
         return Response(
             UserAdminSerializer(user).data, status=status.HTTP_201_CREATED
@@ -89,6 +91,22 @@ class UserRoleView(RBACMixin, APIView):
         serializer = SetRoleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = services.set_role(request.user, user, serializer.validated_data["role"])
+        return Response(UserAdminSerializer(user).data)
+
+
+class UserDisplayNameView(RBACMixin, APIView):
+    """``POST /api/admin/users/<pk>/display-name`` (MANAGE_USERS_ROLES — Admin) —
+    set/clear a user's display name. Blank/null clears it (→ email fallback)."""
+
+    required_capability = Capability.MANAGE_USERS_ROLES
+
+    def post(self, request, pk):
+        user = get_object_or_404(User.objects.all(), pk=pk)
+        serializer = DisplayNameSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = services.set_display_name(
+            request.user, user, serializer.validated_data["display_name"]
+        )
         return Response(UserAdminSerializer(user).data)
 
 

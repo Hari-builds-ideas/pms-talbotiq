@@ -9,6 +9,7 @@ from django.urls import path
 from .views import (
     TenantConfigView,
     UserDeactivateView,
+    UserDisplayNameView,
     UserListCreateView,
     UserReactivateView,
     UserReportingLineView,
@@ -20,6 +21,7 @@ app_name = "administration"
 urlpatterns = [
     path("users", UserListCreateView.as_view(), name="users"),
     path("users/<uuid:pk>/role", UserRoleView.as_view(), name="user-role"),
+    path("users/<uuid:pk>/display-name", UserDisplayNameView.as_view(), name="user-display-name"),
     path("users/<uuid:pk>/deactivate", UserDeactivateView.as_view(), name="user-deactivate"),
     path("users/<uuid:pk>/reactivate", UserReactivateView.as_view(), name="user-reactivate"),
     path(

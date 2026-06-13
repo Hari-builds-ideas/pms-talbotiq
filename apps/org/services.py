@@ -238,10 +238,13 @@ def person_card(actor, user_id) -> dict:
     return {
         "id": str(target.id),
         "email": target.email,
+        "display_name": target.display_name,   # raw (may be null) — for editing
+        "display": target.display,             # effective name (falls back to email)
         "role": target.role,
         "title": title,
         "manager": (
-            {"id": str(manager.id), "email": manager.email} if manager else None
+            {"id": str(manager.id), "email": manager.email, "display": manager.display}
+            if manager else None
         ),
         "direct_reports": direct_reports,
         "filled_positions": [
@@ -282,10 +285,17 @@ def search_people(actor, query) -> list[dict]:
         matched = by_email | by_title
     nodes = tree["nodes"]
     title_by_user = _titles_for(matched)
+    # Effective display name per matched user (display_name or email fallback).
+    display_by_user = {
+        str(u.id): (u.display_name, u.display)
+        for u in User.objects.filter(id__in=[n for n in matched if n in nodes])
+    }
     return [
         {
             "id": nid,
             "email": nodes[nid]["email"],
+            "display_name": display_by_user.get(nid, (None, nodes[nid]["email"]))[0],
+            "display": display_by_user.get(nid, (None, nodes[nid]["email"]))[1],
             "role": nodes[nid]["role"],
             "title": title_by_user.get(nid),
         }

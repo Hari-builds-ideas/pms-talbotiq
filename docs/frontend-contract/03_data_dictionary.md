@@ -13,11 +13,14 @@ back. Timestamps are ISO-8601 (see `05_open_questions.md` re: timezone display).
 ---
 
 ## Identity & tenancy
-- **User** (`/api/auth/me`, admin `UserAdminSerializer`): `id`, `email`,
-  `role` ∈ **EMPLOYEE · MANAGER · HRBP · ADMIN**, `manager` (UUID|null),
-  `is_active` (bool), `mfa_enabled` (bool). Read-only to the client except via the
-  Admin Hub (create/role/active/reporting-line). **No name field** — display name =
-  email (or a filled Position's title where shown).
+- **User** (`/api/auth/me`, admin `UserAdminSerializer`, org person card/search):
+  `id`, `email`, `display_name` (string|null — optional, settable via the Admin Hub),
+  `display` (string — the **effective** name = `display_name` or email fallback;
+  **render this**), `role` ∈ **EMPLOYEE · MANAGER · HRBP · ADMIN**, `manager`
+  (UUID|null), `is_active` (bool), `mfa_enabled` (bool). Read-only to the client
+  except via the Admin Hub (create with `display_name`; set role / active /
+  reporting-line / **display-name**). Use `display` for rendering (always populated);
+  `display_name` for editing.
 - **Tenant**: `id`, `name`, `slug`, `status` ∈ **ACTIVE · SUSPENDED · CANCELLED**.
   Read-only to the frontend (provisioning/admin concern).
 - **TenantConfig** (`administration`): `settings` (free-form JSON object) — settable

@@ -61,6 +61,10 @@ class User(AbstractBaseUser, PermissionsMixin, TenantScopedModel):
         ADMIN = "ADMIN", "Admin"
 
     email = models.EmailField()
+    #: Optional human display name. NOT unique, nullable — existing rows default to
+    #: NULL and the UI falls back to ``email`` (see the ``display`` property). Set via
+    #: the Admin Hub; never required (keeps existing flows valid).
+    display_name = models.CharField(max_length=255, null=True, blank=True, default=None)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.EMPLOYEE)
     # Reporting line / org tree.
     manager = models.ForeignKey(
@@ -92,6 +96,12 @@ class User(AbstractBaseUser, PermissionsMixin, TenantScopedModel):
 
     def __str__(self):
         return f"{self.email} [{self.role}]"
+
+    @property
+    def display(self) -> str:
+        """The effective display name: ``display_name`` when set, else ``email``.
+        Always populated — UIs render this directly (no client-side fallback needed)."""
+        return self.display_name or self.email
 
     @property
     def is_admin(self):

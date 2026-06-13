@@ -149,6 +149,8 @@ class MeView(APIView):
             {
                 "id": str(u.id),
                 "email": u.email,
+                "display_name": u.display_name,   # raw (may be null) — for editing
+                "display": u.display,             # effective name (falls back to email)
                 "role": u.role,
                 "tenant_id": str(u.tenant_id),
                 "mfa_enabled": u.mfa_enabled,

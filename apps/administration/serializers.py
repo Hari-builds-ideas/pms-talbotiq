@@ -22,11 +22,15 @@ from .models import TenantConfig
 
 
 class UserAdminSerializer(serializers.ModelSerializer):
-    """Read-only projection of a user for the Admin Hub user list / responses."""
+    """Read-only projection of a user for the Admin Hub user list / responses.
+    ``display`` is the effective name (``display_name`` or email fallback)."""
+
+    display = serializers.CharField(read_only=True)
 
     class Meta:
         model = User
-        fields = ["id", "email", "role", "manager", "is_active", "mfa_enabled"]
+        fields = ["id", "email", "display_name", "display", "role", "manager",
+                  "is_active", "mfa_enabled"]
         read_only_fields = fields
 
 
@@ -44,18 +48,29 @@ class TenantConfigSerializer(serializers.ModelSerializer):
 
 class CreateUserSerializer(serializers.Serializer):
     """Body for ``POST /users``. ``manager`` is an optional UUID resolved in the
-    view to a tenant-scoped ``User`` (cross-tenant id → 404)."""
+    view to a tenant-scoped ``User`` (cross-tenant id → 404). ``display_name`` is
+    optional (falls back to email when absent)."""
 
     email = serializers.EmailField()
     role = serializers.CharField()
     manager = serializers.UUIDField(required=False, allow_null=True, default=None)
     password = serializers.CharField(required=False, allow_null=True, default=None)
+    display_name = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True, default=None
+    )
 
 
 class SetRoleSerializer(serializers.Serializer):
     """Body for ``POST /users/<id>/role``."""
 
     role = serializers.CharField()
+
+
+class DisplayNameSerializer(serializers.Serializer):
+    """Body for ``POST /users/<id>/display-name``. Blank/null clears it (→ email
+    fallback)."""
+
+    display_name = serializers.CharField(allow_null=True, allow_blank=True)
 
 
 class ReportingLineSerializer(serializers.Serializer):

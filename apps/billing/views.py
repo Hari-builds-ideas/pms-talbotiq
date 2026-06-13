@@ -14,6 +14,7 @@ thin and only translate HTTP <-> service calls.
 from __future__ import annotations
 
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -111,3 +112,22 @@ class UpgradePromptView(RBACMixin, APIView):
 
     def get(self, request):
         return Response(upgrade_prompt(request.user.tenant))
+
+
+class MyFeaturesView(APIView):
+    """``GET /api/billing/my-features`` — the CALLER's own tenant feature-flag map
+    ``{feature: bool}``, readable by ANY authenticated role (not Admin-only, unlike
+    ``/feature-flags``). Same data as ``feature_flags_for`` — so any UI (employee,
+    manager, HRBP, admin) can pre-disable locked premium controls instead of
+    discovering them via 403/503.
+
+    It exposes ONLY the caller's own tenant flags (the tenant is bound from the JWT;
+    a caller can never read another tenant's map). No capability is required beyond
+    authentication — the map is not sensitive, it just reflects what the tenant has
+    paid for.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(feature_flags_for(request.user.tenant))

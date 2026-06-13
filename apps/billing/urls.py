@@ -9,6 +9,7 @@ from django.urls import path
 from .views import (
     EntitlementView,
     FeatureFlagsView,
+    MyFeaturesView,
     SeatsView,
     UpgradePromptView,
     UpgradeView,
@@ -21,5 +22,6 @@ urlpatterns = [
     path("upgrade", UpgradeView.as_view(), name="upgrade"),
     path("seats", SeatsView.as_view(), name="seats"),
     path("feature-flags", FeatureFlagsView.as_view(), name="feature-flags"),
+    path("my-features", MyFeaturesView.as_view(), name="my-features"),
     path("upgrade-prompt", UpgradePromptView.as_view(), name="upgrade-prompt"),
 ]

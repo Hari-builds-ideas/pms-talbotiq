@@ -1,6 +1,15 @@
 # NEEDS_HARI — feature-pack mapping for the AI agents (Module 11)
 
-**Status:** non-blocking. A safe default was chosen and the build proceeded.
+> ## ✅ RESOLVED — Hari's decision: **Agent 1 is now PREMIUM (FULL_AI).**
+> STARTER = `{agent2, chat}`; FULL_AI = `{agent1, agent2, agent3, agent4, agent5,
+> chat, jd_generator, career_roadmap}`. Applied in `apps/billing/packs.py`
+> (`FEATURE_PACKS` STARTER = `{agent2}`, `PACK_FEATURES` STARTER = `{agent2, chat}`)
+> and all billing/feature-flag tests; full suite green. Commit:
+> "Agent 1 → FULL_AI (commercial repackaging)". The original analysis is kept below
+> for the record; the "keep Agent 1 in STARTER" safe-default it recommended is now
+> superseded by this decision.
+
+**Status:** ✅ RESOLVED (was: non-blocking; a safe default was chosen and the build proceeded).
 
 ## The question
 Which pack should each AI feature live in (STARTER vs FULL_AI)? There is a small

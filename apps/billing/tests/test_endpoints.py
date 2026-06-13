@@ -33,7 +33,7 @@ def test_admin_get_entitlement_returns_defaults(org):
     body = resp.json()
     assert body["seat_count"] == 0
     assert body["feature_packs"] == ["STARTER"]
-    assert set(body["unlocked_agents"]) == {"agent1", "agent2"}
+    assert set(body["unlocked_agents"]) == {"agent2"}  # Agent 1 is now PREMIUM (FULL_AI)
     assert body["tier_label"] == "Starter"
 
 

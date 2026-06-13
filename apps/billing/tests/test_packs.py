@@ -18,8 +18,10 @@ from apps.billing.packs import (
 )
 
 
-def test_starter_unlocks_only_agents_1_and_2():
-    assert agents_for_packs([STARTER]) == {AGENT1, AGENT2}
+def test_starter_unlocks_only_agent_2():
+    # Commercial repackaging: Agent 1 is now PREMIUM (FULL_AI). STARTER's only agent
+    # is Agent 2 (the Fast KPI-nudge lane).
+    assert agents_for_packs([STARTER]) == {AGENT2}
 
 
 def test_full_ai_unlocks_all_five_agents():
@@ -32,7 +34,7 @@ def test_agents_for_packs_unions_across_packs():
 
 def test_unknown_pack_codes_are_ignored_safely():
     assert agents_for_packs(["NOPE"]) == set()
-    assert agents_for_packs([STARTER, "NOPE"]) == {AGENT1, AGENT2}
+    assert agents_for_packs([STARTER, "NOPE"]) == {AGENT2}
 
 
 def test_empty_and_none_pack_lists_unlock_nothing():

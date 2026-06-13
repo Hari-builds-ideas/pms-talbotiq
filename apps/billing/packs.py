@@ -35,23 +35,23 @@ JD_GENERATOR = "jd_generator"
 #: The Career Roadmap agent (Module 9 seam, filled in Module 10) — FULL_AI only.
 CAREER_ROADMAP = "career_roadmap"
 
-#: pack code -> the agents that pack unlocks. STARTER ships agents 1-2; FULL_AI
-#: unlocks the whole suite (1-5). These sets are independent of seat_count.
-#: (Kept exactly as Module 1 defined it so ``agents_for_packs`` / ``has_agent``
-#: and every Module-1 billing test stay unchanged.)
+#: pack code -> the agents that pack unlocks. COMMERCIAL PACKAGING (Hari's decision,
+#: resolving NEEDS_HARI_pack_mapping): every GENERATIVE agent — including Agent 1
+#: (Review Assistant) — is PREMIUM. STARTER ships only Agent 2 (KPI Intelligence,
+#: the Fast nudge lane); FULL_AI unlocks the whole suite (1-5). Independent of
+#: seat_count.
 FEATURE_PACKS: dict[str, frozenset[str]] = {
-    STARTER: frozenset({AGENT1, AGENT2}),
+    STARTER: frozenset({AGENT2}),
     FULL_AI: frozenset({AGENT1, AGENT2, AGENT3, AGENT4, AGENT5}),
 }
 
-#: pack code -> the FULL feature set it unlocks (agents PLUS the non-agent
-#: features chat / jd_generator / career_roadmap). A SUPERSET of ``FEATURE_PACKS``
-#: and what ``feature_flags_for`` (Module 11) resolves. The agent assignments
-#: mirror ``FEATURE_PACKS`` (so agents 3-5 stay FULL_AI-only — the headline
-#: "STARTER locks agents 3-5" property); chat ships in STARTER while the paid
-#: generative surfaces (JD generator, career roadmap) are FULL_AI-only.
+#: pack code -> the FULL feature set it unlocks (agents PLUS the non-agent features
+#: chat / jd_generator / career_roadmap). A SUPERSET of ``FEATURE_PACKS`` and what
+#: ``feature_flags_for`` (Module 11) resolves. STARTER's "AI taste" is Agent 2 +
+#: Chat (the Fast, read-only lane); every generative surface — Agent 1 + Agents 3-5,
+#: the JD generator and the career roadmap — is FULL_AI-only.
 PACK_FEATURES: dict[str, frozenset[str]] = {
-    STARTER: frozenset({AGENT1, AGENT2, CHAT}),
+    STARTER: frozenset({AGENT2, CHAT}),
     FULL_AI: frozenset(
         {AGENT1, AGENT2, AGENT3, AGENT4, AGENT5, CHAT, JD_GENERATOR, CAREER_ROADMAP}
     ),

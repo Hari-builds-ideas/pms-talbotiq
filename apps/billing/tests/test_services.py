@@ -4,7 +4,7 @@ Service-level tests for the decoupled commercial model.
 Central guarantees proven here:
   * seats and packs move INDEPENDENTLY — ``set_seats`` never touches packs, and
     ``upgrade_to_full_ai`` never touches seats;
-  * a STARTER tenant unlocks exactly {agent1, agent2}; FULL_AI unlocks 1-5;
+  * a STARTER tenant unlocks exactly {agent2} (Agent 1 is now PREMIUM); FULL_AI 1-5;
   * locked agents are denied and unlock instantly on upgrade;
   * the upgrade is idempotent;
   * the upgrade writes an immutable ``entitlement.upgraded`` audit row crediting
@@ -31,7 +31,7 @@ def test_default_entitlement_is_starter_with_zero_seats():
     ent = get_or_create_entitlement(t)
     assert ent.seat_count == 0
     assert ent.feature_packs == [STARTER]
-    assert ent.unlocked_agents() == {AGENT1, AGENT2}
+    assert ent.unlocked_agents() == {AGENT2}  # Agent 1 is now PREMIUM (FULL_AI)
 
 
 def test_get_or_create_is_idempotent_single_row():
@@ -92,19 +92,20 @@ def test_upgrade_is_idempotent():
 def test_locked_agent_denied_on_starter_unlocked_after_upgrade():
     t = TenantFactory()
     get_or_create_entitlement(t)  # STARTER
-    # agents 1-2 always available; 3-5 locked on STARTER.
-    assert tenant_has_agent(t, AGENT1) is True
+    # Only Agent 2 is available on STARTER; every other agent (incl. the now-PREMIUM
+    # Agent 1) is locked until upgrade.
     assert tenant_has_agent(t, AGENT2) is True
+    assert tenant_has_agent(t, AGENT1) is False
     assert tenant_has_agent(t, AGENT3) is False
     assert tenant_has_agent(t, AGENT4) is False
     assert tenant_has_agent(t, AGENT5) is False
 
     upgrade_to_full_ai(t)
+    # The whole suite unlocks instantly on upgrade — including Agent 1.
+    assert tenant_has_agent(t, AGENT1) is True
     assert tenant_has_agent(t, AGENT3) is True
     assert tenant_has_agent(t, AGENT4) is True
     assert tenant_has_agent(t, AGENT5) is True
-    # 1-2 remain available.
-    assert tenant_has_agent(t, AGENT1) is True
     assert tenant_has_agent(t, AGENT2) is True
 
 

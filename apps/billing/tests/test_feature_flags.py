@@ -28,8 +28,10 @@ def test_starter_flags_lock_agents_3_to_5_and_paid_features(tenant):
     flags = feature_flags_for(tenant)
     # Complete map: every gated feature has a boolean.
     assert set(flags) == set(packs.ALL_FEATURES)
-    # STARTER unlocks agents 1-2 + chat; locks agents 3-5 + the paid generative seams.
-    assert flags["agent1"] is True and flags["agent2"] is True and flags["chat"] is True
+    # STARTER's AI taste is Agent 2 + Chat; every generative agent (incl. the
+    # now-PREMIUM Agent 1) + the paid generative seams are FULL_AI-only.
+    assert flags["agent2"] is True and flags["chat"] is True
+    assert flags["agent1"] is False
     assert flags["agent3"] is False and flags["agent4"] is False and flags["agent5"] is False
     assert flags["jd_generator"] is False and flags["career_roadmap"] is False
 

@@ -1835,3 +1835,45 @@ rows across agent1/chat/agent3).
 Pick a provider; `pip install langgraph langsmith <sdk>` + rebuild; set `LLM_PROVIDER`
 (+ key) and each seam provider setting; provision FULL_AI for paid agents; confirm the
 per-tenant agent budgets. Until then: 503 everywhere, by design.
+
+
+## Pre-frontend — Agent-1 repackaging + Frontend Contract
+
+**Status:** ✅ Complete. **1026 tests passing** on MySQL 8 + Redis 7 in Docker
+(unchanged count — the commercial change updated existing billing/feature-flag test
+expectations; the contract is docs-only). Two pieces, no new app code beyond
+`apps/billing/packs.py`:
+
+### Agent 1 → FULL_AI (commercial repackaging)
+Resolved `NEEDS_HARI_pack_mapping.md` (now marked RESOLVED) with Hari's decision:
+Agent 1 (Review Assistant) is **PREMIUM**. `apps/billing/packs.py` now has
+`FEATURE_PACKS` STARTER = `{agent2}`, `PACK_FEATURES` STARTER = `{agent2, chat}`;
+FULL_AI = the full suite (`agent1..5, chat, jd_generator, career_roadmap`). Agent 2 +
+Chat are the STARTER "AI taste"; every generative agent (incl. Agent 1) is FULL_AI.
+The decoupled seat×pack model is unchanged; billing pack/service/endpoint/
+feature-flag test expectations updated. Commit `Agent 1 → FULL_AI (commercial repackaging)`.
+
+### Frontend Contract → `docs/frontend-contract/`
+A code-derived, design-agnostic spec a designer + frontend engineer can build
+Module 13 against WITHOUT reading Python (no visual-design opinions):
+- `00_overview.md` — the two surfaces (Desktop Hub / Mobile-Web), role×screen×surface
+  reachability, the full auth/MFA/OIDC flow, the global status/error conventions
+  (incl. the "404 = not yours/not there" rule, 429/Retry-After/upgrade_hint,
+  feature-flag-driven premium gating), and the HITL principle.
+- `01_screens.md` — the screen inventory (16 areas): per screen, the endpoints
+  (method · path · capability · scope), the data (serializer + fields), every user
+  action → endpoint → state transition, every state (incl. error-per-code / locked /
+  404 / pending / 429 / 503), and the validation rules.
+- `02_state_machines.md` — Review · Approval route · JD · Succession plan · Career
+  roadmap, each as a state list + transition table (from · action · to · who) for
+  stepper/timeline UI.
+- `03_data_dictionary.md` — every entity, field, **enum value set**, read-only vs
+  settable, referencing the serializers as the source of truth.
+- `04_role_journeys.md` — the 4 primary end-to-end journeys (Employee / Manager /
+  HRBP / Admin) with surface crossings + HITL gates marked.
+- `05_open_questions.md` — assumptions + assumed defaults (pagination, timezone,
+  workflow-designer scope, exports, feature-flag visibility, real-time, etc.) + a
+  short list of recommended small backend follow-ups (a `my-features` read endpoint,
+  a manager `nudges` endpoint, list pagination, a user display-name).
+
+**Out of scope (NOT done, by instruction):** any React/frontend code.

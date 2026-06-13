@@ -1,0 +1,31 @@
+# Frontend Contract — 05 · Open Questions & Assumed Defaults
+
+Things genuinely ambiguous for the frontend that I had to assume. Each has my
+**assumed default** (what the contract above is written against) so you can correct
+it before React starts. None blocks design; several are small backend follow-ups
+worth doing for a clean Module 13.
+
+| # | Question | Assumed default (what the contract assumes) | If you disagree |
+|---|----------|---------------------------------------------|-----------------|
+| 1 | **Pagination** — only the audit console paginates (`{count,next,previous,results}`, 50/page, max 200). Other list endpoints (goals, reviews, JDs, positions, roadmaps, integrations, succession) return **plain arrays**. | MVP renders non-audit lists as full arrays (volumes are tenant-scoped + modest). | If any list can grow large, add DRF pagination server-side first; the frontend should code list views to tolerate either shape. **Backend follow-up.** |
+| 2 | **Date/time + timezone** — timestamps are ISO-8601 (UTC; `USE_TZ`); cycle start/end + 1:1 `meeting_date` are plain dates. There is no per-user timezone preference. | Display UTC→browser-local for datetimes; show plain dates as-is. | If a tenant/user timezone is needed, add it to config + the contract. |
+| 3 | **Approval workflow designer** — the backend supports workflow create + activate/deactivate and step definition **at create time** (no PATCH of steps; re-create to change; in-flight routes are snapshotted). | The MVP designer is **create / activate / deactivate / view** + "re-create to edit steps" — config-capable, not a live drag-drop step editor. | If a rich step editor is wanted, that's a frontend build on the same endpoints (re-create on save); no backend change needed. |
+| 4 | **Succession on Mobile-Web** — management-only; employees get 404 everywhere. | Succession is **absent from Mobile-Web entirely** and never rendered for an Employee. | (Confirm — this is a privacy guarantee, not really negotiable.) |
+| 5 | **Exports** (org `/export`, jd `/export`, analytics `/export`) are **text/JSON only** (no binary PDF/docx — that's Module 14). | The frontend offers "view inline" + "download JSON" / "copy text"; no PDF. | If PDF/print is needed at launch, it's a frontend-side render of the JSON (no new endpoint). |
+| 6 | **Feature-flag visibility** — `GET /api/billing/feature-flags` is **Admin-only**; non-admins can't read the premium map. | Non-admin UIs derive feature availability from **503/403** on the agent surfaces (and the Hub shows the map to Admins). | **Recommended backend follow-up:** a read-only `GET /api/billing/my-features` for all roles so any UI can pre-disable locked premium controls instead of discovering them via errors. |
+| 7 | **KPI nudges (Agent 2) surface** — nudges are delivered via Slack + a `manager_nudges(manager)` read service, but there is **no HTTP endpoint** exposing them to a manager dashboard tile yet. | The "team nudges" dashboard tile is **deferred** (or read from Slack). | **Recommended backend follow-up:** expose `GET /api/ai/nudges` (manager-scoped) so the Hub can render a nudges tile. |
+| 8 | **Real-time updates** — there are no websockets/SSE; AI_DRAFTING, route progress, summary generation complete asynchronously. | The frontend **polls / refreshes after actions** (e.g. poll a review in AI_DRAFTING; refresh the route tracker after a decision). | If live push is wanted, that's a backend addition (channels/SSE) — out of MVP. |
+| 9 | **Dashboard composition** — there is no single `/dashboard` endpoint. | The frontend **composes** role dashboards client-side from the feature endpoints (+ the approvals inbox count). | If a server-aggregated dashboard is wanted, add an endpoint; otherwise compose client-side. |
+| 10 | **User display name** — `User` has only `email` + `role` (no first/last name). | Display **email** as the person's name throughout (and a filled Position's title where a role title is shown). | If a display-name is wanted, add the field to identity + admin create/edit + the contract. **Backend follow-up.** |
+| 11 | **Chat person reference** — the Chat agent resolves a person by an **email** appearing in the free-text query; results are always RBAC-scoped to the caller. | The chat UI is **free-text** (no person-picker required); out-of-scope/cross-tenant targets simply return nothing. | If a structured person-picker is wanted, the frontend can build one over `/api/org/search` and pass the email into the query. |
+| 12 | **Calibration grid suppression** — the 9-box calibration grid (HRBP/Admin) shows per-box counts **and** placements (employee + box); min-cohort suppression is NOT applied to calibration (it's over already-management-only 9-box data). | Calibration shows individuals to HRBP/Admin. | If calibration should also suppress small boxes, that's a backend rule change. |
+| 13 | **Multi-target career roadmaps** — a user may select multiple distinct targets (one ACTIVE roadmap per target). | The career UI supports **one active target at a time** (simplest), but the API allows several. | If you want a "compare targets" UI, the API already supports listing multiple roadmaps. |
+| 14 | **OIDC/SSO UX** — the IdP round-trip is at `/accounts/...` (allauth) and finalises via `POST /api/auth/oidc/complete`. | The SPA does a redirect-based SSO handoff (not embedded); local login + MFA is the primary path for MVP. | Confirm the SSO providers + whether SSO or local-login is the default entry. |
+
+## Summary of recommended backend follow-ups (small, for a clean Module 13)
+- **`GET /api/billing/my-features`** (all roles, read-only) — so any UI pre-disables locked premium controls (#6).
+- **`GET /api/ai/nudges`** (manager-scoped) — to render the KPI-nudge dashboard tile (#7).
+- **Pagination** on any list that can grow large (#1); **a user display-name field** (#10).
+
+None are blockers for design; the screens, states, and data above are complete and
+accurate against the current backend.

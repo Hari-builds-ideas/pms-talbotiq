@@ -4,6 +4,9 @@ import { AuthGuard, RoleGate } from "@/app/guards";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ComingSoon } from "@/components/ComingSoon";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
+import { UsersPage } from "@/features/admin/UsersPage";
+import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
+import { BillingPage } from "@/features/admin/BillingPage";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -86,7 +89,7 @@ export function AppRouter() {
             path="admin/users/*"
             element={
               <RoleGate min="ADMIN">
-                <ComingSoon title="Users & Roles" phase="Phase 2" description="Manage tenant users, roles and reporting lines." />
+                <UsersPage />
               </RoleGate>
             }
           />
@@ -94,7 +97,7 @@ export function AppRouter() {
             path="admin/tenant/*"
             element={
               <RoleGate min="ADMIN">
-                <ComingSoon title="Tenant Config" phase="Phase 2" />
+                <TenantConfigPage />
               </RoleGate>
             }
           />
@@ -102,7 +105,7 @@ export function AppRouter() {
             path="admin/billing/*"
             element={
               <RoleGate min="ADMIN">
-                <ComingSoon title="Entitlements" phase="Phase 2" description="Plan, seats and the upgrade to Full AI." />
+                <BillingPage />
               </RoleGate>
             }
           />

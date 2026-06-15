@@ -9,6 +9,7 @@ import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
 import { BillingPage } from "@/features/admin/BillingPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
+import { OrgPage } from "@/features/org/OrgPage";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -50,7 +51,7 @@ export function AppRouter() {
             path="org/*"
             element={
               <RoleGate min="MANAGER">
-                <ComingSoon title="Org Chart" phase="Phase 5" description="Reporting tree, people, vacancies and positions." />
+                <OrgPage />
               </RoleGate>
             }
           />

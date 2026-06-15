@@ -10,6 +10,8 @@ import { BillingPage } from "@/features/admin/BillingPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
 import { OrgPage } from "@/features/org/OrgPage";
+import { SuccessionPage } from "@/features/succession/SuccessionPage";
+import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -67,7 +69,7 @@ export function AppRouter() {
             path="succession/*"
             element={
               <RoleGate min="MANAGER">
-                <ComingSoon title="Succession" phase="Phase 6" description="Coverage, 9-box, bench and plans." />
+                <SuccessionPage />
               </RoleGate>
             }
           />
@@ -75,7 +77,7 @@ export function AppRouter() {
             path="analytics/*"
             element={
               <RoleGate min="MANAGER">
-                <ComingSoon title="Analytics" phase="Phase 6" description="Individual, department and calibration views." />
+                <AnalyticsPage />
               </RoleGate>
             }
           />

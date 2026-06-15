@@ -65,6 +65,14 @@ export interface TenantConfig {
   settings: Record<string, unknown>;
 }
 
+export interface PerformanceCycle {
+  id: UUID;
+  name: string;
+  start_date: ISODate;
+  end_date: ISODate;
+  status: "DRAFT" | "ACTIVE" | "CLOSED";
+}
+
 // ---- Auth ------------------------------------------------------------------
 
 export interface TokenPair {

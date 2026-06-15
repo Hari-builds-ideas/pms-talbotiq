@@ -8,6 +8,7 @@ import { UsersPage } from "@/features/admin/UsersPage";
 import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
 import { BillingPage } from "@/features/admin/BillingPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
+import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -41,7 +42,7 @@ export function AppRouter() {
             path="reviews/*"
             element={
               <RoleGate min="MANAGER">
-                <ComingSoon title="Reviews" phase="Phase 4" description="The HITL review lifecycle." />
+                <ReviewsRoutes />
               </RoleGate>
             }
           />

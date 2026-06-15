@@ -8,6 +8,7 @@ import {
   lockedFeatures,
   meFor,
   userById,
+  CYCLES,
   workflows,
   routes,
   inboxFor,
@@ -438,6 +439,13 @@ export const handlers = [
     step.comment = body.comment;
     route.status = "REJECTED";
     return HttpResponse.json(route);
+  }),
+
+  // ---- Cycles --------------------------------------------------------------
+  http.get(`${API}/cycles/`, async ({ request }) => {
+    await delay(GET_DELAY);
+    if (!currentUser(request)) return unauthorized();
+    return HttpResponse.json(CYCLES);
   }),
 
   // ---- Reviews -------------------------------------------------------------

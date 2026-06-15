@@ -21,6 +21,7 @@ import type {
   Nudge,
   OrgTree,
   Paginated,
+  PerformanceCycle,
   PersonCard,
   PersonRef,
   Position,
@@ -130,6 +131,12 @@ export const approvalsApi = {
     unwrap<ApprovalRoute>(api.post(`/approvals/steps/${id}/approve`, { comment })),
   rejectStep: (id: string, comment: string) =>
     unwrap<ApprovalRoute>(api.post(`/approvals/steps/${id}/reject`, { comment })),
+};
+
+// ---- Cycles ----------------------------------------------------------------
+
+export const cyclesApi = {
+  list: () => unwrap<PerformanceCycle[]>(api.get("/cycles/")),
 };
 
 // ---- Reviews ---------------------------------------------------------------

@@ -2,7 +2,6 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/app/shell/AppLayout";
 import { AuthGuard, RoleGate } from "@/app/guards";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { ComingSoon } from "@/components/ComingSoon";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
@@ -12,6 +11,9 @@ import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
 import { OrgPage } from "@/features/org/OrgPage";
 import { SuccessionPage } from "@/features/succession/SuccessionPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
+import { JdRoutes } from "@/features/jd/JdRoutes";
+import { AuditPage } from "@/features/audit/AuditPage";
+import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -61,7 +63,7 @@ export function AppRouter() {
             path="jd/*"
             element={
               <RoleGate min="MANAGER">
-                <ComingSoon title="JD Library" phase="Phase 7" description="Job descriptions, versions and lifecycle." />
+                <JdRoutes />
               </RoleGate>
             }
           />
@@ -85,7 +87,7 @@ export function AppRouter() {
             path="audit/*"
             element={
               <RoleGate min="HRBP">
-                <ComingSoon title="Audit Console" phase="Phase 7" description="Read-only, filterable activity log." />
+                <AuditPage />
               </RoleGate>
             }
           />
@@ -118,7 +120,7 @@ export function AppRouter() {
             path="admin/integrations/*"
             element={
               <RoleGate min="ADMIN">
-                <ComingSoon title="Integrations" phase="Phase 7" description="Jira and Slack configuration." />
+                <IntegrationsPage />
               </RoleGate>
             }
           />

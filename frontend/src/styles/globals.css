@@ -1,0 +1,136 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens — Talbotiq PMS Admin Hub.
+ * Slate base · Modern Blue primary · Purple = AI · Gold = premium-locked.
+ * Values are HSL channels (no hsl() wrapper) for Tailwind's hsl(var(--x)).
+ */
+@layer base {
+  :root {
+    --background: 210 20% 98%; /* near-white #FAFBFC */
+    --foreground: 222 47% 11%; /* slate-900 #0F172A */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 221 70% 50%; /* modern blue */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 33% 22%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%; /* slate-500 #64748B */
+
+    --accent: 214 95% 96%; /* blue-tinted hover */
+    --accent-foreground: 221 70% 42%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%; /* slate-200 #E2E8F0 */
+    --input: 214 32% 88%;
+    --ring: 221 70% 50%;
+
+    --radius: 0.625rem;
+
+    /* App shell — dark sidebar */
+    --sidebar: 222 39% 11%; /* deep slate #11161F */
+    --sidebar-foreground: 210 30% 92%;
+    --sidebar-muted: 215 18% 60%;
+    --sidebar-accent: 221 70% 56%;
+    --sidebar-border: 218 25% 20%;
+
+    /* Domain semantic palette */
+    --success: 158 64% 33%; /* teal-green */
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 152 55% 94%;
+
+    --warning: 28 80% 47%; /* amber/orange */
+    --warning-foreground: 0 0% 100%;
+    --warning-subtle: 38 92% 93%;
+
+    --danger: 0 72% 45%;
+    --danger-foreground: 0 0% 100%;
+    --danger-subtle: 0 80% 96%;
+
+    --info: 205 70% 40%;
+    --info-foreground: 0 0% 100%;
+    --info-subtle: 205 80% 95%;
+
+    --ai: 262 60% 55%; /* purple */
+    --ai-foreground: 0 0% 100%;
+    --ai-subtle: 262 75% 96%;
+
+    --premium: 38 78% 45%; /* gold */
+    --premium-foreground: 0 0% 100%;
+    --premium-subtle: 42 90% 94%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: theme("fontFamily.sans");
+    font-size: theme("fontSize.base[0]");
+    line-height: theme("fontSize.base[1].lineHeight");
+  }
+
+  /* Tabular numbers for tables, scores, money */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  :focus-visible {
+    @apply outline-none;
+  }
+}
+
+@layer utilities {
+  /* Skeleton shimmer surface */
+  .skeleton-shimmer {
+    @apply relative overflow-hidden bg-muted;
+  }
+  .skeleton-shimmer::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(0 0% 100% / 0.55),
+      transparent
+    );
+  }
+
+  /* Subtle scrollbars for dense panes */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(215 20% 80%);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

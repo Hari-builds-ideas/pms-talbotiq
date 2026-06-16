@@ -58,3 +58,21 @@ REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_CLASSES": ()}
 # Fixed key so signed MFA tokens etc. are stable across the run.
 SECRET_KEY = "test-secret-key-not-for-production"
 SIMPLE_JWT["SIGNING_KEY"] = SECRET_KEY  # noqa: F405
+
+# AI is HERMETIC in tests: pin the default provider to NotConfigured and clear any
+# real key the runtime env might carry, so the suite NEVER makes a real Groq call.
+# Individual AI tests still @override_settings(LLM_PROVIDER=FakeLLMProvider).
+LLM_PROVIDER = "apps.ai.providers.NotConfiguredProvider"
+GROQ_API_KEY = ""
+LLM_API_KEY = ""
+LLM_MAX_CALLS = 0
+
+# base.py points the agent seams at the real LangGraph agent providers (Module 10
+# go-live). In tests we pin them back to each seam's NotConfiguredProvider so the
+# "default → not configured → 503" seam tests stay true and no agent ever runs
+# unless a test explicitly @override_settings the seam + a Fake provider.
+REVIEW_ASSISTANT_PROVIDER = "apps.reviews.agent1.NotConfiguredProvider"
+FEEDBACK_SUMMARIZER_PROVIDER = "apps.feedback.agent3.NotConfiguredProvider"
+JD_GENERATOR_PROVIDER = "apps.jd.generator.NotConfiguredProvider"
+SUCCESSION_ANALYZER_PROVIDER = "apps.succession.agent4.NotConfiguredProvider"
+CAREER_ROADMAP_PROVIDER = "apps.career.roadmap_agent.NotConfiguredProvider"

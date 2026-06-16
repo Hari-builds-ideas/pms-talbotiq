@@ -28,6 +28,13 @@ flower==2.0.1
 # Database driver (MySQL 8)
 mysqlclient==2.2.4
 
+# AI agent stack (Module 10 go-live). langgraph keeps the agent node-sequences on
+# the locked StateGraph stack; langsmith enables optional tracing (no-op without a
+# key). The Groq provider is OpenAI-compatible and uses `requests` (above) — no
+# extra SDK. See apps/ai/groq.py + NEEDS_HARI_llm_provider.md.
+langgraph==0.2.61
+langsmith==0.1.147
+
 # Config + ops
 django-environ==0.11.2
 python-json-logger==2.0.7

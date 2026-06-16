@@ -314,29 +314,31 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# ─── AI seams (the real providers land in Module 10) ──────────────────
-# The JD Generator provider is resolved by import-string at call time
-# (apps.jd.generator.get_provider). Unset -> NotConfiguredProvider, which makes
-# the generate endpoint surface a loud 503 and NEVER fabricates a JD body.
+# ─── AI seams (Module 10 go-live: point at the real LangGraph agents) ──
+# Each agent provider's ``configured`` delegates to ``llm_configured()`` (the
+# Groq gateway), so with NO key these seams STILL report unconfigured → a loud
+# 503 and NEVER fabricate (tests pin LLM_PROVIDER off, so they 503 as before).
+# With the Groq key present (the running stack), they produce real AI output
+# through the safety pipeline, locked PENDING_HUMAN_REVIEW.
+REVIEW_ASSISTANT_PROVIDER = env(
+    "REVIEW_ASSISTANT_PROVIDER",
+    default="apps.ai.agents.review.ReviewAssistantProvider",
+)
+FEEDBACK_SUMMARIZER_PROVIDER = env(
+    "FEEDBACK_SUMMARIZER_PROVIDER",
+    default="apps.ai.agents.feedback.FeedbackSummarizerProvider",
+)
 JD_GENERATOR_PROVIDER = env(
     "JD_GENERATOR_PROVIDER",
-    default="apps.jd.generator.NotConfiguredProvider",
+    default="apps.ai.agents.jd.JDGeneratorProvider",
 )
-
-# The Agent-4 (Successor Planning) enrichment provider. Unset ->
-# NotConfiguredProvider, so the enrich endpoint surfaces a loud 503 and the
-# DETERMINISTIC plan stays intact; the real agent lands in Module 10.
 SUCCESSION_ANALYZER_PROVIDER = env(
     "SUCCESSION_ANALYZER_PROVIDER",
-    default="apps.succession.agent4.NotConfiguredProvider",
+    default="apps.ai.agents.succession.SuccessionAnalyzerProvider",
 )
-
-# The Career Roadmap agent (Module 10). Unset -> NotConfiguredProvider, so the
-# AI-enrich endpoint surfaces a loud 503 and the DETERMINISTIC roadmap (the
-# working baseline) stays intact; the real agent lands in Module 10.
 CAREER_ROADMAP_PROVIDER = env(
     "CAREER_ROADMAP_PROVIDER",
-    default="apps.career.roadmap_agent.NotConfiguredProvider",
+    default="apps.ai.agents.career.CareerRoadmapProvider",
 )
 
 # The analytics insights agent (Module 10 — the Fast-AI anomaly/at-risk narrative
@@ -366,8 +368,33 @@ SLACK_CLIENT_FACTORY = env(
 # key — see NEEDS_HARI_llm_provider.md. Tests set this to the deterministic
 # FakeLLMProvider to exercise the full agent graphs with no network call.
 LLM_PROVIDER = env("LLM_PROVIDER", default="apps.ai.providers.NotConfiguredProvider")
-# LangSmith tracing is opt-in: a no-op until a key is set (it is unset tonight).
+# LangSmith tracing is opt-in: a no-op until a key is set.
 LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
+
+# Groq (OpenAI-compatible) provider config. The key comes from GROQ_API_KEY (or the
+# generic LLM_API_KEY); when unset, GroqProvider.configured is False so the agents
+# stay on the graceful 503 path. The running stack points LLM_PROVIDER at
+# ``apps.ai.groq.GroqProvider`` (see docker-compose); tests pin NotConfigured.
+GROQ_API_KEY = env("GROQ_API_KEY", default="")
+LLM_API_KEY = env("LLM_API_KEY", default=GROQ_API_KEY)
+LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")
+LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
+LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=900)
+# Run-wide safety ceiling (cache-counted across web + celery): refuse further real
+# LLM calls once reached, so seeding/smoke-testing can never exhaust the free tier.
+LLM_MAX_CALLS = env.int("LLM_MAX_CALLS", default=0)
+
+# Two-model strategy: a smarter 70B model for human-read agents, a fast 8B model
+# for high-frequency/low-stakes calls. Per-agent → trivially re-tunable here.
+LLM_MODEL_MAP = {
+    "review": env("LLM_MODEL_REVIEW", default="llama-3.3-70b-versatile"),
+    "feedback": env("LLM_MODEL_FEEDBACK", default="llama-3.3-70b-versatile"),
+    "succession": env("LLM_MODEL_SUCCESSION", default="llama-3.3-70b-versatile"),
+    "jd": env("LLM_MODEL_JD", default="llama-3.3-70b-versatile"),
+    "career": env("LLM_MODEL_CAREER", default="llama-3.3-70b-versatile"),
+    "chat": env("LLM_MODEL_CHAT", default="llama-3.1-8b-instant"),
+    "default": env("LLM_MODEL_DEFAULT", default="llama-3.1-8b-instant"),
+}
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────
 LANGUAGE_CODE = "en-us"

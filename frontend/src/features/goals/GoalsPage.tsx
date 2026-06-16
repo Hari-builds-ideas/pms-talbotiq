@@ -31,6 +31,7 @@ import { useCycles } from "@/lib/hooks/useCycles";
 import { useDirectory } from "@/lib/hooks/useDirectory";
 import { KPI_DIRECTION, humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
+import { sumWeights, weightsSumTo100 } from "@/lib/weights";
 import { mapApiError } from "@/lib/errors";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import { activeWeightTotal, useCycleScores, useGoalMutations, useGoals } from "./useGoals";
@@ -263,8 +264,8 @@ function NewGoalDialog({
     }
   }, [open]);
 
-  const kpiTotal = kpis.reduce((s, k) => s + (Number(k.weight) || 0), 0);
-  const kpiOk = Math.abs(kpiTotal - 100) < 0.005;
+  const kpiTotal = sumWeights(kpis);
+  const kpiOk = weightsSumTo100(kpis);
   const existingActive = employee
     ? activeWeightTotal(existingGoals, employee)
     : 0;

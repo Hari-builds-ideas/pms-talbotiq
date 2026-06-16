@@ -9,6 +9,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field } from "@/components/Field";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -44,6 +52,7 @@ export function JdDetailPage() {
   const [must, setMust] = React.useState("");
   const [nice, setNice] = React.useState("");
   const [aiUnavailable, setAiUnavailable] = React.useState(false);
+  const [genOpen, setGenOpen] = React.useState(false);
 
   const working = versions.data?.[0];
 
@@ -91,13 +100,22 @@ export function JdDetailPage() {
     }
   }
 
-  async function generate() {
+  // The generator needs a saved role brief (inputs) first — otherwise it 422s.
+  // Collect the brief in a dialog, save it, then generate.
+  async function generateWithInputs(brief: Record<string, unknown>) {
     setAiUnavailable(false);
     try {
+      await m.saveInputs.mutateAsync(brief);
       await m.generate.mutateAsync();
+      notifySuccess("AI draft generated", "Review it below, then submit/approve.");
+      setGenOpen(false);
     } catch (err) {
-      if (mapApiError(err).kind === "ai_unavailable") setAiUnavailable(true);
-      else notifyError(err);
+      if (mapApiError(err).kind === "ai_unavailable") {
+        setAiUnavailable(true);
+        setGenOpen(false);
+      } else {
+        notifyError(err);
+      }
     }
   }
 
@@ -177,7 +195,7 @@ export function JdDetailPage() {
                 onApprove={() => run(() => m.approve.mutateAsync(), "JD published")}
                 onRevise={() => run(() => m.revise.mutateAsync(), "New draft version created")}
                 onArchive={() => run(() => m.archive.mutateAsync(), "JD archived")}
-                onGenerate={generate}
+                onGenerate={() => setGenOpen(true)}
               />
             )}
           </div>
@@ -204,8 +222,81 @@ export function JdDetailPage() {
             </Panel>
           </div>
         </div>
+
+        <GenerateDialog
+          open={genOpen}
+          onOpenChange={setGenOpen}
+          title={j.title}
+          level={j.level}
+          loading={m.saveInputs.isPending || m.generate.isPending}
+          onGenerate={generateWithInputs}
+        />
       </div>
     </TooltipProvider>
+  );
+}
+
+function GenerateDialog({
+  open,
+  onOpenChange,
+  title,
+  level,
+  loading,
+  onGenerate,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  title: string;
+  level: string;
+  loading: boolean;
+  onGenerate: (brief: Record<string, unknown>) => void;
+}) {
+  const [summary, setSummary] = React.useState("");
+  const [responsibilities, setResponsibilities] = React.useState("");
+  const [mustHaves, setMustHaves] = React.useState("");
+
+  React.useEffect(() => {
+    if (open) { setSummary(""); setResponsibilities(""); setMustHaves(""); }
+  }, [open]);
+
+  const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-ai" /> Generate {title} ({level}) with AI
+          </DialogTitle>
+          <DialogDescription>
+            Give the AI a short brief to ground the draft. It's saved as the role inputs, then the
+            generator writes a draft you review before publishing (HITL).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Field label="Role summary / context" required>
+            <Textarea value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="What this role owns and why it exists…" className="min-h-20" />
+          </Field>
+          <Field label="Key responsibilities (one per line)">
+            <Textarea value={responsibilities} onChange={(e) => setResponsibilities(e.target.value)} className="min-h-16" />
+          </Field>
+          <Field label="Must-haves (one per line)">
+            <Textarea value={mustHaves} onChange={(e) => setMustHaves(e.target.value)} className="min-h-16" />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="premium"
+            loading={loading}
+            disabled={!summary.trim()}
+            onClick={() => onGenerate({ summary: summary.trim(), responsibilities: lines(responsibilities), must_haves: lines(mustHaves), level })}
+          >
+            <Sparkles className="h-4 w-4" /> Generate draft
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

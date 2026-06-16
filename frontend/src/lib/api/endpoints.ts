@@ -192,6 +192,8 @@ export const jdApi = {
   versions: (id: string) => unwrap<JdVersion[]>(api.get(`/jd/${id}/versions`)),
   saveDraft: (id: string, body: JdVersion["body"]) =>
     unwrap<JobDescription>(api.post(`/jd/${id}/save-draft`, { body })),
+  saveInputs: (id: string, inputs: Record<string, unknown>) =>
+    unwrap<JobDescription>(api.post(`/jd/${id}/save-draft`, { inputs })),
   submit: (id: string) => unwrap<JobDescription>(api.post(`/jd/${id}/submit`, {})),
   approve: (id: string) => unwrap<JobDescription>(api.post(`/jd/${id}/approve`, {})),
   revise: (id: string) => unwrap<JobDescription>(api.post(`/jd/${id}/revise`, {})),

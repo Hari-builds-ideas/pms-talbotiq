@@ -45,6 +45,10 @@ export function useJdMutations(id?: string) {
     approve: useMutation({ mutationFn: () => jdApi.approve(id as string), onSuccess: refresh }),
     revise: useMutation({ mutationFn: () => jdApi.revise(id as string), onSuccess: refresh }),
     archive: useMutation({ mutationFn: () => jdApi.archive(id as string), onSuccess: refresh }),
+    saveInputs: useMutation({
+      mutationFn: (inputs: Record<string, unknown>) => jdApi.saveInputs(id as string, inputs),
+      onSuccess: refresh,
+    }),
     generate: useMutation({ mutationFn: () => jdApi.generate(id as string, {}), onSuccess: refresh }),
   };
 }

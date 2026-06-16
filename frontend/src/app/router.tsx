@@ -14,6 +14,7 @@ import { OrgPage } from "@/features/org/OrgPage";
 import { SuccessionPage } from "@/features/succession/SuccessionPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { JdRoutes } from "@/features/jd/JdRoutes";
+import { CareerPage } from "@/features/career/CareerPage";
 import { AuditPage } from "@/features/audit/AuditPage";
 import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 
@@ -82,6 +83,14 @@ export function AppRouter() {
             element={
               <RoleGate min="MANAGER">
                 <JdRoutes />
+              </RoleGate>
+            }
+          />
+          <Route
+            path="career/*"
+            element={
+              <RoleGate min="MANAGER">
+                <CareerPage />
               </RoleGate>
             }
           />

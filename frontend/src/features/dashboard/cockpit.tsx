@@ -335,7 +335,7 @@ export function MyRoadmapTile() {
   const q = useQuery({ queryKey: ["career", "roadmap", "mine"], queryFn: careerApi.roadmap });
   const roadmap = q.data?.results?.[0];
   return (
-    <Panel title="My career roadmap" icon={GraduationCap}>
+    <Panel title="My career roadmap" icon={GraduationCap} to="/career" toLabel="Open">
       {q.isLoading ? (
         <LinesSkeleton lines={3} />
       ) : q.isError ? (

@@ -11,6 +11,11 @@ import type {
   CriticalRole,
   CycleScore,
   DevelopmentRoadmap,
+  SkillGap,
+  RoadmapProgressItem,
+  RoadmapProgressStatus,
+  TargetSelectResult,
+  RoadmapEnrichResult,
   FeedbackCycle,
   FeedbackRequestItem,
   FeedbackSummarizeResult,
@@ -187,7 +192,7 @@ export const reviewsApi = {
 // ---- JD --------------------------------------------------------------------
 
 export const jdApi = {
-  list: (params: PageParams = {}) =>
+  list: (params: PageParams & { status?: string; q?: string } = {}) =>
     unwrap<Paginated<JobDescription>>(api.get("/jd/", { params })),
   create: (body: { title: string; level: string; department: string }) =>
     unwrap<JobDescription>(api.post("/jd/", body)),
@@ -414,8 +419,24 @@ export const feedbackApi = {
 // ---- Career ----------------------------------------------------------------
 
 export const careerApi = {
+  // Reads
   roadmap: () => unwrap<Paginated<DevelopmentRoadmap>>(api.get("/career/roadmap")),
   roadmaps: (params: PageParams & { employee?: string } = {}) =>
     unwrap<Paginated<DevelopmentRoadmap>>(api.get("/career/roadmaps", { params })),
   detail: (id: string) => unwrap<DevelopmentRoadmap>(api.get(`/career/roadmaps/${id}`)),
+  skillGap: (id: string) => unwrap<SkillGap>(api.get(`/career/roadmaps/${id}/skill-gap`)),
+  progress: (id: string) =>
+    unwrap<RoadmapProgressItem[]>(api.get(`/career/roadmaps/${id}/progress`)),
+  // Target selection → deterministic roadmap (employee defaults to the caller).
+  selectTarget: (body: { employee?: string; target_jd?: string; target_position?: string }) =>
+    unwrap<TargetSelectResult>(api.post("/career/target", body)),
+  // Deterministic refresh of the roadmap's gap + tiers.
+  regenerate: (id: string) =>
+    unwrap<DevelopmentRoadmap>(api.post(`/career/roadmaps/${id}/regenerate`, {})),
+  // AI enrich seam — creates a NEW source=AI DRAFT roadmap (503 when no provider).
+  enrich: (id: string) =>
+    unwrap<RoadmapEnrichResult>(api.post(`/career/roadmaps/${id}/enrich`, {})),
+  // Mark a tier's progress (upsert per roadmap+tier).
+  setProgress: (id: string, body: { tier_index: number; status: RoadmapProgressStatus }) =>
+    unwrap<RoadmapProgressItem>(api.post(`/career/roadmaps/${id}/progress`, body)),
 };

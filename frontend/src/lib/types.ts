@@ -583,20 +583,67 @@ export interface RoadmapTier {
   basis: string;
 }
 
+export interface WeakCategory {
+  goal: string;
+  goal_id: UUID;
+  raw_score: string;
+}
+
+export interface SkillGap {
+  current_performance_band?: string;
+  required_performance_band?: string;
+  performance_band_gap?: number;
+  weak_categories?: WeakCategory[];
+}
+
 export interface DevelopmentRoadmap {
   id: UUID;
   employee: UUID;
   status: "DRAFT" | "ACTIVE" | "ARCHIVED";
   target_jd: UUID | null;
   target_position: UUID | null;
+  selection: UUID | null;
   tiers: RoadmapTier[];
-  skill_gap: {
-    current_performance_band?: string;
-    required_performance_band?: string;
-    performance_band_gap?: number;
-    weak_categories?: string[];
-  } | null;
+  skill_gap: SkillGap | null;
   source: "DETERMINISTIC" | "AI";
   advisory: boolean;
   confidence_score: Decimal | null;
+  generated_at: ISODate;
+  generated_by: UUID | null;
+}
+
+export type RoadmapProgressStatus = "NOT_STARTED" | "IN_PROGRESS" | "DONE";
+
+export interface RoadmapProgressItem {
+  id: UUID;
+  roadmap: UUID;
+  tier_index: number;
+  status: RoadmapProgressStatus;
+  updated_by: UUID | null;
+}
+
+export interface TargetRoleSelection {
+  id: UUID;
+  employee: UUID;
+  target_jd: UUID | null;
+  target_position: UUID | null;
+  selected_by: UUID | null;
+  selected_at: ISODate;
+}
+
+/** `POST /career/target` result: the selection + its freshly-generated roadmap. */
+export interface TargetSelectResult {
+  selection: TargetRoleSelection;
+  roadmap: DevelopmentRoadmap;
+}
+
+/** `POST /career/roadmaps/<id>/enrich` body (the AI seam). On success
+ * `{generated:true, roadmap_id, status}`; the no-provider seam is a 503 with
+ * `{generated:false, reason:"no_provider", detail}`; other skips are 409. */
+export interface RoadmapEnrichResult {
+  generated: boolean;
+  reason?: string;
+  detail?: string;
+  roadmap_id?: UUID;
+  status?: DevelopmentRoadmap["status"];
 }

@@ -8,6 +8,7 @@ import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
 import { BillingPage } from "@/features/admin/BillingPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
+import { GoalsPage } from "@/features/goals/GoalsPage";
 import { OrgPage } from "@/features/org/OrgPage";
 import { SuccessionPage } from "@/features/succession/SuccessionPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
@@ -48,6 +49,14 @@ export function AppRouter() {
             element={
               <RoleGate min="MANAGER">
                 <ReviewsRoutes />
+              </RoleGate>
+            }
+          />
+          <Route
+            path="goals/*"
+            element={
+              <RoleGate min="MANAGER">
+                <GoalsPage />
               </RoleGate>
             }
           />

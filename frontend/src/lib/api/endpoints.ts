@@ -15,7 +15,6 @@ import type {
   FeedbackRequestItem,
   FeedbackSummary,
   Goal,
-  Kpi,
   DepartmentAnalytics,
   Entitlement,
   FeatureFlags,
@@ -350,15 +349,15 @@ export const goalsApi = {
     description?: string;
     objective?: string;
     weight: string;
+    kpis: Array<{
+      name: string;
+      description?: string;
+      weight: string;
+      target_value: string;
+      direction: string;
+      unit?: string;
+    }>;
   }) => unwrap<Goal>(api.post("/goals/", body)),
-  addKpi: (goalId: string, body: {
-    name: string;
-    weight: string;
-    target_value: string;
-    direction: string;
-    unit?: string;
-    source?: string;
-  }) => unwrap<Kpi>(api.post(`/goals/${goalId}/kpis`, body)),
   recordActual: (kpiId: string, value: string) =>
     unwrap<unknown>(api.post(`/goals/kpis/${kpiId}/actuals`, { value })),
   approve: (id: string) => unwrap<Goal>(api.post(`/goals/${id}/approve`, {})),

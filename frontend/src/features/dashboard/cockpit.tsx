@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Activity,
@@ -18,6 +19,9 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { LinesSkeleton } from "@/components/Skeletons";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { notifyError, notifySuccess } from "@/lib/toast";
 import {
   adminApi,
   auditApi,
@@ -191,12 +195,21 @@ export function RecentAuditTile() {
   );
 }
 
-// ── Employee: my goals + progress ────────────────────────────────────────────
+// ── Employee: my goals + progress (record own actuals) ───────────────────────
 export function MyGoalsTile() {
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["goals", "mine"], queryFn: () => goalsApi.list({ page_size: 50 }) });
   const goals = q.data?.results ?? [];
+  const record = useMutation({
+    mutationFn: (v: { kpiId: string; value: string }) => goalsApi.recordActual(v.kpiId, v.value),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["goals", "mine"] });
+      notifySuccess("Actual recorded", "Your manager can recompute scores to reflect it.");
+    },
+    onError: (e) => notifyError(e),
+  });
   return (
-    <Panel title="My goals" icon={Target}>
+    <Panel title="My goals & KPIs" icon={Target}>
       {q.isLoading ? (
         <LinesSkeleton lines={3} />
       ) : q.isError ? (
@@ -209,16 +222,11 @@ export function MyGoalsTile() {
                 <span className="text-sm font-medium">{g.title}</span>
                 <StatusBadge status={g.status} />
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <ul className="space-y-1">
                 {g.kpis.map((k) => (
-                  <Badge key={k.id} variant="muted" className="gap-1">
-                    {k.name}
-                    <span className="text-muted-foreground">
-                      {k.latest_actual != null ? `${formatScore(k.latest_actual)}/${formatScore(k.target_value)}` : `target ${formatScore(k.target_value)}`}
-                    </span>
-                  </Badge>
+                  <MyKpiRow key={k.id} kpi={k} onRecord={(value) => record.mutate({ kpiId: k.id, value })} saving={record.isPending} />
                 ))}
-              </div>
+              </ul>
             </li>
           ))}
         </ul>
@@ -226,6 +234,34 @@ export function MyGoalsTile() {
         <EmptyState compact icon={Target} title="No goals yet" description="Your goals for the active cycle will appear here." />
       )}
     </Panel>
+  );
+}
+
+function MyKpiRow({
+  kpi,
+  onRecord,
+  saving,
+}: {
+  kpi: { id: string; name: string; target_value: string; unit: string; latest_actual?: string | null };
+  onRecord: (value: string) => void;
+  saving: boolean;
+}) {
+  const [value, setValue] = React.useState("");
+  return (
+    <li className="flex items-center justify-between gap-2 rounded-md bg-secondary/40 px-2.5 py-1.5">
+      <span className="min-w-0 text-xs">
+        <span className="font-medium">{kpi.name}</span>
+        <span className="ml-1.5 text-muted-foreground">
+          {kpi.latest_actual != null ? `${formatScore(kpi.latest_actual)}/${formatScore(kpi.target_value)}` : `target ${formatScore(kpi.target_value)} ${kpi.unit}`}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1">
+        <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="actual" className="h-7 w-16 text-xs" inputMode="decimal" />
+        <Button size="sm" variant="ghost" disabled={!value.trim()} loading={saving} onClick={() => { onRecord(value.trim()); setValue(""); }}>
+          Log
+        </Button>
+      </span>
+    </li>
   );
 }
 

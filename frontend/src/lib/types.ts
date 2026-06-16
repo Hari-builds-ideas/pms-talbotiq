@@ -466,6 +466,7 @@ export interface Goal {
   approved_by: UUID | null;
   approved_at: ISODate | null;
   kpis: Kpi[];
+  kpi_weight_total?: Decimal;
 }
 
 export interface CycleScore {

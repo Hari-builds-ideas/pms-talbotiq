@@ -11,6 +11,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  Target,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -43,6 +44,7 @@ export const NAV: NavSection[] = [
       { label: "Dashboard", to: "/", icon: LayoutDashboard, minRole: "MANAGER", end: true },
       { label: "Approvals", to: "/approvals", icon: ClipboardCheck, minRole: "MANAGER" },
       { label: "Reviews", to: "/reviews", icon: FileText, minRole: "MANAGER" },
+      { label: "Goals & KPIs", to: "/goals", icon: Target, minRole: "MANAGER" },
       { label: "Org Chart", to: "/org", icon: Network, minRole: "MANAGER" },
       { label: "JD Library", to: "/jd", icon: ScrollText, minRole: "MANAGER" },
     ],

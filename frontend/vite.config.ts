@@ -28,6 +28,7 @@ export default defineConfig({
         manualChunks: {
           "react-vendor": ["react", "react-dom", "react-router-dom"],
           "data-vendor": ["@tanstack/react-query", "@tanstack/react-table", "axios"],
+          "chart-vendor": ["recharts"],
           "ui-vendor": [
             "@radix-ui/react-dialog",
             "@radix-ui/react-dropdown-menu",

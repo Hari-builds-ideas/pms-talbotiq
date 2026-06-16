@@ -32,7 +32,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
 import { useCycles } from "@/lib/hooks/useCycles";
 import { formatScore } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { TrendChart } from "@/components/TrendChart";
 
 export function AnalyticsPage() {
   const { atLeast } = useAuth();
@@ -56,10 +56,6 @@ export function AnalyticsPage() {
       </Tabs>
     </div>
   );
-}
-
-function riskTone(risk: string): "success" | "warning" | "danger" {
-  return risk === "ON_TRACK" ? "success" : risk === "AT_RISK" ? "warning" : "danger";
 }
 
 function IndividualTab() {
@@ -91,28 +87,10 @@ function IndividualTab() {
           <ErrorState error={q.error} onRetry={() => q.refetch()} compact />
         ) : trend.length > 0 ? (
           <div className="space-y-5">
-            {/* simple T-score bars */}
-            <div className="space-y-2">
-              {trend.map((pt) => (
-                <div key={pt.cycle} className="flex items-center gap-3">
-                  <span className="w-24 shrink-0 text-xs text-muted-foreground">{cycleName(pt.cycle)}</span>
-                  <div className="relative h-6 flex-1 overflow-hidden rounded bg-secondary">
-                    <div
-                      className={cn(
-                        "flex h-full items-center justify-end rounded px-2 text-2xs font-semibold text-white",
-                        riskTone(pt.risk_status) === "success" && "bg-success",
-                        riskTone(pt.risk_status) === "warning" && "bg-warning",
-                        riskTone(pt.risk_status) === "danger" && "bg-danger",
-                      )}
-                      style={{ width: `${Math.min(100, Number(pt.t_score))}%` }}
-                    >
-                      {formatScore(pt.t_score)}
-                    </div>
-                  </div>
-                  <StatusBadge status={pt.risk_status} />
-                </div>
-              ))}
-            </div>
+            {/* Real per-cycle T-score trend (recharts). */}
+            <TrendChart
+              data={trend.map((pt) => ({ label: cycleName(pt.cycle), value: Number(pt.t_score) }))}
+            />
             <Table>
               <TableHeader>
                 <TableRow>

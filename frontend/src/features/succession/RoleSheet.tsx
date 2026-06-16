@@ -130,7 +130,7 @@ function RoleBody({ role }: { role: CriticalRoleSummary }) {
       <section className="space-y-3 border-t border-border pt-5">
         <h4 className="text-sm font-semibold">Succession plan</h4>
         {planId ? (
-          <PlanReview planId={planId} canHrbp={canHrbp} mutations={m} />
+          <PlanReview planId={planId} canHrbp={canHrbp} mutations={m} onPlanChange={setPlanId} />
         ) : canHrbp ? (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
@@ -206,10 +206,12 @@ function PlanReview({
   planId,
   canHrbp,
   mutations,
+  onPlanChange,
 }: {
   planId: string;
   canHrbp: boolean;
   mutations: ReturnType<typeof useSuccessionMutations>;
+  onPlanChange: (id: string) => void;
 }) {
   const plan = usePlan(planId);
   const [actionText, setActionText] = React.useState("");
@@ -224,7 +226,13 @@ function PlanReview({
   async function enrich() {
     setEnrichUnavailable(false);
     try {
-      await mutations.enrich.mutateAsync(planId);
+      // Agent 4 creates a NEW source=AI plan (deterministic plan untouched).
+      // Switch the panel to it so the real AI narrative is reviewed in its HITL gate.
+      const res = await mutations.enrich.mutateAsync(planId);
+      if (res?.plan_id) {
+        onPlanChange(res.plan_id);
+        notifySuccess("AI-enriched plan created", "Review the AI narrative, then publish.");
+      }
     } catch (err) {
       if (mapApiError(err).kind === "ai_unavailable") setEnrichUnavailable(true);
       else notifyError(err);

@@ -283,7 +283,9 @@ export const successionApi = {
   publishPlan: (id: string) =>
     unwrap<SuccessionPlan>(api.post(`/succession/plans/${id}/publish`, {})),
   enrichPlan: (id: string) =>
-    unwrap<SuccessionPlan>(api.post(`/succession/plans/${id}/enrich`, {})),
+    unwrap<{ enriched: boolean; plan_id: string; status: string }>(
+      api.post(`/succession/plans/${id}/enrich`, {}),
+    ),
 };
 
 // ---- Analytics -------------------------------------------------------------

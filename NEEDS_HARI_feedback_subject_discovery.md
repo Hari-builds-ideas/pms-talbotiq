@@ -1,35 +1,46 @@
 # NEEDS_HARI — an employee subject can't DISCOVER their own 360 cycle id
 
-**Status:** non-blocking. The 360 loop is fully built and verified end-to-end; this
-is a UI-reachability gap for one role, with a safe default chosen.
+**Status: RESOLVED (Finish-web Phase A1).** A subject-scoped discovery endpoint
+now exists and is wired into "My 360"; the one open *product* call below has a
+safe default chosen.
 
-## The gap
+## The gap (original)
 The subject's released-summary endpoint is `GET /api/feedback/cycles/<id>/summary`
-(capability `VIEW_OWN_FEEDBACK_SUMMARY`) — it requires the **cycle id**. But the only
-way to *list* feedback cycles, `GET /api/feedback/cycles`, is gated to
-`MANAGE_FEEDBACK_CYCLE` (**Manager+**). An **Employee** subject therefore has no API
-path to discover the id of the 360 cycle that is about *them*, so the Admin-Hub UI
-can't fetch/show an employee's own released summary by itself.
+(capability `VIEW_OWN_FEEDBACK_SUMMARY`) — it requires the **cycle id**. But the
+only way to *list* feedback cycles, `GET /api/feedback/cycles`, was gated to
+`MANAGE_FEEDBACK_CYCLE` (**Manager+**). An **Employee** subject therefore had no
+API path to discover the id of the 360 cycle that is about *them*.
 
-(The endpoint itself works correctly for the subject role — verified live: an employee
-subject gets **403 `SUMMARY_NOT_RELEASED`** before release and **200 RELEASED** after,
-with the anonymised, threshold-gated content. The gap is *discovery*, not access.)
+## What was built (A1)
+- **`GET /api/feedback/my-cycles`** — returns ONLY the cycles whose `subject` is
+  the caller (any role), tenant-scoped, own-subject-only. Each row carries the
+  public cycle shape **plus** `summary_id`, `summary_status`, `summary_released`
+  — just enough to decide whether to fetch the released summary. It egresses **no
+  giver identities** and **no summary content**; the content stays gated behind
+  `/cycles/<id>/summary` (RELEASED-only). Reuses the existing
+  `VIEW_OWN_FEEDBACK_SUMMARY` capability (held by everyone, OWN scope) — the same
+  capability that already governs the subject's summary read, so no new matrix
+  entry was needed. Backend tests added: subject sees only their own; a different
+  employee never sees another's; cross-tenant rows never appear; released vs
+  pending discovery + the still-gated content.
+- **Frontend "My 360"** now calls `my-cycles` (no Manager+ list, no pasted id):
+  it auto-discovers the caller's cycles and shows the released summary, the
+  "being reviewed" state for a not-yet-released summary, and "no summary yet"
+  otherwise.
+- **Verified live over HTTP:** an EMPLOYEE subject (`reza@acme.test`) calls
+  `/my-cycles` → 200, discovers her own cycle (`summary_released: true`), follows
+  the id to `/cycles/<id>/summary` → 200 RELEASED with real sections; a MANAGER
+  subject (`ada@acme.test`) sees only her own cycle (no overlap with reza's).
 
-## Safe default chosen (and shipped)
-- The **My 360** view on `/feedback` shows the subject's released summary for any role
-  that can list cycles (Manager / HRBP / Admin subjects) — it filters the cycle list to
-  `subject == me` and reads `/cycles/<id>/summary`, handling 403/404 states.
-- The **employee cockpit** surfaces the giver side fully (give feedback from the
-  "Feedback requests" tile, which uses `/requests/mine`). It does **not** show an
-  employee's own released 360 summary, because the id isn't discoverable for that role.
-- This is consistent with the product's surface split (employee self-service is the
-  separate mobile-web build), so no employee-facing summary view is missing from the
-  Admin Hub's intended scope.
-
-## What Hari should decide
-Add a small, subject-scoped read so an employee can find their own cycles/summaries —
-e.g. `GET /api/feedback/cycles/mine` (cycles where `subject == request.user`, any role)
-or `GET /api/feedback/summaries/mine` (the caller's own RELEASED summaries). Either is a
-thin, tenant-scoped, read-only view; the mobile-web self-service surface will need it
-too. Until then, the employee subject view is reached via that future endpoint (and the
-released summary is already correct behind it).
+## The one remaining product decision (safe default chosen)
+The **Admin Hub is a Manager+ desktop/management tool** — every route is gated
+`min="MANAGER"` by design, and the agreed surface split is that **employee
+self-service lives in the separate mobile-web build** (see MOBILE_BUILD_PLAN.md).
+So this run did **not** add an employee entry point to the Admin Hub (that would
+be a one-item hub for employees and a scope expansion). The `my-cycles` endpoint
+is the exact read the **mobile** "My 360 summary" screen will call — it is listed
+in the mobile reuse map. **If Hari wants employees to reach their 360 summary in
+the *web* app before mobile ships,** lower the `/feedback` route gate to allow
+all roles and render only the "For me" + "My 360" tabs for employees (the page is
+already role-aware for the Manager+/HRBP tabs). Until then the endpoint is built,
+tested, and consumed by the Admin Hub's own (Manager+) subjects.

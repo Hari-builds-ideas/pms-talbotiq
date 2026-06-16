@@ -34,11 +34,21 @@ export function useReviewQueue() {
 }
 
 // ── subject surface ──────────────────────────────────────────────────────────
-export function useMySummary(cycleId: string | null) {
+// Own-only discovery: the cycles ABOUT the caller (any role), with the
+// released-summary id/status so "My 360" needs no Manager+ cycle list and no
+// manually-pasted id.
+export function useMyCycles() {
+  return useQuery({
+    queryKey: ["feedback", "my-cycles"],
+    queryFn: () => feedbackApi.myCycles({ page_size: 100 }),
+  });
+}
+
+export function useMySummary(cycleId: string | null, enabled = true) {
   return useQuery({
     queryKey: ["feedback", "summary", cycleId],
     queryFn: () => feedbackApi.summary(cycleId as string),
-    enabled: Boolean(cycleId),
+    enabled: Boolean(cycleId) && enabled,
     retry: false, // 403 SUMMARY_NOT_RELEASED / 404 are expected states, not transient
   });
 }

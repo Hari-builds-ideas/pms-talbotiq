@@ -45,6 +45,7 @@ from .serializers import (
     FeedbackRequestSerializer,
     FeedbackSummarySerializer,
     GiveFeedbackSerializer,
+    MyFeedbackCycleSerializer,
     OneOnOneNoteCreateSerializer,
     OneOnOneNoteEditSerializer,
     OneOnOneNoteSerializer,
@@ -369,6 +370,32 @@ class CycleAnonymizedView(RBACMixin, APIView):
         if cycle.status != FeedbackCycle.Status.CLOSED:
             raise IllegalCycleTransition(cycle.status, "read the anonymized payload of")
         return Response(build_anonymized_payload(cycle))
+
+
+class MyCyclesView(RBACMixin, APIView):
+    """``GET /api/feedback/my-cycles`` — the cycles whose SUBJECT is the caller.
+
+    Subject-scoped DISCOVERY so an employee can find the 360 cycles that are
+    about them (and the id of their released summary) WITHOUT the Manager+
+    cycles list. Gated by ``VIEW_OWN_FEEDBACK_SUMMARY`` (held by everyone, OWN
+    scope) — the same capability that already governs the subject's released
+    summary read. The tenant-scoped manager isolates by tenant, and the
+    ``subject_id == caller`` filter makes it own-only: a caller never sees
+    another person's cycle here. No giver identities and no summary CONTENT
+    egress — only the summary id + lifecycle status, exactly as
+    ``CycleSummaryView`` already discloses to the subject."""
+
+    required_capability = Capability.VIEW_OWN_FEEDBACK_SUMMARY
+
+    def get(self, request):
+        cycles = FeedbackCycle.objects.filter(
+            subject_id=request.user.id
+        ).prefetch_related("summaries")
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(cycles, request, view=self)
+        return paginator.get_paginated_response(
+            MyFeedbackCycleSerializer(page, many=True).data
+        )
 
 
 class CycleSummaryView(RBACMixin, APIView):

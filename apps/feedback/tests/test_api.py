@@ -495,6 +495,73 @@ def test_anonymized_view_access_matrix(org):
         ), denied.role
 
 
+# ── 10b. subject self-discovery: GET /my-cycles ─────────────────────────────
+
+
+def _closed_cycle_with_summary(org, subject, giver, *, release):
+    """Drive a real cycle for ``subject`` to a summary over HTTP: invite one
+    giver, give, close (→ PENDING summary even with no provider), and optionally
+    HRBP-approve it (→ RELEASED). Returns the cycle."""
+    cycle = FeedbackCycleFactory(subject=subject, min_volume=1)
+    FeedbackRequestFactory(cycle=cycle, giver=giver, relationship="PEER")
+    assert _give(giver, cycle.id, "Solid, dependable work.").status_code == 201
+    hrbp = _client_for(org.hrbp)
+    assert hrbp.post(f"{FB}cycles/{cycle.id}/close").status_code == 200
+    if release:
+        row = next(
+            r
+            for r in hrbp.get(FB + "summaries/review").json()["results"]
+            if r["cycle"] == str(cycle.id)
+        )
+        assert hrbp.post(f"{FB}summaries/{row['id']}/approve").status_code == 200
+    return cycle
+
+
+def test_my_cycles_lists_only_the_callers_own_cycles(org, other_tenant):
+    giver = UserFactory(tenant=org.tenant, role="EMPLOYEE", email="myc-giver@acme.test")
+
+    # report has a RELEASED cycle and a still-PENDING one; peer has their own.
+    released = _closed_cycle_with_summary(org, org.report, giver, release=True)
+    pending = _closed_cycle_with_summary(org, org.report, giver, release=False)
+    peer_cycle = FeedbackCycleFactory(subject=org.peer)  # different subject
+
+    rows = _client_for(org.report).get(FB + "my-cycles").json()["results"]
+    by_id = {r["id"]: r for r in rows}
+
+    # Own-subject-only: exactly report's two cycles, never the peer's.
+    assert set(by_id) == {str(released.id), str(pending.id)}
+    assert str(peer_cycle.id) not in by_id
+    assert all(r["subject"] == str(org.report.id) for r in rows)
+
+    # The RELEASED cycle exposes a discoverable summary id + status, and the
+    # subject can fetch the content with it (no manually-pasted id).
+    rel = by_id[str(released.id)]
+    assert rel["summary_released"] is True
+    assert rel["summary_status"] == "RELEASED"
+    assert rel["summary_id"] is not None
+    assert _client_for(org.report).get(f"{FB}cycles/{released.id}/summary").status_code == 200
+
+    # The PENDING cycle: summary exists, not released; content still gated.
+    pend = by_id[str(pending.id)]
+    assert pend["summary_released"] is False
+    assert pend["summary_status"] == "PENDING_HUMAN_REVIEW"
+    gated = _client_for(org.report).get(f"{FB}cycles/{pending.id}/summary")
+    assert gated.status_code == 403 and gated.json()["code"] == "SUMMARY_NOT_RELEASED"
+
+    # A different employee sees only THEIR own cycle (no summary yet → nulls).
+    peer_rows = _client_for(org.peer).get(FB + "my-cycles").json()["results"]
+    assert {r["id"] for r in peer_rows} == {str(peer_cycle.id)}
+    assert peer_rows[0]["summary_id"] is None
+
+    # No giver identity leaks into the discovery shape anywhere.
+    assert giver.email.lower() not in json.dumps(rows).lower()
+
+    # Cross-tenant: an outsider's my-cycles can never contain our cycles.
+    outsider = UserFactory(tenant=other_tenant, role="EMPLOYEE", email="out@other.test")
+    out_rows = _client_for(outsider).get(FB + "my-cycles").json()["results"]
+    assert all(r["id"] not in by_id for r in out_rows)
+
+
 # ── 11. the Agent-3 seam: /summarize ────────────────────────────────────────
 
 

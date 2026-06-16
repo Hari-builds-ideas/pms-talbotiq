@@ -497,6 +497,18 @@ export interface FeedbackCycle {
   performance_cycle: UUID | null;
 }
 
+/**
+ * A cycle ABOUT the caller, returned by `GET /feedback/my-cycles` — the
+ * subject's own discovery shape. Extends the public cycle with just enough
+ * summary metadata to decide whether to fetch the released summary; the
+ * content itself stays gated behind `/cycles/<id>/summary` (RELEASED-only).
+ */
+export interface MyFeedbackCycle extends FeedbackCycle {
+  summary_id: UUID | null;
+  summary_status: FeedbackSummary["status"] | null;
+  summary_released: boolean;
+}
+
 export interface FeedbackRequestItem {
   id: UUID;
   cycle: UUID;

@@ -15,6 +15,7 @@ import type {
   FeedbackRequestItem,
   FeedbackSummarizeResult,
   FeedbackSummary,
+  MyFeedbackCycle,
   Goal,
   OwnFeedback,
   DepartmentAnalytics,
@@ -386,6 +387,10 @@ export const feedbackApi = {
     unwrap<OwnFeedback>(api.post(`/feedback/cycles/${cycleId}/give`, body)),
   cycles: (params: PageParams = {}) =>
     unwrap<Paginated<FeedbackCycle>>(api.get("/feedback/cycles", { params })),
+  // Subject self-discovery: the cycles ABOUT the caller (own-only, any role),
+  // with the released-summary id/status so "My 360" needs no pasted id.
+  myCycles: (params: PageParams = {}) =>
+    unwrap<Paginated<MyFeedbackCycle>>(api.get("/feedback/my-cycles", { params })),
   createCycle: (body: { subject: string; min_volume?: number }) =>
     unwrap<FeedbackCycle>(api.post("/feedback/cycles", body)),
   openCycle: (id: string) =>

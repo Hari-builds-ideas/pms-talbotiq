@@ -20,6 +20,7 @@ from .views import (
     FeedbackCycleListCreateView,
     FeedbackItemEditView,
     GiveFeedbackView,
+    MyCyclesView,
     MyFeedbackView,
     MyRequestsView,
     OneOnOneDetailView,
@@ -34,6 +35,9 @@ app_name = "feedback"
 
 urlpatterns = [
     # ── 360 cycles (manager surface) ──
+    # Literal "my-cycles" (subject self-discovery) declared before the
+    # "cycles/<uuid:pk>" family; it never collides with "cycles" itself.
+    path("my-cycles", MyCyclesView.as_view(), name="my-cycles"),
     path("cycles", FeedbackCycleListCreateView.as_view(), name="cycle-list-create"),
     path("cycles/<uuid:pk>/open", CycleOpenView.as_view(), name="cycle-open"),
     path("cycles/<uuid:pk>/close", CycleCloseView.as_view(), name="cycle-close"),

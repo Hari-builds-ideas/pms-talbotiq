@@ -71,6 +71,58 @@ class FeedbackCycleCreateSerializer(serializers.Serializer):
     min_volume = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
 
+class MyFeedbackCycleSerializer(serializers.ModelSerializer):
+    """The SUBJECT's own view of a 360 cycle about them — the discovery shape
+    for ``GET /api/feedback/my-cycles`` (own-subject-only, VIEW_OWN_FEEDBACK_SUMMARY).
+
+    It extends the public cycle shape with just enough summary metadata for the
+    UI to decide whether to fetch the released summary, WITHOUT egressing any
+    summary CONTENT or giver identity: the summary id + lifecycle status only.
+    Disclosing the *existence* and status of one's own summary to the subject is
+    consistent with ``CycleSummaryView`` (which already returns 403
+    ``SUMMARY_NOT_RELEASED`` to the subject before release) — the content stays
+    gated behind ``/cycles/<id>/summary`` (RELEASED-only)."""
+
+    summary_id = serializers.SerializerMethodField()
+    summary_status = serializers.SerializerMethodField()
+    summary_released = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FeedbackCycle
+        fields = [
+            "id",
+            "subject",
+            "status",
+            "opened_at",
+            "closed_at",
+            "min_volume",
+            "performance_cycle",
+            "summary_id",
+            "summary_status",
+            "summary_released",
+        ]
+        read_only_fields = fields
+
+    @staticmethod
+    def _summary(obj):
+        # ``summaries`` is prefetched in the view; at most one per (tenant,
+        # cycle) by the uq_summary_cycle constraint.
+        summaries = list(obj.summaries.all())
+        return summaries[0] if summaries else None
+
+    def get_summary_id(self, obj):
+        summary = self._summary(obj)
+        return str(summary.id) if summary else None
+
+    def get_summary_status(self, obj):
+        summary = self._summary(obj)
+        return summary.status if summary else None
+
+    def get_summary_released(self, obj):
+        summary = self._summary(obj)
+        return bool(summary and summary.status == FeedbackSummary.Status.RELEASED)
+
+
 # ── invitations ─────────────────────────────────────────────────────────────
 
 

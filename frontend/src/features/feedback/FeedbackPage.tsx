@@ -36,7 +36,6 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
 import { humanize } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
-import { mapApiError } from "@/lib/errors";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import { GiveFeedbackDialog } from "./GiveFeedbackDialog";
 import { CycleSheet } from "./CycleSheet";
@@ -44,11 +43,12 @@ import { SummaryView } from "./SummaryView";
 import {
   useCycles,
   useFeedbackMutations,
+  useMyCycles,
   useMyRequests,
   useMySummary,
   useReviewQueue,
 } from "./useFeedback";
-import type { FeedbackCycle } from "@/lib/types";
+import type { FeedbackCycle, MyFeedbackCycle } from "@/lib/types";
 
 export function FeedbackPage() {
   const { atLeast } = useAuth();
@@ -123,10 +123,12 @@ function InboxTab() {
 }
 
 // ── My 360: the caller's own released summary (subject) ──────────────────────
+// Uses the own-only /feedback/my-cycles discovery endpoint, so it works for
+// EVERY role (including an Employee subject) with no Manager+ cycle list and no
+// manually-pasted id — the cycle row already carries the summary id + status.
 function My360Tab() {
-  const { me } = useAuth();
-  const cycles = useCycles();
-  const mine = (cycles.data?.results ?? []).filter((c) => c.subject === me?.id);
+  const cycles = useMyCycles();
+  const rows = cycles.data?.results ?? [];
 
   return (
     <div className="space-y-4">
@@ -134,36 +136,38 @@ function My360Tab() {
         <LinesSkeleton lines={3} />
       ) : cycles.isError ? (
         <ErrorState error={cycles.error} onRetry={() => cycles.refetch()} />
-      ) : mine.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
           icon={MessageSquareText}
           title="No 360 about you yet"
           description="When a 360 cycle is run for you and the summary is released, you'll see it here."
         />
       ) : (
-        mine.map((c) => <MySummaryCard key={c.id} cycle={c} />)
+        rows.map((c) => <MySummaryCard key={c.id} cycle={c} />)
       )}
     </div>
   );
 }
 
-function MySummaryCard({ cycle }: { cycle: FeedbackCycle }) {
-  const q = useMySummary(cycle.id);
+function MySummaryCard({ cycle }: { cycle: MyFeedbackCycle }) {
+  // Only fetch the content once it's released; PENDING/HOLD states are conveyed
+  // by the discovery row itself (no failed 403 round-trip).
+  const q = useMySummary(cycle.id, cycle.summary_released);
   return (
     <Panel title="Your 360 summary" icon={MessageSquareText} aside={<StatusBadge status={cycle.status} />}>
-      {q.isLoading ? (
-        <LinesSkeleton lines={4} />
-      ) : q.isError ? (
-        mapApiError(q.error).code === "SUMMARY_NOT_RELEASED" ? (
-          <EmptyState compact icon={MessageSquareText} title="Not released yet" description="Your summary is being reviewed by HR. You'll see it here once it's released." />
-        ) : mapApiError(q.error).kind === "not_found" ? (
-          <EmptyState compact icon={MessageSquareText} title="No summary yet" description="The cycle hasn't been summarised yet." />
-        ) : (
+      {cycle.summary_released ? (
+        q.isLoading ? (
+          <LinesSkeleton lines={4} />
+        ) : q.isError ? (
           <ErrorState error={q.error} onRetry={() => q.refetch()} compact />
-        )
-      ) : q.data ? (
-        <SummaryView summary={q.data} />
-      ) : null}
+        ) : q.data ? (
+          <SummaryView summary={q.data} />
+        ) : null
+      ) : cycle.summary_id ? (
+        <EmptyState compact icon={MessageSquareText} title="Not released yet" description="Your summary is being reviewed by HR. You'll see it here once it's released." />
+      ) : (
+        <EmptyState compact icon={MessageSquareText} title="No summary yet" description="This 360 cycle hasn't been summarised yet." />
+      )}
     </Panel>
   );
 }

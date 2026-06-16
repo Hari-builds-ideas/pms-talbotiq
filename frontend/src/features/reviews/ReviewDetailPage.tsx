@@ -16,7 +16,6 @@ import { Panel } from "@/components/Panel";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LinesSkeleton } from "@/components/Skeletons";
 import { ErrorState } from "@/components/ErrorState";
@@ -27,6 +26,7 @@ import { Timeline, type TimelineItem } from "@/components/Stepper";
 import { HitlBanner, SourceBadge, ConfidenceBadge } from "@/components/Hitl";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ReviewStepper } from "./ReviewStepper";
+import { AssessmentsPanel, EvidencePanel } from "./ReviewEvidence";
 import {
   useReview,
   useReviewAssessments,
@@ -233,6 +233,9 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
               onFinalize={() => run(() => t.finalize.mutateAsync(), "Review finalized")}
               onRequestAi={requestAi}
             />
+
+            {/* Evidence the review (and any AI draft) is grounded in. */}
+            <EvidencePanel employee={r.employee} cycle={r.cycle} />
           </div>
 
           {/* Sidebar */}
@@ -256,25 +259,13 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
               </Panel>
             )}
 
-            <Panel title="Assessments">
-              {assessments.isLoading ? (
-                <LinesSkeleton lines={3} />
-              ) : assessments.data && assessments.data.length > 0 ? (
-                <ul className="space-y-3">
-                  {assessments.data.map((a) => (
-                    <li key={a.id} className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">{humanize(a.assessment_type)}</Badge>
-                        <span className="text-2xs text-muted-foreground"><PersonName id={a.assessor} /></span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">{a.body}</p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No assessments submitted.</p>
-              )}
-            </Panel>
+            <AssessmentsPanel
+              reviewId={r.id}
+              reviewerId={r.reviewer}
+              employeeId={r.employee}
+              assessments={assessments.data}
+              loading={assessments.isLoading}
+            />
 
             <Panel title="History">
               {timeline.isLoading ? (

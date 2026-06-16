@@ -1,4 +1,4 @@
-import { LogOut, Sparkles, UserCog } from "lucide-react";
+import { LogOut, Search, Sparkles, UserCog } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,19 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Opens the ⌘K command palette (re-uses its global keydown listener). */}
+        <button
+          type="button"
+          onClick={() =>
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true }))
+          }
+          className="hidden items-center gap-2 rounded-md border border-input bg-input-background px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary md:flex"
+        >
+          <Search className="h-3.5 w-3.5" />
+          <span>Search…</span>
+          <kbd className="ml-2 rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
+        </button>
+
         {USING_MOCKS && (
           <DropdownMenu>
             <Tooltip>

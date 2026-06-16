@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChatProvider } from "@/features/chat/ChatPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { CommandPalette } from "@/features/command/CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
@@ -13,6 +14,7 @@ export function AppLayout() {
   return (
     <TooltipProvider delayDuration={200}>
       <ChatProvider>
+        <CommandPalette />
         <div className="flex h-screen overflow-hidden bg-background">
           <Sidebar />
           <div className="flex min-w-0 flex-1 flex-col">

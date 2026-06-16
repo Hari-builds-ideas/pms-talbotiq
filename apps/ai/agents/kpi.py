@@ -80,9 +80,42 @@ def on_cycle_scores_recomputed(sender, **kwargs):
         logger.warning("Agent-2 KPI nudge failed (best-effort).", exc_info=True)
 
 
+def _weakest_goal_title(employee_id, cycle_id):
+    """The employee's lowest-attainment ACTIVE goal in the scored cycle — the
+    concrete thing a nudge should point at. Deterministic; caller holds the
+    tenant context."""
+    from apps.goals.models import Goal
+    from apps.goals.scoring.engine import goal_raw_score
+
+    worst_title, worst_raw = None, None
+    for goal in Goal.objects.filter(
+        employee_id=employee_id, cycle_id=cycle_id, status=Goal.Status.ACTIVE
+    ):
+        raw = goal_raw_score(goal)
+        if worst_raw is None or raw < worst_raw:
+            worst_raw, worst_title = raw, goal.title
+    return worst_title
+
+
+def _specific_message(nudge, score, weakest_goal) -> str:
+    """Phrase the deterministic risk classification specifically: name the
+    trajectory (T-score, pace) and the weakest goal. No LLM — nudges fire on every
+    recompute, so this stays a pure deterministic string."""
+    t = f"{float(score.t_score):.0f}"
+    pace = " and behind pace" if score.pace_behind else ""
+    focus = f" Weakest goal: '{weakest_goal}'." if weakest_goal else ""
+    if nudge["level"] == "SUPPRESSED":
+        # Keep the "too late to course-correct" framing, but still name the goal.
+        return f"{nudge['message']} (T-score {t}{pace}.{focus})"
+    if nudge["level"] == "CRITICAL":
+        return f"Critical — T-score {t}{pace}.{focus} Immediate attention needed."
+    return f"At risk — T-score {t}{pace}.{focus} A check-in is recommended."
+
+
 def _nudges_for_employee_ids(employee_ids) -> list[dict]:
     """Classify the current nudge for each employee id from their LATEST CycleScore
-    (reusing ``classify_nudge`` — no recompute). Caller is inside ``tenant_context``."""
+    (reusing ``classify_nudge`` — no recompute) and phrase it specifically (the
+    trajectory + the weakest goal). Caller is inside ``tenant_context``."""
     from apps.goals.models import CycleScore
 
     out = []
@@ -92,6 +125,8 @@ def _nudges_for_employee_ids(employee_ids) -> list[dict]:
             continue
         nudge = classify_nudge(score.risk_status, _days_remaining_for_cycle(score.cycle_id))
         if nudge is not None:
+            weakest = _weakest_goal_title(eid, score.cycle_id)
+            nudge = {**nudge, "message": _specific_message(nudge, score, weakest)}
             out.append({"employee": str(eid), **nudge})
     return out
 

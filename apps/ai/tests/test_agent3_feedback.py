@@ -56,9 +56,13 @@ def test_post_llm_breach_holds_for_hrbp(org):
     # Source bodies are CLEAN (the pre-LLM email guard passes), but the LLM output
     # leaks an email in a section → the POST-LLM check holds for an HRBP.
     def _leaky(prompt, model):
+        # Sections are realistic length (the schema's non-blank quality floor),
+        # but one leaks an email → the POST-LLM breach check must catch it.
         return {"sections": {
-            "strengths": "Great work — ask leaked@acme.test for detail.",
-            "growth": "ok", "themes": "ok", "risks": "ok",
+            "strengths": "Great work — ask leaked@acme.test for the detail.",
+            "growth": "Could communicate trade-offs earlier in the cycle.",
+            "themes": "Reliable, collaborative and pragmatic under pressure.",
+            "risks": "Some bottlenecking on reviews during crunch periods.",
         }}
 
     register_fake_output("agent3", _leaky)

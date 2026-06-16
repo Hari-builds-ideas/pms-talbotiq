@@ -12,23 +12,52 @@ HRBP_HOLD (never auto-released). The summary always stays human-gated (HITL).
 """
 from __future__ import annotations
 
+import json
+
+from apps.ai.evidence import confidence_with_sufficiency
 from apps.ai.gateway import gateway
 from apps.ai.graph import run_graph
 from apps.ai.pii import contains_pii
 from apps.ai.providers import llm_configured, register_fake_output
+from apps.ai.schemas import NonEmpty
 from apps.feedback.agent3 import FeedbackSummarizerNotConfiguredError
 from apps.feedback.agent3 import FeedbackSummarizerProvider as _BaseFeedbackSummarizerProvider
 
 AGENT_CODE = "agent3"
 _SECTIONS = ("strengths", "growth", "themes", "risks")
-SCHEMA = {"sections": dict}
+#: Tightened: all 4 sections present + non-blank (a hollow section fails).
+SCHEMA = {"sections": {s: NonEmpty(12) for s in _SECTIONS}}
+
+
+def _payload_sufficiency(payload) -> float:
+    """How much grounding the anonymised payload carries: more reviewers across
+    more groups → higher confidence; one or two comments in a single group →
+    lower (a thin summary, flag it)."""
+    if not isinstance(payload, dict):
+        return 0.6
+    groups = payload.get("groups", {}) or {}
+    total = sum(len(items) for items in groups.values())
+    present = len([g for g, items in groups.items() if items])
+    if total >= 5 and present >= 2:
+        return 1.0
+    if total >= 3:
+        return 0.8
+    if total >= 1:
+        return 0.55
+    return 0.3
 
 
 def _node_llm(state):
     payload = state["payload"]
+    volumes = payload.get("volumes") if isinstance(payload, dict) else None
+    groups = payload.get("groups") if isinstance(payload, dict) else None
     prompt = (
-        "Summarise this ANONYMISED 360 feedback into 4 sections "
-        f"(strengths, growth, themes, risks). Payload: {payload}"
+        "Summarise this ANONYMISED 360 feedback into four evidence-based sections "
+        "(strengths, growth, themes, risks). Reviewer groups are pseudonymised; "
+        "cite how WIDELY a theme recurs (e.g. 'several peers') using the volumes — "
+        "never an identity.\n"
+        f"Per-group response volumes: {json.dumps(volumes)}.\n"
+        f"Pseudonymised reviewer comments by group: {json.dumps(groups)}."
     )
     # subject_id identifies whose 360 it is (recipients know that); everything else
     # in the payload is already pseudonymised by Module 4.
@@ -37,7 +66,11 @@ def _node_llm(state):
         model="feedback", schema=SCHEMA,
     )
     state["result"] = result
-    if not result.ok:
+    if result.ok:
+        state["confidence"] = confidence_with_sufficiency(
+            result.confidence, _payload_sufficiency(payload)
+        )
+    else:
         state["_halt"] = result.status
     return state
 
@@ -79,7 +112,7 @@ class FeedbackSummarizerProvider(_BaseFeedbackSummarizerProvider):
             raise RuntimeError(f"Agent 3 unavailable: {result.status}")
         return {
             "sections": result.content["sections"],
-            "confidence_score": result.confidence,
+            "confidence_score": state.get("confidence", result.confidence),
             "anonymity_breach": state.get("anonymity_breach", False),
         }
 

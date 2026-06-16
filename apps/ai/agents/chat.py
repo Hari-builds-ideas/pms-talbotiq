@@ -34,6 +34,15 @@ def _scoped_goal_titles(caller, target):
     return list(Goal.objects.filter(employee_id=target.id).values_list("title", flat=True))
 
 
+def _latest_score(target):
+    """The target's latest CycleScore (for grounding the answer). The caller's
+    access to ``target`` is already gated by ``_scoped_goal_titles`` upstream, so
+    this only runs for an in-scope subject. Tenant-scoped."""
+    from apps.goals.models import CycleScore
+
+    return CycleScore.objects.filter(employee_id=target.id).order_by("-computed_at").first()
+
+
 def chat_answer(caller, query: str) -> dict:
     """Answer ``query`` for ``caller`` (read-only, RBAC-bound). Returns a dict with
     a ``status`` the view maps to HTTP: ok | not_configured | budget | blocked."""
@@ -72,12 +81,25 @@ def chat_answer(caller, query: str) -> dict:
     if titles is None:
         # Out of the caller's scope — return nothing, exactly like a scoped API call.
         return {"status": "ok", "intent": intent, "answer": "No data in your scope.", "data": []}
-    return {
-        "status": "ok",
-        "intent": intent,
-        "answer": f"{target.email} has {len(titles)} goal(s).",
-        "data": titles,
-    }
+
+    # Grounded answer: name the goals and (if present + in scope) the latest cycle
+    # score/risk — never vague. Still read-only; the data is exactly what a scoped
+    # API read would return.
+    is_self = target.id == caller.id
+    who = "You" if is_self else target.display
+    verb = "have" if is_self else "has"
+    if titles:
+        answer = f"{who} {verb} {len(titles)} goal(s): {', '.join(titles)}."
+    else:
+        answer = f"{who} {verb} no goals on record."
+    score = _latest_score(target)
+    if score is not None:
+        answer += (
+            f" Latest cycle score: T-score {float(score.t_score):.0f}"
+            f" ({score.get_risk_status_display()})"
+            f"{' — behind pace' if score.pace_behind else ''}."
+        )
+    return {"status": "ok", "intent": intent, "answer": answer, "data": titles}
 
 
 def _fake(prompt, model):

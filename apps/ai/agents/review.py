@@ -16,16 +16,21 @@ production (no LLM_PROVIDER) this reports unconfigured and the seam 503s; tests 
 """
 from __future__ import annotations
 
-from apps.ai.gateway import gateway
+import json
+
+from apps.ai.evidence import confidence_with_sufficiency, review_evidence
+from apps.ai.gateway import DEFAULT_CONFIDENCE_FLOOR, gateway
 from apps.ai.graph import run_graph
 from apps.ai.providers import llm_configured, register_fake_output
+from apps.ai.schemas import NonEmpty
 from apps.reviews.agent1 import ReviewAssistantNotConfiguredError
 from apps.reviews.agent1 import ReviewAssistantProvider as _BaseReviewAssistantProvider
 
 AGENT_CODE = "agent1"
 _SECTIONS = ("summary", "strengths", "areas_for_development", "goals_assessment", "recommendations")
-#: The gateway validates the LLM output is an object carrying the 5 sections.
-SCHEMA = {"sections": dict}
+#: Tightened: the output MUST carry all 5 sections, each a non-blank string (a
+#: missing / empty section fails validation → SCHEMA_INVALID, no hollow draft).
+SCHEMA = {"sections": {s: NonEmpty(12) for s in _SECTIONS}}
 
 
 # ── nodes ──────────────────────────────────────────────────────────────────────
@@ -38,27 +43,12 @@ def _node_validate(state):
 
 
 def _node_gather_evidence(state):
-    """Gather the review subject's goals + latest CycleScore (tenant-scoped — the
-    task binds the tenant). This is the AI's grounding evidence + citations."""
-    from apps.goals.models import CycleScore, Goal
-
-    review = state["review"]
-    goals = list(
-        Goal.objects.filter(employee_id=review.employee_id, cycle_id=review.cycle_id)
-        .values_list("title", flat=True)
-    )
-    score = (
-        CycleScore.objects.filter(employee_id=review.employee_id, cycle_id=review.cycle_id)
-        .first()
-    )
-    state["evidence"] = {
-        "goals": goals,
-        "t_score": str(score.t_score) if score else None,
-        "risk_status": score.risk_status if score else None,
-    }
-    state["citations"] = [{"type": "goal", "title": g} for g in goals]
-    if score:
-        state["citations"].append({"type": "cycle_score", "t_score": str(score.t_score)})
+    """Assemble the RICH grounding for the subject: name + goals (with KPI
+    target/actual/attainment %) + computed cycle score. Tenant-scoped (the task
+    binds the tenant). Drives both the prompt and the citations."""
+    ev = review_evidence(state["review"])
+    state["evidence"] = ev
+    state["citations"] = ev["citations"]
     return state
 
 
@@ -66,8 +56,12 @@ def _node_llm(state):
     review = state["review"]
     ev = state["evidence"]
     prompt = (
-        "Draft a 5-section performance review from this evidence: "
-        f"goals={ev['goals']} t_score={ev['t_score']} risk={ev['risk_status']}."
+        f"Subject first name: {ev['subject_name']}.\n"
+        f"Computed cycle score: {json.dumps(ev['score'])}.\n"
+        f"Goals with KPIs (target / latest actual / attainment %): "
+        f"{json.dumps(ev['goals'])}.\n"
+        "Write the five-section review grounded in these specific goals, KPIs and "
+        "numbers. Name the person; cite the actual goals and figures."
     )
     result = gateway.run(
         tenant=review.tenant_id, agent_code=AGENT_CODE, prompt=prompt,
@@ -81,13 +75,19 @@ def _node_llm(state):
 
 def _node_structure(state):
     result = state["result"]
+    ev = state["evidence"]
     sections = result.content["sections"]
+    # Calibrate confidence to evidence sufficiency: a polished answer on thin
+    # grounding still reads as lower confidence (and trips the floor warning).
+    confidence = confidence_with_sufficiency(result.confidence, ev["evidence_sufficiency"])
+    state["confidence"] = confidence
     body_parts = [f"## {k.replace('_', ' ').title()}\n{sections.get(k, '')}" for k in _SECTIONS]
     body = "\n\n".join(body_parts)
-    if result.low_confidence:
+    if confidence < DEFAULT_CONFIDENCE_FLOOR:
         body = (
-            "⚠️ LOW CONFIDENCE — this AI draft scored below the confidence floor; "
-            "review carefully before approving.\n\n" + body
+            "⚠️ LOW CONFIDENCE — this AI draft scored below the confidence floor "
+            "(thin evidence or a low-confidence model response); review carefully "
+            "before approving.\n\n" + body
         )
     state["draft_body"] = body
     return state
@@ -118,7 +118,7 @@ class ReviewAssistantProvider(_BaseReviewAssistantProvider):
             raise RuntimeError(f"Agent 1 unavailable: {result.status}")
         return {
             "draft_body": state["draft_body"],
-            "confidence_score": result.confidence,
+            "confidence_score": state.get("confidence", result.confidence),
             "citations": state.get("citations"),
         }
 

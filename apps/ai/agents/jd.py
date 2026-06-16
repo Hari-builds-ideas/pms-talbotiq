@@ -7,13 +7,25 @@ inputs → gateway LLM JD body → structure. The Module-6 lifecycle locks the r
 """
 from __future__ import annotations
 
+import json
+
 from apps.ai.gateway import gateway
 from apps.ai.providers import llm_configured, register_fake_output
+from apps.ai.schemas import NonEmpty
 from apps.jd.generator import JDGeneratorNotConfiguredError
 from apps.jd.generator import JDGeneratorProvider as _BaseJDGeneratorProvider
 
 AGENT_CODE = "jd_generator"
-SCHEMA = {"body": dict}
+#: Tightened: a real summary + the three lists must all be present (an empty
+#: summary or a missing list fails validation rather than passing a hollow JD).
+SCHEMA = {
+    "body": {
+        "summary": NonEmpty(20),
+        "responsibilities": list,
+        "must_haves": list,
+        "nice_to_haves": list,
+    }
+}
 
 
 class JDGeneratorProvider(_BaseJDGeneratorProvider):
@@ -23,9 +35,12 @@ class JDGeneratorProvider(_BaseJDGeneratorProvider):
 
     def generate(self, *, jd, inputs) -> dict:
         prompt = (
-            f"Generate a job description body for {jd.title} ({jd.level}) from these "
-            f"structured inputs: {inputs}. Return summary, responsibilities, "
-            "must_haves, nice_to_haves."
+            f"Generate a job-description body for the role '{jd.title}' "
+            f"(level {jd.level}, {jd.department or 'unspecified'} dept) from this "
+            f"structured brief: {json.dumps(inputs)}.\n"
+            "Pull the real responsibilities and must-haves from the brief — tight "
+            "and role-specific, no generic boilerplate. Return summary, "
+            "responsibilities, must_haves, nice_to_haves."
         )
         result = gateway.run(
             tenant=jd.tenant_id, agent_code=AGENT_CODE, prompt=prompt, model="jd", schema=SCHEMA

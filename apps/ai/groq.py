@@ -27,6 +27,7 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 
+from .agent_config import system_prompt_for
 from .exceptions import LLMProviderError
 from .providers import LLMProvider
 
@@ -34,49 +35,9 @@ logger = logging.getLogger("pms.ai.groq")
 
 _GLOBAL_CALL_KEY = "llm:global:calls"
 
-# Per-agent system prompts that pin the EXACT JSON shape each agent's nodes expect
-# (see the agents' SCHEMA + structure nodes). The model must return ONLY this JSON.
-_SYSTEM_PROMPTS: dict[str, str] = {
-    "agent1": (
-        "You are an enterprise performance-review assistant. Using ONLY the supplied "
-        "evidence, write a fair, specific, professional review. Respond with ONLY a "
-        "JSON object of the form: {\"sections\": {\"summary\": str, \"strengths\": str, "
-        "\"areas_for_development\": str, \"goals_assessment\": str, "
-        "\"recommendations\": str}}. Each section is 2-4 sentences. Do not include "
-        "any names, emails, or text outside the JSON."
-    ),
-    "agent3": (
-        "You summarise ANONYMISED 360-degree feedback. Respond with ONLY a JSON object "
-        "of the form: {\"sections\": {\"strengths\": str, \"growth\": str, "
-        "\"themes\": str, \"risks\": str}}. Never include any name, email, or other "
-        "identifier — the input is anonymised and the output must stay anonymous."
-    ),
-    "agent4": (
-        "You write a concise succession-planning narrative from a deterministic "
-        "analysis. Respond with ONLY a JSON object of the form: {\"narrative\": str} "
-        "(3-5 sentences, no individual names; focus on coverage and bench development)."
-    ),
-    "jd_generator": (
-        "You generate a job description body. Respond with ONLY a JSON object of the "
-        "form: {\"body\": {\"summary\": str, \"responsibilities\": [str], "
-        "\"must_haves\": [str], \"nice_to_haves\": [str]}}. Lists hold 3-6 concise items."
-    ),
-    "career_roadmap": (
-        "You draft an ADVISORY development roadmap (never a promise or promotion). "
-        "Respond with ONLY a JSON object of the form: {\"tiers\": [{\"index\": int, "
-        "\"title\": str, \"detail\": str, \"basis\": str}]} with 2-4 ordered tiers."
-    ),
-    "chat": (
-        "Classify the user's intent toward an HR system as either reading information "
-        "or making a change. Respond with ONLY a JSON object: {\"intent\": \"read\"} "
-        "or {\"intent\": \"write\"}. Any approval, rejection, create, update, delete, "
-        "finalize, publish, or set-value request is \"write\"; questions are \"read\"."
-    ),
-}
-_DEFAULT_SYSTEM = (
-    "Respond with ONLY a single JSON object that directly answers the request. "
-    "Do not include any text outside the JSON."
-)
+# Per-agent SYSTEM prompts live in ``apps.ai.agent_config`` (one tunable place,
+# settings-overridable) — the model must return ONLY the JSON each agent's SCHEMA
+# + structure nodes expect. Resolved per call via ``system_prompt_for``.
 
 
 def _model_for(logical: str) -> str:
@@ -130,7 +91,7 @@ class GroqProvider(LLMProvider):
         self._reserve_global()
 
         groq_model = _model_for(model)
-        system = _SYSTEM_PROMPTS.get(agent_code, _DEFAULT_SYSTEM)
+        system = system_prompt_for(agent_code)
         payload = {
             "model": groq_model,
             "messages": [

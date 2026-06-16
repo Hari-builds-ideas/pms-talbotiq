@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 /** Fixed dark sidebar with role-filtered, grouped navigation. */
 export function Sidebar() {
-  const { atLeast } = useAuth();
+  const { atLeast, me } = useAuth();
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -36,9 +36,9 @@ export function Sidebar() {
                       end={item.end}
                       className={({ isActive }) =>
                         cn(
-                          "group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                          "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
                           isActive
-                            ? "bg-white/10 text-white"
+                            ? "bg-sidebar-accent/15 text-white before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-sidebar-accent"
                             : "text-sidebar-foreground/80 hover:bg-white/5 hover:text-white",
                         )
                       }
@@ -66,7 +66,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-sidebar-border px-5 py-3 text-2xs text-sidebar-muted">
-        v1 · Acme Corp
+        v1 · {me?.tenant_name ?? "Talbotiq"}
       </div>
     </aside>
   );

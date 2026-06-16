@@ -40,7 +40,7 @@ export function ConfidenceBadge({ score, className }: ConfidenceBadgeProps) {
   if (Number.isNaN(n)) return null;
   const low = n < LOW_CONFIDENCE_THRESHOLD;
   return (
-    <Badge variant={low ? "danger" : "info"} className={cn("gap-1", className)}>
+    <Badge variant={low ? "danger" : "info"} className={cn("gap-1 tabular-nums", className)}>
       {low && <AlertTriangle className="h-3 w-3" />}
       Confidence {formatConfidence(n)}
     </Badge>

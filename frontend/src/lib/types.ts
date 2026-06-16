@@ -45,6 +45,8 @@ export interface Me {
   display: string;
   role: Role;
   tenant_id?: UUID;
+  tenant_name?: string;
+  tenant_slug?: string;
   manager_id?: UUID | null;
   mfa_enabled: boolean;
 }

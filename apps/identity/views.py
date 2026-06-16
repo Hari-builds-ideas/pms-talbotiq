@@ -153,6 +153,10 @@ class MeView(APIView):
                 "display": u.display,             # effective name (falls back to email)
                 "role": u.role,
                 "tenant_id": str(u.tenant_id),
+                # The tenant's own identity — so the shell shows the REAL tenant
+                # (not a hardcoded name) and a demo can switch between acme/globex.
+                "tenant_name": u.tenant.name,
+                "tenant_slug": u.tenant.slug,
                 "mfa_enabled": u.mfa_enabled,
                 "manager_id": str(u.manager_id) if u.manager_id else None,
             }

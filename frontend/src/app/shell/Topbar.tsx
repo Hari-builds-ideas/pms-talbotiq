@@ -40,7 +40,7 @@ export function Topbar() {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/80 px-5 backdrop-blur">
       <div className="flex items-center gap-2 text-sm">
-        <span className="font-medium text-foreground">Acme Corp</span>
+        <span className="font-medium text-foreground">{me?.tenant_name ?? "—"}</span>
         <Badge variant="muted" className="hidden sm:inline-flex">
           Tenant
         </Badge>

@@ -10,10 +10,356 @@ API afterward.
 ---
 
 ## DESIGN DIRECTION
-> **[PASTE YOUR DESIGN REFERENCES / BRAND / LOOK-AND-FEEL HERE.]**
-> (Colours, typography, spacing, density, component style, inspiration screenshots —
-> all of it. This brief intentionally says nothing about visual design; follow the
-> references pasted here. Tech stack only: React + Tailwind + shadcn/ui.)
+# DESIGN DIRECTION
+
+## Product Category
+
+This is a premium enterprise Talent Intelligence, Succession Planning, Performance Management, and Workforce Operations platform.
+
+Do NOT design it like a startup KPI dashboard or employee engagement app.
+
+The primary users are:
+
+* HRBP
+* Talent Partners
+* Managers
+* Administrators
+* Leadership Teams
+
+The UI should feel like software used all day by HR and business operators.
+
+---
+
+## Visual References (Study These)
+
+Primary references:
+
+* Ashby — https://www.ashbyhq.com
+* Rippling — https://www.rippling.com
+* Lattice — https://lattice.com
+* Leapsome — https://www.leapsome.com
+* Betterworks — https://www.betterworks.com
+
+Secondary references:
+
+* Linear — https://linear.app
+* Vanta — https://www.vanta.com
+* Retool — https://retool.com
+* Workday — https://www.workday.com
+* SAP SuccessFactors — https://www.sap.com/products/hcm/successfactors.html
+
+Use:
+
+* Ashby for information density and tables
+* Rippling for admin workflows
+* Linear for polish and spacing
+* Lattice and Leapsome for performance-management patterns
+* Workday and SuccessFactors for enterprise HR information architecture
+
+---
+
+## Overall Feel
+
+Keywords:
+
+Enterprise
+Professional
+Operational
+Data-Dense
+Executive
+Modern SaaS
+Talent Intelligence
+Human-Centered
+Audit-Friendly
+
+Avoid:
+
+* Marketing website aesthetics
+* Excessive gradients
+* Glassmorphism
+* Giant dashboard cards
+* Oversized spacing
+* Consumer mobile-app styling
+* Bright startup colors
+
+---
+
+## Layout
+
+Desktop-first.
+
+Structure:
+
+* Left sidebar navigation
+* Top command bar
+* Main content area
+* Slide-over panels for details
+* Drawers for editing
+* Modals for confirmation flows
+
+Prefer side panels and split views over page refreshes.
+
+---
+
+## Typography
+
+Font:
+
+* Inter
+
+Hierarchy:
+
+* Compact
+* Enterprise-friendly
+* Dense but readable
+
+Use:
+
+* Medium and semibold weights
+* Consistent spacing rhythm
+* Small labels for metadata
+
+Avoid oversized headings.
+
+---
+
+## Color Palette
+
+Base:
+
+* Slate
+* Gray
+* White
+
+Primary:
+
+* Modern Blue
+
+Status Colors:
+
+* Success → Green
+* Warning → Amber
+* Critical → Red
+* Information → Blue
+
+AI States:
+
+* Purple
+
+Premium / Locked Features:
+
+* Gold / Amber accents
+
+Colors should be subtle and professional.
+
+---
+
+## Spacing & Density
+
+Target density similar to:
+
+* Ashby
+* Linear
+* Rippling
+
+Requirements:
+
+* Dense tables
+* Compact filters
+* Efficient use of screen space
+* Minimal wasted whitespace
+
+Design for users managing hundreds or thousands of records.
+
+---
+
+## Component Style
+
+Use shadcn/ui components.
+
+Patterns:
+
+* Data tables
+* Stepper timelines
+* Status chips
+* Side panels
+* Drawer editors
+* Filter bars
+* Tabs
+* Command palettes
+* Activity feeds
+* Audit logs
+
+Avoid card-heavy layouts.
+
+---
+
+## Dashboard Design
+
+Dashboard should prioritize actions.
+
+Top sections:
+
+1. Approval Inbox
+2. KPI Nudges
+3. Succession Risks
+4. Team Health
+5. Workflow Status
+6. Quick Actions
+
+Do not build a generic analytics dashboard.
+
+The dashboard should answer:
+
+* What requires action?
+* What is blocked?
+* What is at risk?
+* What needs approval?
+
+---
+
+## Approval Workflow UI
+
+Reference:
+
+* Jira approvals
+* ServiceNow approvals
+* GitHub PR review flows
+
+Display as:
+
+* Timelines
+* Steppers
+* Route trackers
+
+Show:
+
+* Pending
+* Approved
+* Rejected
+* Escalated
+* Due dates
+* SLA indicators
+
+---
+
+## AI Experience
+
+AI is always an assistant.
+
+Never present AI output as final.
+
+For:
+
+* PENDING_HUMAN_REVIEW
+* source = AI
+
+show:
+
+* Draft badge
+* Confidence score
+* Approve
+* Reject
+* Edit
+
+Low confidence (<0.70):
+
+* Warning treatment
+* Elevated visibility
+
+Reference style:
+
+* Notion AI review states
+* GitHub Copilot review workflows
+
+---
+
+## Premium Feature Experience
+
+Locked features remain visible.
+
+Show:
+
+* Lock icon
+* Upgrade to Unlock
+* Feature preview
+* Disabled interactions
+
+Never hide premium capabilities.
+
+Reference:
+
+* Vercel Pro features
+* Linear paid features
+* Notion AI upsells
+
+---
+
+## Succession Planning (Flagship Experience)
+
+This is one of the most important areas of the product.
+
+Reference:
+
+* SAP SuccessFactors Succession
+* Workday Talent Management
+* TalentGuard
+
+Create:
+
+* Executive-ready dashboards
+* Coverage indicators
+* Bench strength views
+* Readiness chips
+* Talent risk summaries
+
+The 9-box matrix should feel premium and interactive.
+
+---
+
+## Analytics
+
+Reference:
+
+* Lattice Analytics
+* Leapsome Analytics
+* Workday Reporting
+
+Use:
+
+* Trend charts
+* Distribution charts
+* Cohort summaries
+* Risk visualizations
+
+Always pair charts with supporting tables.
+
+---
+
+## Empty States
+
+Professional and actionable.
+
+Explain:
+
+* Why there is no data
+* What action can be taken
+
+Avoid playful illustrations.
+
+---
+
+## Final Visual Goal
+
+A blend of:
+
+40% Ashby
+25% Rippling
+20% Linear
+15% Lattice
+
+The result should feel like a modern enterprise Talent Intelligence and Performance Management platform used by HR leaders, managers, and executives every day.
+
 
 ## SCOPE NOTE — desktop Admin Hub only
 This is the **desktop management surface** for **Admin / HRBP / Manager**. A separate

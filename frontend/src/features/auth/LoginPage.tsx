@@ -46,7 +46,11 @@ export function LoginPage() {
   async function onSubmit(values: LoginValues) {
     setError(null);
     try {
-      const res = await authApi.login(values);
+      const res = await authApi.login({
+        email: values.email,
+        password: values.password,
+        tenant_slug: values.tenant,
+      });
       if (res.mfa_required) {
         setChallenge(res.challenge ?? "");
         return;

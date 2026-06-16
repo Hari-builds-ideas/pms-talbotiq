@@ -62,16 +62,19 @@ export function OrgPage() {
       <Tabs defaultValue="tree">
         <TabsList>
           <TabsTrigger value="tree">Tree</TabsTrigger>
-          <TabsTrigger value="positions">Positions</TabsTrigger>
+          {/* Position management is HRBP/Admin (the list endpoint is scoped to them). */}
+          {atLeast("HRBP") && <TabsTrigger value="positions">Positions</TabsTrigger>}
           <TabsTrigger value="vacancies">Vacancies</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tree">
           <TreeTab onSelect={setSelected} selectedId={selected} />
         </TabsContent>
-        <TabsContent value="positions">
-          <PositionsTab canManage={atLeast("HRBP")} />
-        </TabsContent>
+        {atLeast("HRBP") && (
+          <TabsContent value="positions">
+            <PositionsTab canManage />
+          </TabsContent>
+        )}
         <TabsContent value="vacancies">
           <VacanciesTab />
         </TabsContent>

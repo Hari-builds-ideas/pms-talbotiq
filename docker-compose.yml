@@ -89,8 +89,10 @@ services:
 
   web:
     <<: *app_build
-    # Uses the Dockerfile CMD (gunicorn -c gunicorn.conf.py). The web tier is
-    # stateless: no host port, fronted by nginx, scale with `--scale web=N`.
+    # Auto-migrate then serve (one-command stack: the DB is always current on up).
+    # The web tier is stateless: no host port, fronted by the frontend edge nginx,
+    # scale with `--scale web=N`.
+    command: sh -c "python manage.py migrate --noinput && gunicorn config.wsgi:application -c gunicorn.conf.py"
     environment: *app_environment
     volumes:
       - .:/app
@@ -102,11 +104,15 @@ services:
       redis:
         condition: service_healthy
 
-  nginx:
-    image: nginx:1.27-alpine
-    # Round-robins across all `web` replicas via Docker DNS (see nginx.conf).
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  frontend:
+    # The PUBLIC entrypoint: serves the built React SPA and reverse-proxies the
+    # Django-served paths (/api, /admin, /accounts, /static, /healthz, /readyz)
+    # to the web tier (see frontend/nginx.conf). Built against the REAL API.
+    build:
+      context: ./frontend
+      args:
+        VITE_USE_MOCKS: "false"
+        VITE_API_BASE_URL: /api
     ports:
       - "8080:80"
     depends_on:

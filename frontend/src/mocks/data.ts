@@ -362,13 +362,13 @@ export const reviews: Review[] = [
 
 export const reviewTimelines: Record<string, ReviewTransition[]> = {
   "rv-1": [
-    { from_state: "DRAFT", to_state: "AI_DRAFTING", action: "request-ai-draft", actor: "u-1", at: "2026-06-10T08:00:00Z" },
-    { from_state: "AI_DRAFTING", to_state: "PENDING_HUMAN_REVIEW", action: "ai_draft_ready", actor: "system", at: "2026-06-10T08:01:00Z" },
+    { from_state: "DRAFT", to_state: "AI_DRAFTING", note: "Requested AI draft", actor: "u-1", at: "2026-06-10T08:00:00Z" },
+    { from_state: "AI_DRAFTING", to_state: "PENDING_HUMAN_REVIEW", note: "AI draft ready", actor: null, at: "2026-06-10T08:01:00Z" },
   ],
   "rv-3": [
-    { from_state: "DRAFT", to_state: "EDITING", action: "start-edit", actor: "u-5", at: "2026-06-11T10:00:00Z" },
-    { from_state: "EDITING", to_state: "PENDING_HUMAN_REVIEW", action: "submit", actor: "u-5", at: "2026-06-11T11:00:00Z" },
-    { from_state: "PENDING_HUMAN_REVIEW", to_state: "APPROVED", action: "approve", actor: "u-5", at: "2026-06-12T09:30:00Z" },
+    { from_state: "DRAFT", to_state: "EDITING", note: "Started editing", actor: "u-5", at: "2026-06-11T10:00:00Z" },
+    { from_state: "EDITING", to_state: "PENDING_HUMAN_REVIEW", note: "Submitted for review", actor: "u-5", at: "2026-06-11T11:00:00Z" },
+    { from_state: "PENDING_HUMAN_REVIEW", to_state: "APPROVED", note: "Approved", actor: "u-5", at: "2026-06-12T09:30:00Z" },
   ],
 };
 

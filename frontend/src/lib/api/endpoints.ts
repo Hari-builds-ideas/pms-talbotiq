@@ -60,7 +60,7 @@ export interface PageParams {
 // ---- Auth ------------------------------------------------------------------
 
 export const authApi = {
-  login: (body: { email: string; password: string; tenant: string }) =>
+  login: (body: { email: string; password: string; tenant_slug: string }) =>
     unwrap<import("@/lib/types").LoginResponse>(api.post("/auth/login", body)),
   mfaChallenge: (body: { challenge?: string; code: string }) =>
     unwrap<TokenPair>(api.post("/auth/mfa/challenge", body)),
@@ -217,7 +217,9 @@ export const orgApi = {
   unlinkJd: (id: string) =>
     unwrap<Position>(api.post(`/org/positions/${id}/unlink-jd`, {})),
   reassign: (employee: string, manager: string | null) =>
-    unwrap<{ ok: boolean }>(api.post("/org/reassign", { employee, manager })),
+    unwrap<{ ok: boolean }>(
+      api.post("/org/reassign", { user: employee, new_manager: manager }),
+    ),
 };
 
 // ---- Succession ------------------------------------------------------------

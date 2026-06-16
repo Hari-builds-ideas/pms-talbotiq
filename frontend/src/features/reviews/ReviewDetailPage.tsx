@@ -389,8 +389,8 @@ function ActionBar({
 function transitionToItem(tr: {
   from_state: string;
   to_state: string;
-  action: string;
-  actor: string;
+  note?: string;
+  actor: string | null;
   at: string;
 }): TimelineItem {
   const tone =
@@ -400,19 +400,19 @@ function transitionToItem(tr: {
         ? "danger"
         : "info";
   return {
-    key: `${tr.action}-${tr.at}`,
+    key: `${tr.to_state}-${tr.at}`,
     icon: <Clock />,
     tone,
-    title: <span>{humanize(tr.action)}</span>,
+    title: (
+      <span>
+        {humanize(tr.from_state)} → {humanize(tr.to_state)}
+      </span>
+    ),
     meta: formatDateTime(tr.at),
     body: (
       <span className="text-xs">
-        {humanize(tr.from_state)} → {humanize(tr.to_state)}
-        {tr.actor !== "system" && (
-          <>
-            {" "}· <PersonName id={tr.actor} />
-          </>
-        )}
+        {tr.actor ? <PersonName id={tr.actor} /> : "System"}
+        {tr.note ? ` · ${tr.note}` : ""}
       </span>
     ),
   };

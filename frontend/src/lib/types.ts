@@ -190,8 +190,9 @@ export interface Review {
 export interface ReviewTransition {
   from_state: ReviewState;
   to_state: ReviewState;
-  action: string;
-  actor: UUID;
+  /** Free-text note recorded with the transition (serializer exposes `note`). */
+  note: string;
+  actor: UUID | null;
   at: ISODate;
 }
 

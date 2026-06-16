@@ -437,3 +437,120 @@ export interface Nudge {
   level: NudgeLevel;
   message: string;
 }
+
+// ---- Goals & KPIs (Module 2) -----------------------------------------------
+
+export interface Kpi {
+  id: UUID;
+  name: string;
+  description?: string;
+  weight: Decimal;
+  target_value: Decimal;
+  direction: "INCREASING" | "DECREASING";
+  unit: string;
+  source: "MANUAL" | "JIRA";
+  external_ref?: string | null;
+  latest_actual?: Decimal | null;
+}
+
+export interface Goal {
+  id: UUID;
+  employee: UUID;
+  cycle: UUID;
+  created_by: UUID;
+  title: string;
+  description: string;
+  objective: string;
+  weight: Decimal;
+  status: "DRAFT" | "ACTIVE" | "ACHIEVED" | "MISSED" | "ARCHIVED";
+  approved_by: UUID | null;
+  approved_at: ISODate | null;
+  kpis: Kpi[];
+}
+
+export interface CycleScore {
+  id?: UUID;
+  employee: UUID;
+  cycle: UUID;
+  raw_score: Decimal;
+  z_score: Decimal;
+  t_score: Decimal;
+  cohort_size: number;
+  insufficient_cohort: boolean;
+  risk_status: "ON_TRACK" | "AT_RISK" | "CRITICAL";
+  pace_behind: boolean;
+  computed_at: ISODate;
+}
+
+// ---- 360 Feedback (Module 4) -----------------------------------------------
+
+export interface FeedbackCycle {
+  id: UUID;
+  subject: UUID;
+  status: "DRAFT" | "COLLECTING" | "CLOSED";
+  min_volume: number | null;
+  opened_by?: UUID | null;
+}
+
+export interface FeedbackRequestItem {
+  id: UUID;
+  cycle: UUID;
+  relationship: "SELF" | "MANAGER" | "PEER" | "UPWARD";
+  status: "PENDING" | "SUBMITTED" | "DECLINED";
+  subject?: UUID;
+}
+
+export interface FeedbackSummary {
+  id: UUID;
+  subject?: UUID;
+  cycle?: UUID;
+  sections: {
+    strengths?: string;
+    growth?: string;
+    themes?: string;
+    risks?: string;
+  } | null;
+  status: "PENDING_HUMAN_REVIEW" | "HRBP_HOLD" | "APPROVED" | "RELEASED";
+  anonymity_passed: boolean;
+  sensitive?: boolean;
+  volume_total?: number;
+  confidence_score: Decimal | null;
+}
+
+export interface AnonymizedItem {
+  pseudonym: string;
+  relationship: string;
+  body: string;
+}
+export interface AnonymizedPayload {
+  subject_id: UUID;
+  items: AnonymizedItem[];
+  insufficient_groups: string[];
+}
+
+// ---- Career (Module 9) -----------------------------------------------------
+
+export interface RoadmapTier {
+  index: number;
+  title: string;
+  detail: string;
+  basis: string;
+}
+
+export interface DevelopmentRoadmap {
+  id: UUID;
+  employee: UUID;
+  status: "DRAFT" | "ACTIVE" | "ARCHIVED";
+  target_jd: UUID | null;
+  target_position: UUID | null;
+  tiers: RoadmapTier[];
+  skill_gap: {
+    current_performance_band?: string;
+    required_performance_band?: string;
+    performance_band_gap?: number;
+    weak_categories?: string[];
+  } | null;
+  source: "DETERMINISTIC" | "AI";
+  advisory: boolean;
+  confidence_score: Decimal | null;
+}

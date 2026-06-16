@@ -3,11 +3,19 @@ import type {
   AdminUser,
   ApprovalRoute,
   ApprovalWorkflow,
+  AnonymizedPayload,
   AuditLog,
   BenchCandidate,
   CalibrationGrid,
   ChatResponse,
   CriticalRole,
+  CycleScore,
+  DevelopmentRoadmap,
+  FeedbackCycle,
+  FeedbackRequestItem,
+  FeedbackSummary,
+  Goal,
+  Kpi,
   DepartmentAnalytics,
   Entitlement,
   FeatureFlags,
@@ -137,15 +145,23 @@ export const approvalsApi = {
 
 export const cyclesApi = {
   list: () => unwrap<PerformanceCycle[]>(api.get("/cycles/")),
+  scores: (cycleId: string) =>
+    unwrap<CycleScore[]>(api.get(`/cycles/${cycleId}/scores`)),
+  myScore: (cycleId: string) =>
+    unwrap<CycleScore | null>(api.get(`/cycles/${cycleId}/scores/me`)),
+  recompute: (cycleId: string) =>
+    unwrap<unknown>(api.post(`/cycles/${cycleId}/recompute`, {})),
 };
 
 // ---- Reviews ---------------------------------------------------------------
 
 export const reviewsApi = {
-  list: (params: PageParams & { cycle?: string } = {}) =>
+  list: (params: PageParams & { cycle?: string; state?: string; employee?: string } = {}) =>
     unwrap<Paginated<Review>>(api.get("/reviews/", { params })),
   create: (body: { employee: string; cycle: string }) =>
     unwrap<Review>(api.post("/reviews/", body)),
+  upsertAssessment: (id: string, body: { assessment_type: string; body: string }) =>
+    unwrap<ReviewAssessment>(api.post(`/reviews/${id}/assessments`, body)),
   detail: (id: string) => unwrap<Review>(api.get(`/reviews/${id}`)),
   timeline: (id: string) =>
     unwrap<ReviewTransition[]>(api.get(`/reviews/${id}/timeline`)),
@@ -319,4 +335,68 @@ export const integrationsApi = {
 export const aiApi = {
   chat: (query: string) => unwrap<ChatResponse>(api.post("/ai/chat", { query })),
   nudges: () => unwrap<Nudge[]>(api.get("/ai/nudges")),
+};
+
+// ---- Goals & KPIs ----------------------------------------------------------
+
+export const goalsApi = {
+  list: (params: PageParams & { employee?: string; cycle?: string } = {}) =>
+    unwrap<Paginated<Goal>>(api.get("/goals/", { params })),
+  detail: (id: string) => unwrap<Goal>(api.get(`/goals/${id}`)),
+  create: (body: {
+    employee: string;
+    cycle: string;
+    title: string;
+    description?: string;
+    objective?: string;
+    weight: string;
+  }) => unwrap<Goal>(api.post("/goals/", body)),
+  addKpi: (goalId: string, body: {
+    name: string;
+    weight: string;
+    target_value: string;
+    direction: string;
+    unit?: string;
+    source?: string;
+  }) => unwrap<Kpi>(api.post(`/goals/${goalId}/kpis`, body)),
+  recordActual: (kpiId: string, value: string) =>
+    unwrap<unknown>(api.post(`/goals/kpis/${kpiId}/actuals`, { value })),
+  approve: (id: string) => unwrap<Goal>(api.post(`/goals/${id}/approve`, {})),
+};
+
+// ---- 360 Feedback ----------------------------------------------------------
+
+export const feedbackApi = {
+  summariesReview: (params: PageParams = {}) =>
+    unwrap<Paginated<FeedbackSummary>>(api.get("/feedback/summaries/review", { params })),
+  approveSummary: (id: string) =>
+    unwrap<FeedbackSummary>(api.post(`/feedback/summaries/${id}/approve`, {})),
+  requestsMine: () =>
+    unwrap<FeedbackRequestItem[]>(api.get("/feedback/requests/mine")),
+  declineRequest: (id: string) =>
+    unwrap<FeedbackRequestItem>(api.post(`/feedback/requests/${id}/decline`, {})),
+  mine: (params: PageParams = {}) =>
+    unwrap<Paginated<unknown>>(api.get("/feedback/mine", { params })),
+  give: (cycleId: string, body: { body: string; relationship?: string }) =>
+    unwrap<unknown>(api.post(`/feedback/cycles/${cycleId}/give`, body)),
+  cycles: () => unwrap<Paginated<FeedbackCycle>>(api.get("/feedback/cycles")),
+  createCycle: (body: { subject: string; min_volume?: number }) =>
+    unwrap<FeedbackCycle>(api.post("/feedback/cycles", body)),
+  closeCycle: (id: string) =>
+    unwrap<FeedbackCycle>(api.post(`/feedback/cycles/${id}/close`, {})),
+  summarize: (id: string) =>
+    unwrap<FeedbackSummary>(api.post(`/feedback/cycles/${id}/summarize`, {})),
+  anonymized: (id: string) =>
+    unwrap<AnonymizedPayload>(api.get(`/feedback/cycles/${id}/anonymized`)),
+  summary: (id: string) =>
+    unwrap<FeedbackSummary>(api.get(`/feedback/cycles/${id}/summary`)),
+};
+
+// ---- Career ----------------------------------------------------------------
+
+export const careerApi = {
+  roadmap: () => unwrap<Paginated<DevelopmentRoadmap>>(api.get("/career/roadmap")),
+  roadmaps: (params: PageParams & { employee?: string } = {}) =>
+    unwrap<Paginated<DevelopmentRoadmap>>(api.get("/career/roadmaps", { params })),
+  detail: (id: string) => unwrap<DevelopmentRoadmap>(api.get(`/career/roadmaps/${id}`)),
 };

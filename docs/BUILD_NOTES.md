@@ -1910,3 +1910,36 @@ all marked RESOLVED in 05_open_questions.md. No React.
 
 The backend is now feature-complete for Module 13; `docs/frontend-contract/` is
 gap-free for #1/#6/#7/#10.
+
+## Web product complete (Finish-web run)
+
+The React Admin Hub is finished to a production-grade, demo-ready standard on the
+live API. What this run added/changed (all committed + pushed; verified live over
+HTTP; backend 1059 tests + 25 new frontend Vitest tests):
+
+- **A1 — feedback subject discovery:** `GET /api/feedback/my-cycles` (own-subject
+  only, reuses `VIEW_OWN_FEEDBACK_SUMMARY`, no giver/content egress) so a subject
+  finds their own released summary id; "My 360" rewired to it. Resolves
+  `NEEDS_HARI_feedback_subject_discovery.md`.
+- **A2 — Career surface (Module 9 reachability):** the career module was built on
+  the backend but unreachable in the UI; added the full `/career` page
+  (`frontend/src/features/career/`) — target select, live skill gap, per-tier
+  progress, deterministic refresh, Full-AI enrich — + completed `careerApi`, route,
+  nav, and the dashboard tile link.
+- **B — AI output quality (highest impact):** per-agent rich evidence builders
+  (`apps/ai/evidence.py`), centralized + settings-overridable prompts with a shared
+  quality/STYLE contract (`apps/ai/agent_config.py`), and a tightened output
+  validator (`apps/ai/schemas.py`, `NonEmpty` + nested schemas). Every agent now
+  names the subject, cites specific goals/KPIs/numbers, and is concise; confidence
+  is calibrated to evidence sufficiency. Proven live on 1–2 records per agent.
+- **D — cross-cutting:** a global render `ErrorBoundary`; `/api/auth/me` now returns
+  `tenant_name`/`tenant_slug` and the shell shows the real tenant (was hardcoded).
+- **F — QA:** `scripts/smoke.py` (47 journeys + RBAC boundaries, repeatable); the
+  Vitest toolchain + tests over the error mapper, RBAC/feature gating, HITL/
+  confidence rendering, and the KPI-weight rule (extracted to `src/lib/weights.ts`).
+- **Docs:** `docs/RUNBOOK.md`, `docs/AI_GOLIVE.md`, `TEST-THIS-HARI.md`,
+  `MOBILE_BUILD_PLAN.md`, `FINISH_WEB_MORNING_REPORT.md`.
+
+The management surfaces (reviews/goals/approvals/org/succession/analytics/admin/
+audit/integrations) built in prior sessions are confirmed end-to-end real via the
+smoke script. AI is live on Groq through the safety pipeline.

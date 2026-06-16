@@ -485,26 +485,41 @@ export interface CycleScore {
 
 // ---- 360 Feedback (Module 4) -----------------------------------------------
 
+export type FeedbackRelationship = "SELF" | "MANAGER" | "PEER" | "UPWARD";
+
 export interface FeedbackCycle {
   id: UUID;
   subject: UUID;
   status: "DRAFT" | "COLLECTING" | "CLOSED";
+  opened_at: ISODate | null;
+  closed_at: ISODate | null;
   min_volume: number | null;
-  opened_by?: UUID | null;
+  performance_cycle: UUID | null;
 }
 
 export interface FeedbackRequestItem {
   id: UUID;
   cycle: UUID;
-  relationship: "SELF" | "MANAGER" | "PEER" | "UPWARD";
+  giver: UUID;
+  relationship: FeedbackRelationship;
   status: "PENDING" | "SUBMITTED" | "DECLINED";
-  subject?: UUID;
+}
+
+export interface OwnFeedback {
+  id: UUID;
+  cycle: UUID | null;
+  subject: UUID;
+  relationship: FeedbackRelationship;
+  kind: "THREE_SIXTY" | "CONTINUOUS";
+  body: string;
+  giver_marked_sensitive: boolean;
+  created_at: ISODate;
 }
 
 export interface FeedbackSummary {
   id: UUID;
-  subject?: UUID;
-  cycle?: UUID;
+  cycle: UUID;
+  subject: UUID;
   sections: {
     strengths?: string;
     growth?: string;
@@ -513,20 +528,38 @@ export interface FeedbackSummary {
   } | null;
   status: "PENDING_HUMAN_REVIEW" | "HRBP_HOLD" | "APPROVED" | "RELEASED";
   anonymity_passed: boolean;
-  sensitive?: boolean;
-  volume_total?: number;
+  sensitive: boolean;
+  volume_total: number;
+  insufficient_groups: string[];
+  insufficient_volume: boolean;
   confidence_score: Decimal | null;
+  generated_at: ISODate | null;
+  released_at: ISODate | null;
 }
 
-export interface AnonymizedItem {
+/** Result of close/summarize (the Agent-3 pipeline outcome). */
+export interface FeedbackSummarizeResult {
+  summarized: boolean;
+  reason?: string; // not_found | anonymity_breach | no_provider | sensitive | …
+  summary_id?: UUID;
+  status?: string;
+  detail?: string;
+}
+
+/** The ONLY 360 egress artifact — giver-stripped, pseudonymised, volume-gated. */
+export interface AnonymizedGroupItem {
   pseudonym: string;
-  relationship: string;
   body: string;
+  marked_sensitive: boolean;
 }
 export interface AnonymizedPayload {
+  cycle_id: UUID;
   subject_id: UUID;
-  items: AnonymizedItem[];
-  insufficient_groups: string[];
+  min_volume: number;
+  volumes: Record<FeedbackRelationship, number>;
+  insufficient_groups: FeedbackRelationship[];
+  insufficient_volume: boolean;
+  groups: Partial<Record<FeedbackRelationship, AnonymizedGroupItem[]>>;
 }
 
 // ---- Career (Module 9) -----------------------------------------------------

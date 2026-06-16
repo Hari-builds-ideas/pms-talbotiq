@@ -260,27 +260,54 @@ class Command(BaseCommand):
 
     # ── 360 feedback ──────────────────────────────────────────────────────────
     def _feedback(self, tenant, people):
-        from apps.feedback.models import Feedback, FeedbackCycle, FeedbackRequest
-
         emps = people["employees"]
+        managers = people["managers"]
         if len(emps) < 4:
             return
-        subject = emps[0]
-        opener = subject.manager
+
+        # Cycle 1 — an employee subject: 3 PEER (meets the min-volume threshold so
+        # the AI summary is demoable) + 1 MANAGER (single-rater, exempt).
+        self._feedback_cycle(
+            tenant,
+            subject=emps[0],
+            opener=emps[0].manager,
+            entries=[
+                (emps[1], "PEER", "Dependable teammate who unblocks others quickly."),
+                (emps[2], "PEER", "Communicates trade-offs clearly; could delegate more."),
+                (emps[3], "PEER", "Strong technical judgement on the platform work."),
+                (emps[0].manager, "MANAGER", "Consistently meets commitments; ready for more scope."),
+            ],
+        )
+
+        # Cycle 2 — a manager subject: 3 PEER (other managers → meets threshold,
+        # summarised) + 2 UPWARD (the subject's own reports → BELOW threshold, so
+        # the UPWARD group is suppressed for anonymity). Demonstrates both a real
+        # summary AND a privacy-suppressed group in one cycle.
+        if len(managers) >= 4:
+            subject = managers[0]
+            reports = [e for e in emps if e.manager_id == subject.id][:2]
+            entries = [
+                (managers[1], "PEER", "A steady peer who raises the bar on quality."),
+                (managers[2], "PEER", "Collaborates well across teams; clear communicator."),
+                (managers[3], "PEER", "Brings calm, structured thinking to hard calls."),
+            ]
+            for r in reports:
+                entries.append((r, "UPWARD", "Supportive manager; would value more frequent 1:1s."))
+            self._feedback_cycle(tenant, subject=subject, opener=subject.manager, entries=entries)
+
+    def _feedback_cycle(self, tenant, *, subject, opener, entries):
+        """Idempotently build one COLLECTING 360 cycle with submitted feedback.
+
+        ``entries`` is a list of ``(giver, relationship, body)``. Skips any entry
+        whose giver is None (e.g. a subject with no manager)."""
+        from apps.feedback.models import Feedback, FeedbackCycle, FeedbackRequest
+
         fc, _ = self._ensure(
             FeedbackCycle,
             tenant_id=tenant.id, subject=subject,
             defaults={"opened_by": opener, "status": "COLLECTING", "min_volume": 3},
         )
-        givers = [emps[1], emps[2], emps[3]] + ([subject.manager] if subject.manager else [])
-        rels = ["PEER", "PEER", "PEER", "MANAGER"]
-        bodies = [
-            "Dependable teammate who unblocks others quickly.",
-            "Communicates trade-offs clearly; could delegate more.",
-            "Strong technical judgement on the platform work.",
-            "Consistently meets commitments; ready for more scope.",
-        ]
-        for giver, rel, body in zip(givers, rels, bodies):
+        for giver, rel, body in entries:
             if giver is None:
                 continue
             self._ensure(

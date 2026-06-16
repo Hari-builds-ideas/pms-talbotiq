@@ -13,8 +13,10 @@ import type {
   DevelopmentRoadmap,
   FeedbackCycle,
   FeedbackRequestItem,
+  FeedbackSummarizeResult,
   FeedbackSummary,
   Goal,
+  OwnFeedback,
   DepartmentAnalytics,
   Entitlement,
   FeatureFlags,
@@ -379,16 +381,25 @@ export const feedbackApi = {
   declineRequest: (id: string) =>
     unwrap<FeedbackRequestItem>(api.post(`/feedback/requests/${id}/decline`, {})),
   mine: (params: PageParams = {}) =>
-    unwrap<Paginated<unknown>>(api.get("/feedback/mine", { params })),
-  give: (cycleId: string, body: { body: string; relationship?: string }) =>
-    unwrap<unknown>(api.post(`/feedback/cycles/${cycleId}/give`, body)),
-  cycles: () => unwrap<Paginated<FeedbackCycle>>(api.get("/feedback/cycles")),
+    unwrap<Paginated<OwnFeedback>>(api.get("/feedback/mine", { params })),
+  give: (cycleId: string, body: { body: string; marked_sensitive?: boolean }) =>
+    unwrap<OwnFeedback>(api.post(`/feedback/cycles/${cycleId}/give`, body)),
+  cycles: (params: PageParams = {}) =>
+    unwrap<Paginated<FeedbackCycle>>(api.get("/feedback/cycles", { params })),
   createCycle: (body: { subject: string; min_volume?: number }) =>
     unwrap<FeedbackCycle>(api.post("/feedback/cycles", body)),
+  openCycle: (id: string) =>
+    unwrap<FeedbackCycle>(api.post(`/feedback/cycles/${id}/open`, {})),
+  invitations: (cycleId: string) =>
+    unwrap<FeedbackRequestItem[]>(api.get(`/feedback/cycles/${cycleId}/requests`)),
+  invite: (cycleId: string, body: { giver: string; relationship: string }) =>
+    unwrap<FeedbackRequestItem>(api.post(`/feedback/cycles/${cycleId}/requests`, body)),
   closeCycle: (id: string) =>
-    unwrap<FeedbackCycle>(api.post(`/feedback/cycles/${id}/close`, {})),
+    unwrap<{ cycle: FeedbackCycle; summary: FeedbackSummarizeResult }>(
+      api.post(`/feedback/cycles/${id}/close`, {}),
+    ),
   summarize: (id: string) =>
-    unwrap<FeedbackSummary>(api.post(`/feedback/cycles/${id}/summarize`, {})),
+    unwrap<FeedbackSummarizeResult>(api.post(`/feedback/cycles/${id}/summarize`, {})),
   anonymized: (id: string) =>
     unwrap<AnonymizedPayload>(api.get(`/feedback/cycles/${id}/anonymized`)),
   summary: (id: string) =>

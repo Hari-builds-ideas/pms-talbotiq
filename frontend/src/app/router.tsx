@@ -9,6 +9,7 @@ import { BillingPage } from "@/features/admin/BillingPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
 import { GoalsPage } from "@/features/goals/GoalsPage";
+import { FeedbackPage } from "@/features/feedback/FeedbackPage";
 import { OrgPage } from "@/features/org/OrgPage";
 import { SuccessionPage } from "@/features/succession/SuccessionPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
@@ -57,6 +58,14 @@ export function AppRouter() {
             element={
               <RoleGate min="MANAGER">
                 <GoalsPage />
+              </RoleGate>
+            }
+          />
+          <Route
+            path="feedback/*"
+            element={
+              <RoleGate min="MANAGER">
+                <FeedbackPage />
               </RoleGate>
             }
           />

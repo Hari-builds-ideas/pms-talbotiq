@@ -21,6 +21,7 @@ import { LinesSkeleton } from "@/components/Skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { GiveFeedbackDialog } from "@/features/feedback/GiveFeedbackDialog";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import {
   adminApi,
@@ -81,6 +82,7 @@ export function FeedbackSummariesTile() {
     <Panel
       title="Summaries to release"
       icon={MessageSquareText}
+      to="/feedback"
       aside={items.length > 0 ? <Badge variant="warning">{items.length}</Badge> : undefined}
     >
       {q.isLoading ? (
@@ -304,6 +306,7 @@ export function MyReviewTile() {
 export function MyFeedbackRequestsTile() {
   const q = useQuery({ queryKey: ["feedback", "requests", "mine"], queryFn: feedbackApi.requestsMine });
   const pending = (q.data ?? []).filter((r) => r.status === "PENDING");
+  const [give, setGive] = React.useState<{ cycleId: string; relationship: string } | null>(null);
   return (
     <Panel title="Feedback requests" icon={MessageSquareText} aside={pending.length > 0 ? <Badge variant="warning">{pending.length}</Badge> : undefined}>
       {q.isLoading ? (
@@ -315,13 +318,14 @@ export function MyFeedbackRequestsTile() {
           {pending.map((r) => (
             <li key={r.id} className="flex items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0 text-sm">
               <span>{humanize(r.relationship)} feedback requested</span>
-              <StatusBadge status={r.status} />
+              <Button size="sm" onClick={() => setGive({ cycleId: r.cycle, relationship: r.relationship })}>Give</Button>
             </li>
           ))}
         </ul>
       ) : (
         <EmptyState compact icon={Inbox} title="No requests" description="360 feedback requests for you to complete appear here." />
       )}
+      <GiveFeedbackDialog open={Boolean(give)} onOpenChange={(o) => !o && setGive(null)} cycleId={give?.cycleId ?? null} relationship={give?.relationship} />
     </Panel>
   );
 }

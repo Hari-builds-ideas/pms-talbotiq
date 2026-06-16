@@ -34,3 +34,6 @@ celerybeat.pid
 docs/.DS_Store
 .idea/
 .vscode/
+
+# Figma Make design export — reference only, not part of the app
+Enterprise AI Performance Management/

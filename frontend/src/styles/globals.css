@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,72 +6,85 @@
 
 /*
  * Design tokens — Talbotiq PMS Admin Hub.
- * Slate base · Modern Blue primary · Purple = AI · Gold = premium-locked.
+ * Skinned to the "Enterprise AI Performance Management" Figma system:
+ *   Indigo #5B5BD6 primary · near-black #0C0C14 sidebar · Plus Jakarta Sans + DM Mono.
+ * Domain semantic palette (ai/premium/success/warning/info/danger + -subtle) is
+ * PRESERVED (token names unchanged) and retuned to harmonise with the indigo system,
+ * so every existing component + screen keeps working — only the look changes.
  * Values are HSL channels (no hsl() wrapper) for Tailwind's hsl(var(--x)).
  */
 @layer base {
   :root {
-    --background: 210 20% 98%; /* near-white #FAFBFC */
-    --foreground: 222 47% 11%; /* slate-900 #0F172A */
+    --background: 240 20% 96%; /* #F1F1F6 */
+    --foreground: 240 25% 6%; /* #0C0C14 */
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 240 25% 6%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 240 25% 6%;
 
-    --primary: 221 70% 50%; /* modern blue */
+    --primary: 240 60% 60%; /* indigo #5B5BD6 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 33% 22%;
+    --secondary: 240 22% 95%; /* #EDEDF5 */
+    --secondary-foreground: 240 25% 10%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%; /* slate-500 #64748B */
+    --muted: 240 22% 95%;
+    --muted-foreground: 240 10% 49%; /* #71718A */
 
-    --accent: 214 95% 96%; /* blue-tinted hover */
-    --accent-foreground: 221 70% 42%;
+    --accent: 240 60% 97%; /* light indigo tint (hover) */
+    --accent-foreground: 240 60% 55%;
 
-    --destructive: 0 72% 45%;
+    --destructive: 0 84% 60%; /* #EF4444 */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%; /* slate-200 #E2E8F0 */
-    --input: 214 32% 88%;
-    --ring: 221 70% 50%;
+    --border: 240 14% 90%; /* hairline neutral */
+    --input: 240 14% 88%;
+    --input-background: 240 18% 96%; /* #F4F4F8 — filled field surface */
+    --switch-background: 240 20% 81%; /* #C5C5D8 */
+    --ring: 240 60% 60%;
 
-    --radius: 0.625rem;
+    --radius: 0.75rem;
 
-    /* App shell — dark sidebar */
-    --sidebar: 222 39% 11%; /* deep slate #11161F */
-    --sidebar-foreground: 210 30% 92%;
-    --sidebar-muted: 215 18% 60%;
-    --sidebar-accent: 221 70% 56%;
-    --sidebar-border: 218 25% 20%;
+    /* Chart palette (recharts) — from the Figma chart-1..5 */
+    --chart-1: 240 60% 60%; /* indigo */
+    --chart-2: 160 100% 36%; /* emerald #00B87C */
+    --chart-3: 38 92% 50%; /* amber #F59E0B */
+    --chart-4: 189 80% 43%; /* cyan #06B6D4 */
+    --chart-5: 258 90% 66%; /* violet #8B5CF6 */
 
-    /* Domain semantic palette */
-    --success: 158 64% 33%; /* teal-green */
+    /* App shell — near-black sidebar with indigo accent */
+    --sidebar: 240 25% 6%; /* #0C0C14 */
+    --sidebar-foreground: 240 12% 78%;
+    --sidebar-muted: 240 8% 52%;
+    --sidebar-accent: 240 60% 62%; /* indigo active */
+    --sidebar-border: 240 18% 16%;
+
+    /* Domain semantic palette (names kept; retuned to the indigo system) */
+    --success: 160 95% 32%; /* emerald */
     --success-foreground: 0 0% 100%;
-    --success-subtle: 152 55% 94%;
+    --success-subtle: 160 60% 94%;
 
-    --warning: 28 80% 47%; /* amber/orange */
+    --warning: 32 92% 48%; /* amber */
     --warning-foreground: 0 0% 100%;
     --warning-subtle: 38 92% 93%;
 
-    --danger: 0 72% 45%;
+    --danger: 0 84% 60%; /* red #EF4444 */
     --danger-foreground: 0 0% 100%;
-    --danger-subtle: 0 80% 96%;
+    --danger-subtle: 0 86% 96%;
 
-    --info: 205 70% 40%;
+    --info: 189 80% 40%; /* cyan */
     --info-foreground: 0 0% 100%;
-    --info-subtle: 205 80% 95%;
+    --info-subtle: 189 70% 94%;
 
-    --ai: 262 60% 55%; /* purple */
+    --ai: 258 90% 66%; /* violet — AI states */
     --ai-foreground: 0 0% 100%;
-    --ai-subtle: 262 75% 96%;
+    --ai-subtle: 258 90% 96%;
 
-    --premium: 38 78% 45%; /* gold */
+    --premium: 38 92% 48%; /* gold/amber — premium-locked */
     --premium-foreground: 0 0% 100%;
-    --premium-subtle: 42 90% 94%;
+    --premium-subtle: 42 92% 93%;
   }
 
   * {
@@ -80,7 +93,6 @@
 
   html {
     -webkit-text-size-adjust: 100%;
-    font-feature-settings: "cv11", "ss01";
   }
 
   body {
@@ -127,7 +139,7 @@
     height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(215 20% 80%);
+    background-color: hsl(240 12% 80%);
     border-radius: 9999px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {

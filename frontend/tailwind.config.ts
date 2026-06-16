@@ -96,6 +96,17 @@ const config: Config = {
           foreground: "hsl(var(--premium-foreground))",
           subtle: "hsl(var(--premium-subtle))",
         },
+        // Figma field tokens (filled inputs + switch track)
+        "input-background": "hsl(var(--input-background))",
+        "switch-background": "hsl(var(--switch-background))",
+        // Chart palette (recharts data-viz)
+        chart: {
+          "1": "hsl(var(--chart-1))",
+          "2": "hsl(var(--chart-2))",
+          "3": "hsl(var(--chart-3))",
+          "4": "hsl(var(--chart-4))",
+          "5": "hsl(var(--chart-5))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -104,7 +115,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
-          "Inter",
+          "Plus Jakarta Sans",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
@@ -114,7 +125,7 @@ const config: Config = {
           "Arial",
           "sans-serif",
         ],
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        mono: ["DM Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       fontSize: {
         // Compact enterprise scale

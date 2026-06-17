@@ -87,6 +87,8 @@ class Command(BaseCommand):
         )
 
         people = self._people(tenant, rich=rich)
+        if rich:
+            self._mfa_demo_account(tenant, people["admin"])
         cycle = self._cycle(tenant)
         self._goals_and_scores(tenant, cycle, people)
         self._reviews(tenant, cycle, people)
@@ -128,6 +130,10 @@ class Command(BaseCommand):
             ("nadia", "Nadia Aziz"), ("leo", "Leo Schmidt"), ("hana", "Hana Kim"),
             ("ben", "Ben Carter"), ("amir", "Amir Khan"), ("clara", "Clara Vidal"),
             ("finn", "Finn O'Brien"), ("gita", "Gita Rao"),
+            # A 21st employee → round-robins to managers[0] (Ada), giving her a 5th
+            # report so her department cohort is EXACTLY 5 (shown) while the other
+            # managers stay at 4 (suppressed) — the live 4-vs-5 min-cohort edge.
+            ("vera", "Vera Lindqvist"),
         ]
         if not rich:
             emp_names = emp_names[:4]
@@ -158,6 +164,30 @@ class Command(BaseCommand):
             email=email, password=DEMO_PASSWORD, tenant=tenant, role=role,
             display_name=display_name, manager=manager,
         )
+
+    # ── a standing MFA-enrolled demo account ────────────────────────────────────
+    #: A FIXED 20-byte TOTP secret for the demo MFA account, so anyone can add it
+    #: to an authenticator app. base32 (for manual entry):
+    #: JBSWY3DPEHPK3PXP... resolved in the report. Demo-only; never a real secret.
+    DEMO_MFA_KEY_HEX = "48656c6c6f4d4641deadbeef0123456789abcdef"
+
+    def _mfa_demo_account(self, tenant, admin):
+        """Idempotently enrol ONE account (``mfa@<tenant>.test``) with a CONFIRMED
+        TOTP device on a fixed secret, so the two-step MFA login can be exercised
+        end-to-end. Reports to admin so it doesn't disturb the manager tree."""
+        from django_otp.plugins.otp_totp.models import TOTPDevice
+
+        from apps.identity.models import User
+
+        user = self._user(tenant, "mfa", "Morgan Faraday", "EMPLOYEE", manager=admin)
+        if not TOTPDevice.objects.filter(user=user, confirmed=True).exists():
+            TOTPDevice.objects.create(
+                user=user, name="default", confirmed=True, key=self.DEMO_MFA_KEY_HEX
+            )
+        if not user.mfa_enabled:
+            user.mfa_enabled = True
+            user.save(update_fields=["mfa_enabled", "updated_at"])
+        return user
 
     # ── cycle ─────────────────────────────────────────────────────────────────
     def _cycle(self, tenant):

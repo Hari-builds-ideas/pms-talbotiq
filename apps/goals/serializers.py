@@ -25,6 +25,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import Goal, Kpi, KpiMeasurement, KpiTemplate
 from .validators import assert_weights_sum_to_100, validate_target_value
 
@@ -85,20 +87,26 @@ class GoalSerializer(serializers.ModelSerializer):
 
     kpis = _NestedKpiSerializer(many=True, required=False)
     kpi_weight_total = serializers.SerializerMethodField()
+    employee_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
+    approved_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Goal
         fields = [
             "id",
             "employee",
+            "employee_name",
             "cycle",
             "created_by",
+            "created_by_name",
             "title",
             "description",
             "objective",
             "weight",
             "status",
             "approved_by",
+            "approved_by_name",
             "approved_at",
             "kpis",
             "kpi_weight_total",
@@ -107,12 +115,24 @@ class GoalSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "employee_name",
             "created_by",
+            "created_by_name",
             "approved_by",
+            "approved_by_name",
             "approved_at",
             "created_at",
             "updated_at",
         ]
+
+    def get_employee_name(self, obj) -> str | None:
+        return person_label(obj.employee)
+
+    def get_created_by_name(self, obj) -> str | None:
+        return person_label(obj.created_by) if obj.created_by_id else None
+
+    def get_approved_by_name(self, obj) -> str | None:
+        return person_label(obj.approved_by) if obj.approved_by_id else None
 
     def get_kpi_weight_total(self, obj) -> Decimal:
         """Sum of this goal's KPI weights — the live indicator's value. Exact

@@ -61,7 +61,7 @@ export function ReviewsAwaitingTile() {
           {items.slice(0, 6).map((r) => (
             <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
               <Link to={`/reviews/${r.id}`} className="min-w-0 hover:underline">
-                <PersonName id={r.employee} className="text-sm font-medium" />
+                <PersonName id={r.employee} name={r.employee_name} className="text-sm font-medium" />
               </Link>
               <StatusBadge status={r.state} dot />
             </li>
@@ -94,7 +94,7 @@ export function FeedbackSummariesTile() {
           {items.slice(0, 6).map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
               <span className="min-w-0 text-sm">
-                360 for <PersonName id={s.subject} className="font-medium" />
+                360 for <PersonName id={s.subject} name={s.subject_name} className="font-medium" />
               </span>
               <StatusBadge status={s.status} dot />
             </li>

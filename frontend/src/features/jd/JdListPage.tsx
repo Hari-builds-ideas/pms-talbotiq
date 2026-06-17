@@ -168,7 +168,7 @@ function RequestsTab() {
     () => [
       { accessorKey: "title", header: "Title", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
       { accessorKey: "level", header: "Level" },
-      { accessorKey: "requested_by", header: "Requested by", cell: ({ row }) => <PersonName id={row.original.requested_by} /> },
+      { accessorKey: "requested_by", header: "Requested by", cell: ({ row }) => <PersonName id={row.original.requested_by} name={row.original.requested_by_name} /> },
       { accessorKey: "notes", header: "Notes", cell: ({ row }) => <span className="text-muted-foreground">{row.original.notes || "—"}</span> },
       { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.status} /> },
       ...(canFulfil

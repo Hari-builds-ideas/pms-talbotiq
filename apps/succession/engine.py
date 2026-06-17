@@ -14,6 +14,7 @@ the ORM must run inside a bound tenant context (the callers bind it).
 """
 from __future__ import annotations
 
+from apps.core.display import person_label
 from apps.goals.models import CycleScore
 
 from . import constants as C
@@ -135,6 +136,7 @@ def compute_analysis(critical_role) -> dict:
             {
                 "candidate_id": str(bc.candidate_id),
                 "candidate_email": bc.candidate.email,
+                "candidate_name": person_label(bc.candidate),
                 "readiness": bc.readiness,
                 "performance_band": perf,
                 "readiness_overridden": bc.readiness_overridden,

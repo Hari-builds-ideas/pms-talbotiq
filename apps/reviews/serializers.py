@@ -16,25 +16,37 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import Review, ReviewAssessment, ReviewStateTransition
 
 
 class ReviewSerializer(serializers.ModelSerializer):
     """Read-only output shape for a :class:`Review`. Every mutation goes through
     ``create_review`` or a state-machine transition, never through this
-    serializer."""
+    serializer. Person/cycle FKs carry a resolved ``*_name`` label next to the id
+    so the UI never renders a raw uuid (the ids stay for React keys/links)."""
+
+    employee_name = serializers.SerializerMethodField()
+    reviewer_name = serializers.SerializerMethodField()
+    human_reviewer_name = serializers.SerializerMethodField()
+    cycle_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
         fields = [
             "id",
             "employee",
+            "employee_name",
             "reviewer",
+            "reviewer_name",
             "cycle",
+            "cycle_name",
             "state",
             "draft_body",
             "final_body",
             "human_reviewer",
+            "human_reviewer_name",
             "approved_at",
             "finalized_at",
             "rejected_reason",
@@ -44,6 +56,18 @@ class ReviewSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_employee_name(self, obj) -> str | None:
+        return person_label(obj.employee)
+
+    def get_reviewer_name(self, obj) -> str | None:
+        return person_label(obj.reviewer)
+
+    def get_human_reviewer_name(self, obj) -> str | None:
+        return person_label(obj.human_reviewer)
+
+    def get_cycle_name(self, obj) -> str | None:
+        return obj.cycle.name if obj.cycle_id else None
 
 
 class ReviewCreateSerializer(serializers.Serializer):
@@ -65,19 +89,30 @@ class AssessmentSerializer(serializers.ModelSerializer):
     a client can neither impersonate an assessor nor backdate a submission.
     """
 
+    assessor_name = serializers.SerializerMethodField()
+
     class Meta:
         model = ReviewAssessment
-        fields = ["id", "assessor", "assessment_type", "body", "submitted_at"]
-        read_only_fields = ["id", "assessor", "submitted_at"]
+        fields = ["id", "assessor", "assessor_name", "assessment_type", "body", "submitted_at"]
+        read_only_fields = ["id", "assessor", "assessor_name", "submitted_at"]
+
+    def get_assessor_name(self, obj) -> str | None:
+        return person_label(obj.assessor)
 
 
 class TransitionSerializer(serializers.ModelSerializer):
-    """Read-only timeline row (the approval tracker) for a review."""
+    """Read-only timeline row (the approval tracker) for a review. ``actor`` is
+    null for system transitions; ``actor_name`` resolves the human label."""
+
+    actor_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ReviewStateTransition
-        fields = ["from_state", "to_state", "actor", "at", "note"]
+        fields = ["from_state", "to_state", "actor", "actor_name", "at", "note"]
         read_only_fields = fields
+
+    def get_actor_name(self, obj) -> str | None:
+        return person_label(obj.actor)
 
 
 class CalibrationRowSerializer(serializers.ModelSerializer):
@@ -89,18 +124,24 @@ class CalibrationRowSerializer(serializers.ModelSerializer):
     """
 
     final_body = serializers.SerializerMethodField()
+    employee_name = serializers.SerializerMethodField()
+    reviewer_name = serializers.SerializerMethodField()
+    human_reviewer_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Review
         fields = [
             "id",
             "employee",
+            "employee_name",
             "reviewer",
+            "reviewer_name",
             "cycle",
             "state",
             "source",
             "confidence_score",
             "human_reviewer",
+            "human_reviewer_name",
             "approved_at",
             "finalized_at",
             "final_body",
@@ -109,3 +150,12 @@ class CalibrationRowSerializer(serializers.ModelSerializer):
 
     def get_final_body(self, obj) -> str | None:
         return obj.final_body if obj.state == Review.State.FINALIZED else None
+
+    def get_employee_name(self, obj) -> str | None:
+        return person_label(obj.employee)
+
+    def get_reviewer_name(self, obj) -> str | None:
+        return person_label(obj.reviewer)
+
+    def get_human_reviewer_name(self, obj) -> str | None:
+        return person_label(obj.human_reviewer)

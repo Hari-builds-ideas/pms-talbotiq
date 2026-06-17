@@ -64,6 +64,14 @@ export function shortId(id?: string | null): string {
   return id.length > 12 ? `…${id.slice(-8)}` : id;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** True if a value is a raw UUID — used as a guard so a uuid is never rendered
+ * to a human where a name/title belongs. */
+export function looksLikeUuid(value?: string | null): boolean {
+  return !!value && UUID_RE.test(value.trim());
+}
+
 /** Initials from a display name or email, for avatars. */
 export function initials(nameOrEmail?: string | null): string {
   if (!nameOrEmail) return "?";

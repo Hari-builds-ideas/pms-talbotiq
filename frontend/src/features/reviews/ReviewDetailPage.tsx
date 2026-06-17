@@ -124,12 +124,12 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
         <BackLink />
         <PageHeader
           eyebrow="Performance review"
-          title={<PersonNameTitle id={r.employee} />}
+          title={<PersonNameTitle id={r.employee} name={r.employee_name} />}
           description={
             <span className="flex flex-wrap items-center gap-2">
-              <span>Reviewer: <PersonName id={r.reviewer} /></span>
+              <span>Reviewer: <PersonName id={r.reviewer} name={r.reviewer_name} /></span>
               <span>·</span>
-              <span>{cycleName(r.cycle)}</span>
+              <span>{r.cycle_name ?? cycleName(r.cycle)}</span>
             </span>
           }
           actions={
@@ -242,11 +242,11 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
           <div className="space-y-5">
             <Panel title="Details">
               <dl className="space-y-2.5 text-sm">
-                <Row label="Employee"><PersonName id={r.employee} /></Row>
-                <Row label="Reviewer"><PersonName id={r.reviewer} /></Row>
-                <Row label="Cycle">{cycleName(r.cycle)}</Row>
+                <Row label="Employee"><PersonName id={r.employee} name={r.employee_name} /></Row>
+                <Row label="Reviewer"><PersonName id={r.reviewer} name={r.reviewer_name} /></Row>
+                <Row label="Cycle">{r.cycle_name ?? cycleName(r.cycle)}</Row>
                 <Row label="Human reviewer">
-                  {r.human_reviewer ? <PersonName id={r.human_reviewer} /> : <span className="text-muted-foreground">— not yet approved</span>}
+                  {r.human_reviewer ? <PersonName id={r.human_reviewer} name={r.human_reviewer_name} /> : <span className="text-muted-foreground">— not yet approved</span>}
                 </Row>
                 {r.approved_at && <Row label="Approved">{formatDateTime(r.approved_at)}</Row>}
                 {r.finalized_at && <Row label="Finalized">{formatDateTime(r.finalized_at)}</Row>}
@@ -382,6 +382,7 @@ function transitionToItem(tr: {
   to_state: string;
   note?: string;
   actor: string | null;
+  actor_name?: string | null;
   at: string;
 }): TimelineItem {
   const tone =
@@ -402,7 +403,7 @@ function transitionToItem(tr: {
     meta: formatDateTime(tr.at),
     body: (
       <span className="text-xs">
-        {tr.actor ? <PersonName id={tr.actor} /> : "System"}
+        {tr.actor ? <PersonName id={tr.actor} name={tr.actor_name} /> : "System"}
         {tr.note ? ` · ${tr.note}` : ""}
       </span>
     ),
@@ -418,8 +419,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function PersonNameTitle({ id }: { id: string }) {
-  return <PersonName id={id} />;
+function PersonNameTitle({ id, name }: { id: string; name?: string | null }) {
+  return <PersonName id={id} name={name} />;
 }
 
 function BackLink() {

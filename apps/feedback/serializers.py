@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import (
     Feedback,
     FeedbackCycle,
@@ -47,11 +49,14 @@ class FeedbackCycleSerializer(serializers.ModelSerializer):
     appear here. ``opened_by`` is deliberately omitted — no identity egress
     beyond the subject."""
 
+    subject_name = serializers.SerializerMethodField()
+
     class Meta:
         model = FeedbackCycle
         fields = [
             "id",
             "subject",
+            "subject_name",
             "status",
             "opened_at",
             "closed_at",
@@ -59,6 +64,11 @@ class FeedbackCycleSerializer(serializers.ModelSerializer):
             "performance_cycle",
         ]
         read_only_fields = fields
+
+    def get_subject_name(self, obj) -> str | None:
+        # The SUBJECT is not anonymous — recipients/managers know whose 360 this
+        # is. Givers are NEVER resolved here (this serializer carries no giver).
+        return person_label(obj.subject)
 
 
 class FeedbackCycleCreateSerializer(serializers.Serializer):
@@ -83,6 +93,7 @@ class MyFeedbackCycleSerializer(serializers.ModelSerializer):
     ``SUMMARY_NOT_RELEASED`` to the subject before release) — the content stays
     gated behind ``/cycles/<id>/summary`` (RELEASED-only)."""
 
+    subject_name = serializers.SerializerMethodField()
     summary_id = serializers.SerializerMethodField()
     summary_status = serializers.SerializerMethodField()
     summary_released = serializers.SerializerMethodField()
@@ -92,6 +103,7 @@ class MyFeedbackCycleSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "subject",
+            "subject_name",
             "status",
             "opened_at",
             "closed_at",
@@ -102,6 +114,9 @@ class MyFeedbackCycleSerializer(serializers.ModelSerializer):
             "summary_released",
         ]
         read_only_fields = fields
+
+    def get_subject_name(self, obj) -> str | None:
+        return person_label(obj.subject)  # the caller's own cycle
 
     @staticmethod
     def _summary(obj):
@@ -131,10 +146,19 @@ class FeedbackRequestSerializer(serializers.ModelSerializer):
     (MANAGE_FEEDBACK_CYCLE in scope) and the giver's own ``/requests/mine``.
     See the module docstring for why this is not an identity leak."""
 
+    giver_name = serializers.SerializerMethodField()
+
     class Meta:
         model = FeedbackRequest
-        fields = ["id", "cycle", "giver", "relationship", "status"]
+        fields = ["id", "cycle", "giver", "giver_name", "relationship", "status"]
         read_only_fields = fields
+
+    def get_giver_name(self, obj) -> str | None:
+        # SAFE: this serializer is used ONLY on the inviter's per-cycle request
+        # list and the giver's own /requests/mine — surfaces where the caller
+        # already knows the giver. It is NEVER used on a recipient/anonymised
+        # surface, so resolving the giver here is not an identity leak.
+        return person_label(obj.giver)
 
 
 class FeedbackRequestCreateSerializer(serializers.Serializer):
@@ -211,12 +235,15 @@ class FeedbackSummarySerializer(serializers.ModelSerializer):
     reviewer-identity egress to the subject); givers never appear in a summary
     by construction (it is built from the anonymised payload)."""
 
+    subject_name = serializers.SerializerMethodField()
+
     class Meta:
         model = FeedbackSummary
         fields = [
             "id",
             "cycle",
             "subject",
+            "subject_name",
             "sections",
             "status",
             "anonymity_passed",
@@ -230,6 +257,11 @@ class FeedbackSummarySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_subject_name(self, obj) -> str | None:
+        # The subject is known to the HRBP reviewer + the subject themselves;
+        # givers are never in a summary by construction.
+        return person_label(obj.subject)
+
 
 # ── 1:1 notes ───────────────────────────────────────────────────────────────
 
@@ -239,10 +271,28 @@ class OneOnOneNoteSerializer(serializers.ModelSerializer):
     mutual, attributed working context (never anonymised) and is only ever
     serialized TO a participant."""
 
+    manager_name = serializers.SerializerMethodField()
+    employee_name = serializers.SerializerMethodField()
+
     class Meta:
         model = OneOnOneNote
-        fields = ["id", "manager", "employee", "body", "meeting_date", "created_at"]
+        fields = [
+            "id",
+            "manager",
+            "manager_name",
+            "employee",
+            "employee_name",
+            "body",
+            "meeting_date",
+            "created_at",
+        ]
         read_only_fields = fields
+
+    def get_manager_name(self, obj) -> str | None:
+        return person_label(obj.manager)
+
+    def get_employee_name(self, obj) -> str | None:
+        return person_label(obj.employee)
 
 
 class OneOnOneNoteCreateSerializer(serializers.Serializer):

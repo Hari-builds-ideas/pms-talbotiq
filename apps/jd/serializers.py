@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import JDRequest, JDTemplate, JDVersion, JobDescription
 
 
@@ -24,6 +26,8 @@ class JobDescriptionSerializer(serializers.ModelSerializer):
     """Read-only output shape for a :class:`JobDescription`. Every mutation goes
     through ``create_jd`` or a lifecycle transition, never through this
     serializer."""
+
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = JobDescription
@@ -36,10 +40,14 @@ class JobDescriptionSerializer(serializers.ModelSerializer):
             "source",
             "current_version",
             "created_by",
+            "created_by_name",
             "approval_route",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_created_by_name(self, obj) -> str | None:
+        return person_label(obj.created_by) if obj.created_by_id else None
 
 
 class JDVersionSerializer(serializers.ModelSerializer):
@@ -108,11 +116,14 @@ class JDRequestSerializer(serializers.ModelSerializer):
     authenticated caller and ``status`` / ``fulfilled_jd`` are stamped by the
     services — all read-only."""
 
+    requested_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = JDRequest
         fields = [
             "id",
             "requested_by",
+            "requested_by_name",
             "title",
             "level",
             "notes",
@@ -121,6 +132,9 @@ class JDRequestSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_requested_by_name(self, obj) -> str | None:
+        return person_label(obj.requested_by) if obj.requested_by_id else None
 
 
 class JDRequestCreateSerializer(serializers.Serializer):

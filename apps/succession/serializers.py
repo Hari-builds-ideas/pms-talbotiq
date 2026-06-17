@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import BenchCandidate, CriticalRole, NineBoxPlacement, SuccessionPlan
 
 
@@ -35,6 +37,8 @@ class CriticalRoleSerializer(serializers.ModelSerializer):
     through a ``services`` write (mark / knowledge-risk / archive), never through
     this serializer."""
 
+    incumbent_name = serializers.SerializerMethodField()
+
     class Meta:
         model = CriticalRole
         fields = [
@@ -42,6 +46,7 @@ class CriticalRoleSerializer(serializers.ModelSerializer):
             "name",
             "position",
             "incumbent",
+            "incumbent_name",
             "criticality",
             "knowledge_risk",
             "risk_notes",
@@ -51,10 +56,17 @@ class CriticalRoleSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_incumbent_name(self, obj) -> str | None:
+        # Management-only module (employees 404 on all of it); resolving the
+        # incumbent within the caller's scope is allowed.
+        return person_label(obj.incumbent) if obj.incumbent_id else None
+
 
 class BenchCandidateSerializer(serializers.ModelSerializer):
     """Read-only output shape for a :class:`BenchCandidate`. Readiness is seeded
     by the engine and overridden only through ``services.set_readiness``."""
+
+    candidate_name = serializers.SerializerMethodField()
 
     class Meta:
         model = BenchCandidate
@@ -62,6 +74,7 @@ class BenchCandidateSerializer(serializers.ModelSerializer):
             "id",
             "critical_role",
             "candidate",
+            "candidate_name",
             "readiness",
             "readiness_overridden",
             "notes",
@@ -70,17 +83,23 @@ class BenchCandidateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_candidate_name(self, obj) -> str | None:
+        return person_label(obj.candidate) if obj.candidate_id else None
+
 
 class NineBoxSerializer(serializers.ModelSerializer):
     """Read-only output shape for a :class:`NineBoxPlacement`. Performance band +
     box are DERIVED by the engine; only the potential band is human-assigned (via
     ``services.assess_nine_box``)."""
 
+    employee_name = serializers.SerializerMethodField()
+
     class Meta:
         model = NineBoxPlacement
         fields = [
             "id",
             "employee",
+            "employee_name",
             "cycle",
             "performance_band",
             "potential_band",
@@ -89,6 +108,9 @@ class NineBoxSerializer(serializers.ModelSerializer):
             "assessed_at",
         ]
         read_only_fields = fields
+
+    def get_employee_name(self, obj) -> str | None:
+        return person_label(obj.employee) if obj.employee_id else None
 
 
 class SuccessionPlanSerializer(serializers.ModelSerializer):

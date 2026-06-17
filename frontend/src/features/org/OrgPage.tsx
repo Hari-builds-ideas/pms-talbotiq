@@ -123,9 +123,9 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
     () => [
       { accessorKey: "title", header: "Title", cell: ({ row }) => <span className="font-medium">{row.original.title}</span> },
       { accessorKey: "department", header: "Department", cell: ({ row }) => <span className="text-muted-foreground">{row.original.department || "—"}</span> },
-      { accessorKey: "reports_to", header: "Reports to", cell: ({ row }) => <PersonName id={row.original.reports_to} /> },
+      { accessorKey: "reports_to", header: "Reports to", cell: ({ row }) => <PersonName id={row.original.reports_to} name={row.original.reports_to_name} /> },
       { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusBadge status={row.original.status} dot /> },
-      { accessorKey: "filled_by", header: "Filled by", cell: ({ row }) => (row.original.filled_by ? <PersonName id={row.original.filled_by} /> : <span className="text-muted-foreground">—</span>) },
+      { accessorKey: "filled_by", header: "Filled by", cell: ({ row }) => (row.original.filled_by ? <PersonName id={row.original.filled_by} name={row.original.filled_by_name} /> : <span className="text-muted-foreground">—</span>) },
       {
         id: "jd",
         header: "JD",
@@ -234,7 +234,7 @@ function VacanciesTab() {
               <div>
                 <p className="text-sm font-medium">{p.title}</p>
                 <p className="text-2xs text-muted-foreground">
-                  {p.department || "—"} · reports to <PersonName id={p.reports_to} /> · opened {formatDate(p.opened_at)}
+                  {p.department || "—"} · reports to <PersonName id={p.reports_to} name={p.reports_to_name} /> · opened {formatDate(p.opened_at)}
                 </p>
               </div>
               <div className="flex items-center gap-2">

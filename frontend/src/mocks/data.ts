@@ -308,6 +308,7 @@ export function inboxFor(role: string): InboxItem[] {
           id: step.id!,
           route: route.id,
           order: step.order,
+          approver: step.approver,
           approver_role: step.approver_role,
           status: step.status,
           due_at: step.due_at,
@@ -475,7 +476,7 @@ export const nineBox: NineBoxPlacement[] = [
 export const plans: Record<string, SuccessionPlan> = {
   "sp-1": {
     id: "sp-1", status: "PENDING_HUMAN_REVIEW", coverage_status: "GREEN", source: "DETERMINISTIC", confidence_score: null,
-    ranked_bench: [{ candidate: "u-4", readiness: "READY_SOON" }, { candidate: "u-6", readiness: "DEVELOPING" }],
+    ranked_bench: [{ candidate_id: "u-4", readiness: "READY_SOON" }, { candidate_id: "u-6", readiness: "DEVELOPING" }],
     red_flags: [],
     action_items: [{ text: "Pair u-4 with the incumbent for one quarter.", added_by: "u-hrbp" }],
   },

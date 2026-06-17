@@ -196,7 +196,7 @@ function CyclesTab() {
             {rows.map((c) => (
               <li key={c.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">360 for <PersonName id={c.subject} /></p>
+                  <p className="text-sm font-medium">360 for <PersonName id={c.subject} name={c.subject_name} /></p>
                   <p className="text-2xs text-muted-foreground">
                     min volume {c.min_volume ?? 3}{c.opened_at ? ` · opened ${formatDate(c.opened_at)}` : ""}
                   </p>
@@ -293,7 +293,7 @@ function ReviewTab() {
             key={s.id}
             title="AI feedback summary"
             icon={Sparkles}
-            aside={<span className="flex items-center gap-1.5 text-2xs text-muted-foreground">for <PersonName id={s.subject} className="font-semibold text-foreground" /></span>}
+            aside={<span className="flex items-center gap-1.5 text-2xs text-muted-foreground">for <PersonName id={s.subject} name={s.subject_name} className="font-semibold text-foreground" /></span>}
           >
             <div className="space-y-3">
               <SummaryView summary={s} showHitl />

@@ -138,11 +138,13 @@ export interface ApprovalStepInstance {
   id?: UUID;
   order: number;
   approver: UUID | null;
+  approver_name?: string | null;
   approver_role: Role | null;
   status: StepStatus;
   due_at: ISODate | null;
   escalated: boolean;
   decided_by: UUID | null;
+  decided_by_name?: string | null;
   decided_at: ISODate | null;
   comment: string;
 }
@@ -154,6 +156,7 @@ export interface ApprovalRoute {
   artifact_type: string;
   artifact_id: UUID;
   initiated_by: UUID;
+  initiated_by_name?: string | null;
   step_instances: ApprovalStepInstance[];
 }
 
@@ -161,6 +164,8 @@ export interface InboxItem {
   id: UUID;
   route: UUID;
   order: number;
+  approver: UUID | null;
+  approver_name?: string | null;
   approver_role: Role | null;
   status: StepStatus;
   due_at: ISODate | null;
@@ -174,12 +179,16 @@ export interface InboxItem {
 export interface Review {
   id: UUID;
   employee: UUID;
+  employee_name?: string | null;
   reviewer: UUID;
+  reviewer_name?: string | null;
   cycle: UUID;
+  cycle_name?: string | null;
   state: ReviewState;
   draft_body: string;
   final_body: string;
   human_reviewer: UUID | null;
+  human_reviewer_name?: string | null;
   approved_at: ISODate | null;
   finalized_at: ISODate | null;
   rejected_reason: string | null;
@@ -195,6 +204,7 @@ export interface ReviewTransition {
   /** Free-text note recorded with the transition (serializer exposes `note`). */
   note: string;
   actor: UUID | null;
+  actor_name?: string | null;
   at: ISODate;
 }
 
@@ -203,6 +213,7 @@ export interface ReviewAssessment {
   assessment_type: "SELF" | "MANAGER" | "PEER" | "UPWARD";
   body: string;
   assessor: UUID;
+  assessor_name?: string | null;
   submitted_at: ISODate | null;
 }
 
@@ -224,6 +235,7 @@ export interface JobDescription {
   source: "MANUAL" | "AI";
   current_version: UUID | null;
   created_by?: UUID;
+  created_by_name?: string | null;
   approval_route: UUID | null;
 }
 
@@ -239,6 +251,7 @@ export interface JdVersion {
 export interface JdRequest {
   id: UUID;
   requested_by: UUID;
+  requested_by_name?: string | null;
   title: string;
   level: string;
   notes: string;
@@ -284,10 +297,13 @@ export interface Position {
   id: UUID;
   title: string;
   reports_to: UUID | null;
+  reports_to_name?: string | null;
   department: string;
   status: PositionStatus;
   filled_by: UUID | null;
+  filled_by_name?: string | null;
   published_jd: UUID | null;
+  published_jd_title?: string | null;
   opened_at: ISODate | null;
   filled_at: ISODate | null;
 }
@@ -322,6 +338,7 @@ export interface CriticalRole {
   name: string;
   position: UUID | null;
   incumbent: UUID | null;
+  incumbent_name?: string | null;
   criticality: "HIGH" | "CRITICAL";
   knowledge_risk: "LOW" | "MEDIUM" | "HIGH";
   risk_notes: string;
@@ -333,6 +350,7 @@ export interface CriticalRole {
 export interface BenchCandidate {
   id: UUID;
   candidate: UUID;
+  candidate_name?: string | null;
   readiness: Readiness;
   readiness_overridden: boolean;
   notes: string;
@@ -341,6 +359,7 @@ export interface BenchCandidate {
 export interface NineBoxPlacement {
   id: UUID;
   employee: UUID;
+  employee_name?: string | null;
   cycle: UUID;
   performance_band: Band;
   potential_band: Band;
@@ -353,7 +372,13 @@ export interface SuccessionPlan {
   coverage_status: CoverageStatus;
   source: "DETERMINISTIC" | "AI";
   confidence_score: Decimal | null;
-  ranked_bench: Array<{ candidate: UUID; readiness: Readiness }>;
+  ranked_bench: Array<{
+    candidate_id: UUID;
+    candidate_email?: string;
+    candidate_name?: string | null;
+    readiness: Readiness;
+    performance_band?: Band;
+  }>;
   red_flags: Array<string | { code?: string; detail?: string }>;
   action_items: Array<{ text: string; added_by?: UUID }>;
 }
@@ -406,7 +431,8 @@ export interface CalibrationGrid {
 
 export interface AuditLog {
   id: UUID;
-  actor: UUID;
+  actor: UUID | null;
+  actor_name?: string | null;
   action: string;
   target_type: string;
   target_id: UUID;
@@ -458,14 +484,17 @@ export interface Kpi {
 export interface Goal {
   id: UUID;
   employee: UUID;
+  employee_name?: string | null;
   cycle: UUID;
   created_by: UUID;
+  created_by_name?: string | null;
   title: string;
   description: string;
   objective: string;
   weight: Decimal;
   status: "DRAFT" | "ACTIVE" | "ACHIEVED" | "MISSED" | "ARCHIVED";
   approved_by: UUID | null;
+  approved_by_name?: string | null;
   approved_at: ISODate | null;
   kpis: Kpi[];
   kpi_weight_total?: Decimal;
@@ -492,6 +521,7 @@ export type FeedbackRelationship = "SELF" | "MANAGER" | "PEER" | "UPWARD";
 export interface FeedbackCycle {
   id: UUID;
   subject: UUID;
+  subject_name?: string | null;
   status: "DRAFT" | "COLLECTING" | "CLOSED";
   opened_at: ISODate | null;
   closed_at: ISODate | null;
@@ -515,6 +545,7 @@ export interface FeedbackRequestItem {
   id: UUID;
   cycle: UUID;
   giver: UUID;
+  giver_name?: string | null;
   relationship: FeedbackRelationship;
   status: "PENDING" | "SUBMITTED" | "DECLINED";
 }
@@ -534,6 +565,7 @@ export interface FeedbackSummary {
   id: UUID;
   cycle: UUID;
   subject: UUID;
+  subject_name?: string | null;
   sections: {
     strengths?: string;
     growth?: string;
@@ -601,9 +633,12 @@ export interface SkillGap {
 export interface DevelopmentRoadmap {
   id: UUID;
   employee: UUID;
+  employee_name?: string | null;
   status: "DRAFT" | "ACTIVE" | "ARCHIVED";
   target_jd: UUID | null;
+  target_jd_title?: string | null;
   target_position: UUID | null;
+  target_position_title?: string | null;
   selection: UUID | null;
   tiers: RoadmapTier[];
   skill_gap: SkillGap | null;

@@ -40,7 +40,7 @@ export function CycleSheet({
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            {cycle && <>360 for <PersonName id={cycle.subject} /></>}
+            {cycle && <>360 for <PersonName id={cycle.subject} name={cycle.subject_name} /></>}
             {cycle && <StatusBadge status={cycle.status} dot />}
           </SheetTitle>
           <SheetDescription>
@@ -143,7 +143,7 @@ function CycleBody({ cycle }: { cycle: FeedbackCycle }) {
             {invitations.data.map((r) => (
               <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
                 <span className="flex items-center gap-2 text-sm">
-                  <PersonName id={r.giver} />
+                  <PersonName id={r.giver} name={r.giver_name} />
                   <Badge variant="muted">{humanize(r.relationship)}</Badge>
                 </span>
                 <StatusBadge status={r.status} />

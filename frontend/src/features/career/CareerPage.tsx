@@ -195,7 +195,7 @@ function RoadmapCard({
       icon={GraduationCap}
       aside={
         <span className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-          {showEmployee && <>for <PersonName id={roadmap.employee} className="font-semibold text-foreground" /> ·</>}
+          {showEmployee && <>for <PersonName id={roadmap.employee} name={roadmap.employee_name} className="font-semibold text-foreground" /> ·</>}
           toward <span className="font-semibold text-foreground">{targetLabel}</span>
         </span>
       }

@@ -850,7 +850,7 @@ export const handlers = [
     const coverage = bench.some((b) => b.readiness === "READY_NOW") ? "GREEN" : bench.length ? "AMBER" : "RED";
     const plan = {
       id, status: "PENDING_HUMAN_REVIEW" as const, coverage_status: coverage as "RED" | "AMBER" | "GREEN", source: "DETERMINISTIC" as const, confidence_score: null,
-      ranked_bench: bench.map((b) => ({ candidate: b.candidate, readiness: b.readiness })),
+      ranked_bench: bench.map((b) => ({ candidate_id: b.candidate, readiness: b.readiness })),
       red_flags: coverage === "RED" ? ["INADEQUATE_COVERAGE"] : [],
       action_items: [] as Array<{ text: string; added_by?: string }>,
     };

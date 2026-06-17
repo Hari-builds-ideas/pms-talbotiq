@@ -53,17 +53,17 @@ export function ReviewsListPage() {
       {
         accessorKey: "employee",
         header: "Employee",
-        cell: ({ row }) => <PersonName id={row.original.employee} withAvatar />,
+        cell: ({ row }) => <PersonName id={row.original.employee} name={row.original.employee_name} withAvatar />,
       },
       {
         accessorKey: "reviewer",
         header: "Reviewer",
-        cell: ({ row }) => <PersonName id={row.original.reviewer} />,
+        cell: ({ row }) => <PersonName id={row.original.reviewer} name={row.original.reviewer_name} />,
       },
       {
         accessorKey: "cycle",
         header: "Cycle",
-        cell: ({ row }) => <span className="text-muted-foreground">{nameOf(row.original.cycle)}</span>,
+        cell: ({ row }) => <span className="text-muted-foreground">{row.original.cycle_name ?? nameOf(row.original.cycle)}</span>,
       },
       {
         accessorKey: "state",

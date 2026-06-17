@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import DevelopmentRoadmap, RoadmapProgress, TargetRoleSelection
 
 
@@ -36,15 +38,23 @@ class DevelopmentRoadmapSerializer(serializers.ModelSerializer):
     """Read-only output shape for a :class:`DevelopmentRoadmap`. ``advisory`` is
     always True (DB CHECK enforced); ``tiers`` + ``skill_gap`` come from the
     deterministic engine. NO succession fields are exposed — the response carries
-    only the employee's own performance-derived gap + advisory tiers."""
+    only the employee's own performance-derived gap + advisory tiers. The
+    employee + target FKs carry resolved labels so the UI never shows a raw uuid."""
+
+    employee_name = serializers.SerializerMethodField()
+    target_jd_title = serializers.SerializerMethodField()
+    target_position_title = serializers.SerializerMethodField()
 
     class Meta:
         model = DevelopmentRoadmap
         fields = [
             "id",
             "employee",
+            "employee_name",
             "target_jd",
+            "target_jd_title",
             "target_position",
+            "target_position_title",
             "selection",
             "status",
             "tiers",
@@ -56,6 +66,15 @@ class DevelopmentRoadmapSerializer(serializers.ModelSerializer):
             "generated_by",
         ]
         read_only_fields = fields
+
+    def get_employee_name(self, obj) -> str | None:
+        return person_label(obj.employee) if obj.employee_id else None
+
+    def get_target_jd_title(self, obj) -> str | None:
+        return obj.target_jd.title if obj.target_jd_id else None
+
+    def get_target_position_title(self, obj) -> str | None:
+        return obj.target_position.title if obj.target_position_id else None
 
 
 class TargetRoleSelectionSerializer(serializers.ModelSerializer):

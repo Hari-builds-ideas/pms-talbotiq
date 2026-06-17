@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import (
     ApprovalRoute,
     ApprovalStep,
@@ -105,7 +107,13 @@ class WorkflowCreateSerializer(serializers.ModelSerializer):
 
 
 class StepInstanceSerializer(serializers.ModelSerializer):
-    """Read-only running decision slot for the route tracker / inbox."""
+    """Read-only running decision slot for the route tracker / inbox.
+    ``approver``/``decided_by`` carry resolved ``*_name`` labels (a role-slot step
+    may have no named approver — then ``approver_name`` is null and the UI shows
+    the role)."""
+
+    approver_name = serializers.SerializerMethodField()
+    decided_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ApprovalStepInstance
@@ -113,22 +121,31 @@ class StepInstanceSerializer(serializers.ModelSerializer):
             "id",
             "order",
             "approver",
+            "approver_name",
             "approver_role",
             "required",
             "status",
             "due_at",
             "decided_by",
+            "decided_by_name",
             "decided_at",
             "comment",
             "escalated",
         ]
         read_only_fields = fields
 
+    def get_approver_name(self, obj) -> str | None:
+        return person_label(obj.approver) if obj.approver_id else None
+
+    def get_decided_by_name(self, obj) -> str | None:
+        return person_label(obj.decided_by) if obj.decided_by_id else None
+
 
 class RouteSerializer(serializers.ModelSerializer):
     """Read-only route tracker: the route header + its ordered step instances."""
 
     step_instances = StepInstanceSerializer(many=True, read_only=True)
+    initiated_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ApprovalRoute
@@ -140,11 +157,15 @@ class RouteSerializer(serializers.ModelSerializer):
             "mode",
             "status",
             "initiated_by",
+            "initiated_by_name",
             "started_at",
             "completed_at",
             "step_instances",
         ]
         read_only_fields = fields
+
+    def get_initiated_by_name(self, obj) -> str | None:
+        return person_label(obj.initiated_by) if obj.initiated_by_id else None
 
 
 class InboxItemSerializer(serializers.ModelSerializer):
@@ -154,6 +175,7 @@ class InboxItemSerializer(serializers.ModelSerializer):
     route = serializers.UUIDField(source="route_id", read_only=True)
     artifact_type = serializers.CharField(source="route.artifact_type", read_only=True)
     artifact_id = serializers.UUIDField(source="route.artifact_id", read_only=True)
+    approver_name = serializers.SerializerMethodField()
 
     class Meta:
         model = ApprovalStepInstance
@@ -164,9 +186,13 @@ class InboxItemSerializer(serializers.ModelSerializer):
             "artifact_id",
             "order",
             "approver",
+            "approver_name",
             "approver_role",
             "required",
             "status",
             "due_at",
         ]
         read_only_fields = fields
+
+    def get_approver_name(self, obj) -> str | None:
+        return person_label(obj.approver) if obj.approver_id else None

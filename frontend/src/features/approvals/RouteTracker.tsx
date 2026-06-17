@@ -29,7 +29,7 @@ function stepIcon(status: string) {
 }
 
 function approverLabel(step: ApprovalStepInstance) {
-  if (step.approver) return <PersonName id={step.approver} />;
+  if (step.approver) return <PersonName id={step.approver} name={step.approver_name} />;
   if (step.approver_role) return <span>{ROLE_LABEL[step.approver_role as Role]} (role)</span>;
   return <span>Unassigned</span>;
 }

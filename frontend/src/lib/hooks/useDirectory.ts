@@ -21,7 +21,9 @@ export function useDirectory() {
     if (!id) return "—";
     const node: OrgNode | undefined = nodes[id];
     if (node) return node.display;
-    return id;
+    // Out of scope / not loaded: never surface a raw uuid to a human. Callers
+    // with a server-resolved label should prefer it (PersonName's `name` prop).
+    return "Unknown";
   }
 
   function roleOf(id?: string | null): string | undefined {

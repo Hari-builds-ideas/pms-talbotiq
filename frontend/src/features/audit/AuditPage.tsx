@@ -64,7 +64,7 @@ export function AuditPage() {
         header: "Time",
         cell: ({ row }) => <span className="whitespace-nowrap text-muted-foreground">{formatDateTime(row.original.created_at)}</span>,
       },
-      { accessorKey: "actor", header: "Actor", cell: ({ row }) => <PersonName id={row.original.actor} /> },
+      { accessorKey: "actor", header: "Actor", cell: ({ row }) => (row.original.actor ? <PersonName id={row.original.actor} name={row.original.actor_name} /> : <span className="text-muted-foreground">System</span>) },
       {
         accessorKey: "action",
         header: "Action",

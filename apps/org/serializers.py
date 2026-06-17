@@ -23,13 +23,22 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.core.display import person_label
+
 from .models import Position
 
 
 class PositionSerializer(serializers.ModelSerializer):
     """Read-only output shape for a :class:`Position`. Every mutation goes
     through a ``positions`` write (create / fill / close / link-jd / unlink-jd),
-    never through this serializer."""
+    never through this serializer. Person/JD FKs carry resolved labels so the UI
+    never renders a raw uuid: ``filled_by_name`` + ``reports_to_name`` are USERS
+    (``reports_to`` is the manager the position reports to, not a parent
+    position); ``published_jd_title`` is the linked JD's title."""
+
+    filled_by_name = serializers.SerializerMethodField()
+    reports_to_name = serializers.SerializerMethodField()
+    published_jd_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Position
@@ -39,13 +48,25 @@ class PositionSerializer(serializers.ModelSerializer):
             "department",
             "status",
             "reports_to",
+            "reports_to_name",
             "filled_by",
+            "filled_by_name",
             "published_jd",
+            "published_jd_title",
             "opened_at",
             "filled_at",
             "created_at",
         ]
         read_only_fields = fields
+
+    def get_filled_by_name(self, obj) -> str | None:
+        return person_label(obj.filled_by) if obj.filled_by_id else None
+
+    def get_reports_to_name(self, obj) -> str | None:
+        return person_label(obj.reports_to) if obj.reports_to_id else None
+
+    def get_published_jd_title(self, obj) -> str | None:
+        return obj.published_jd.title if obj.published_jd_id else None
 
 
 class PositionCreateSerializer(serializers.Serializer):

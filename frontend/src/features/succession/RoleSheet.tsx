@@ -91,7 +91,7 @@ function RoleBody({ role }: { role: CriticalRoleSummary }) {
             {bench.data.results.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2">
                 <div className="min-w-0">
-                  <PersonName id={b.candidate} className="text-sm font-medium" />
+                  <PersonName id={b.candidate} name={b.candidate_name} className="text-sm font-medium" />
                   {b.notes && <p className="truncate text-2xs text-muted-foreground">{b.notes}</p>}
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -267,8 +267,8 @@ function PlanReview({
           <p className="mb-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Ranked bench</p>
           <ol className="space-y-1">
             {p.ranked_bench.map((b, i) => (
-              <li key={`${b.candidate}-${i}`} className="flex items-center justify-between text-sm">
-                <span><span className="text-muted-foreground">{i + 1}.</span> <PersonName id={b.candidate} /></span>
+              <li key={`${b.candidate_id}-${i}`} className="flex items-center justify-between text-sm">
+                <span><span className="text-muted-foreground">{i + 1}.</span> <PersonName id={b.candidate_id} name={b.candidate_name} /></span>
                 <StatusBadge status={b.readiness} />
               </li>
             ))}

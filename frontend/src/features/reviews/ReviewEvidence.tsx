@@ -151,7 +151,7 @@ export function AssessmentsPanel({
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">{humanize(a.assessment_type)}</Badge>
                     <span className="text-2xs text-muted-foreground">
-                      <PersonName id={a.assessor} />
+                      <PersonName id={a.assessor} name={a.assessor_name} />
                     </span>
                   </div>
                   <p className="text-sm text-muted-foreground">{a.body}</p>

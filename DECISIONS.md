@@ -149,3 +149,21 @@ All five seam UIs use it; AI stays assistive (manual path always available).
 dev stack needs `docker compose restart web celery-worker` to pick up new task
 code — a deploy concern, not a code issue. Verified live after restart: a DRAFT
 review fired → 202 QUEUED → worker → SUCCEEDED → review PENDING_HUMAN_REVIEW.
+
+### D6 (BUILD_2/2.5) — AI chat stays SYNCHRONOUS
+
+**Decision.** AI chat (`POST /api/ai/chat`) remains synchronous, the one
+deliberate exception to the async move. It's short, interactive and 8B/low
+latency, and an async "your answer is being prepared… poll" UX is strictly worse
+for a conversation. It keeps the gateway's own graceful degradation
+(NOT_CONFIGURED → 503, over-budget → 429) and stays read-only, RBAC-bound
+(`USE_CHAT` + chat entitlement) and write-blocked. The heavy, retrying agent
+seams (review/feedback/succession/JD/career) are exactly the ones that justified
+moving off the request thread; chat does not.
+
+**Cleanup.** No endpoint still runs the gateway in-request except chat — proven
+by `test_async_sweep.py` (with `CELERY_TASK_ALWAYS_EAGER=False` the seam returns
+202 with the artifact untouched + nothing metered). The stale "called
+SYNCHRONOUSLY" docstrings on the JD and succession views were updated. The
+deterministic paths (`regenerate_roadmap`, the baseline plan/roadmap) are
+untouched and remain the always-available manual fallback.

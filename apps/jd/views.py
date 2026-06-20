@@ -15,9 +15,10 @@ Views stay THIN on purpose:
     managers+ see the whole library, everyone else PUBLISHED only — falls out as
     a 404 (never a 403 that leaks existence) for a non-manager on a non-published
     JD;
-  * the AI body comes from ``tasks.generate_jd``, called SYNCHRONOUSLY. Until
-    Module 10 ships a provider it returns ``no_provider`` and the view surfaces a
-    loud 503 — the JD is left untouched and no fake body is ever written.
+  * the AI body comes from ``tasks.generate_jd``, ENQUEUED async (BUILD_2): the
+    generate view validates inputs synchronously (422 if missing) then returns
+    202 + an AI job id to poll. No provider lands the job DEGRADED — the JD is
+    left untouched and no fake body is ever written.
 
 The tenant is bound from the JWT by ``TenantMiddleware``; the scoped managers
 auto-filter, so a cross-tenant row never resolves and we never filter by tenant

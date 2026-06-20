@@ -20,9 +20,9 @@ Views stay THIN on purpose:
     service / plan, and serialize;
   * the plan HITL (``generate`` → PENDING_HUMAN_REVIEW → ``action-item`` →
     ``publish``) enforces legality internally (409 ``ILLEGAL_PLAN_TRANSITION``);
-  * the Agent-4 enrichment comes from ``enrich_succession_with_agent4``, called
-    SYNCHRONOUSLY. Until Module 10 ships a provider it returns ``no_provider`` and
-    the view surfaces a loud 503 — the DETERMINISTIC plan is left COMPLETELY
+  * the Agent-4 enrichment comes from ``enrich_succession_with_agent4``, ENQUEUED
+    async (BUILD_2): the enrich view returns 202 + an AI job id to poll. No
+    provider lands the job DEGRADED — the DETERMINISTIC plan is left COMPLETELY
     INTACT and no fake analysis is ever written.
 
 The tenant is bound from the JWT by ``TenantMiddleware``; the scoped managers

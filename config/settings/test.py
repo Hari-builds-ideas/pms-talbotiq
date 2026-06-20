@@ -46,6 +46,13 @@ CACHES = {
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
+# Don't persist DB connections in tests. The BUILD_3 read-replica alias adds a
+# second connection; with CONN_MAX_AGE=60 (prod) a long suite could accumulate
+# them. 0 = close after each use → no accumulation, no exhaustion. (close_old_
+# connections is also skipped in eager Celery, so it can't tear down a test txn.)
+for _db in DATABASES.values():  # noqa: F405
+    _db["CONN_MAX_AGE"] = 0
+
 # Global Tenant/User throttles OFF in tests (they'd add an entitlement lookup to
 # every authed request and could trip on hot-loop tests); individual throttle
 # tests enable what they need. KEEP the base "anon" rate so the AnonRateThrottle

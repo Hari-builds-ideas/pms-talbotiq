@@ -101,6 +101,8 @@ MIDDLEWARE = [
     # every log line + Sentry event for this request is correlatable. Reset in
     # finally (no cross-request bleed).
     "apps.core.middleware.RequestIDMiddleware",
+    # Clear the read-after-write DB-routing flag at the start of each request.
+    "apps.core.dbrouter.DBRoutingResetMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -161,6 +163,26 @@ DATABASES = {
         },
     }
 }
+
+# ─── Read replica (BUILD_3) — replica-ready, default-fallback ──────────────
+# The `replica` alias takes reads (see apps.core.dbrouter). With NO replica DSN
+# configured (today) it is a SECOND connection to the SAME primary — so the
+# read/write router is active + tested now, and provisioning a real replica is
+# purely setting DB_REPLICA_HOST (+ optional DB_REPLICA_* overrides), never a
+# code change. In tests the replica MIRRORS the primary's test DB, so the runner
+# never builds a second test database. See docs/RUNBOOK.md.
+_REPLICA_HOST = env("DB_REPLICA_HOST", default="")
+DATABASES["replica"] = {
+    **DATABASES["default"],
+    "HOST": _REPLICA_HOST or DATABASES["default"]["HOST"],
+    "PORT": env("DB_REPLICA_PORT", default=DATABASES["default"]["PORT"]),
+    "USER": env("DB_REPLICA_USER", default=DATABASES["default"]["USER"]),
+    "PASSWORD": env("DB_REPLICA_PASSWORD", default=DATABASES["default"]["PASSWORD"]),
+    # The replica is read-only in prod; in tests it mirrors the primary's test DB.
+    "TEST": {"MIRROR": "default"},
+}
+
+DATABASE_ROUTERS = ["apps.core.dbrouter.PrimaryReplicaRouter"]
 
 # ─── Cache + sessions (Redis 7) ────────────────────────────────────────
 # Redis is split by logical DB so cache pressure can never disturb queued work:

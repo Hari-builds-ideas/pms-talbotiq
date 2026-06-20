@@ -214,3 +214,35 @@ the defaults too. The login/auth surface now uses `AtomicAnonThrottle` (DRF's
 `AnonRateThrottle` hardened to the same Lua counter) so a credential-stuffing
 burst can't be edged across replicas either. A coverage test enumerates the AI
 views and asserts the bucket is present.
+
+### D9 (BUILD_3/3.3) — DATABASE_ROUTERS read/write split (replica-ready)
+
+**Decision.** A `PrimaryReplicaRouter` (`apps/core/dbrouter.py`) routes reads →
+`replica`, writes → `default`; `allow_migrate` only on `default`;
+`allow_relation` always true (the replica is a copy). It is ACTIVE + tested now
+against the single DB: the `replica` alias falls back to a second connection to
+the primary when `DB_REPLICA_HOST` is unset, so provisioning a real replica later
+is purely env config (RUNBOOK), never a code change. In tests the replica
+`TEST: {"MIRROR": "default"}` so no second test DB is built.
+
+**Read-after-write correctness.** A replica lags, so stale reads after a write
+must be avoided. Two rules: (1) a per-thread "has written" flag set on the first
+write and cleared at the start of each request (`DBRoutingResetMiddleware`) and
+each Celery task (`task_prerun`); (2) any read while
+`connections["default"].in_atomic_block` (every transaction, incl.
+`select_for_update`) goes to the primary. The audit log (INSERT-only) and all
+writes route to `default` via `db_for_write`. No `ATOMIC_REQUESTS`, so ordinary
+GET reads genuinely reach the replica; write paths and transactional reads stay
+on the primary. Proven by unit tests of the router (reads→replica, →default
+after a write, →default inside a transaction, migrate default-only) + a queryset
+asserting it resolves to the routed alias.
+
+**Testing notes (learned the hard way).** (1) The Celery `task_postrun`
+`close_old_connections` is SKIPPED in eager mode — otherwise it tears down the
+test's own transaction (it caught 15 AI-seam tests). (2) A `transaction=True`
+queryset test (TransactionTestCase + a mirrored replica alias) was dropped — it
+flushes the DB mid-suite and was flaky under full-suite load; the router's
+`db_for_read` decision is the routing authority and is unit-proven, so the
+integration variant added risk without real coverage. (3) Test settings set
+`CONN_MAX_AGE=0` so the second (replica) connection can't accumulate across a
+long suite. Full suite green at 1100+ with the router active.

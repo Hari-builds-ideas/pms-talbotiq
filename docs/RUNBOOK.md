@@ -72,3 +72,38 @@ python3 scripts/smoke.py    # 47 journeys across every surface + RBAC boundaries
 - **Frontend** (`frontend/src/`): `lib/api/endpoints.ts` (the typed client — 1:1 with backend endpoints), `lib/types.ts`, `lib/errors.ts` (error-code mapper), `lib/auth/` (auth + refresh), `app/` (router, nav, guards, shell), `features/<area>/` (the screens), `components/` (shared UI).
 - **Docs:** `docs/BUILD_NOTES.md` (per-module behaviour), `docs/AI_GOLIVE.md`, `docs/frontend-contract/`. Repo-root `NEEDS_HARI_*.md` are open product decisions with safe defaults.
 - **Test script for Hari:** `TEST-THIS-HARI.md`. **Mobile plan:** `MOBILE_BUILD_PLAN.md`.
+
+## Database: read replica + connection sizing (BUILD_3)
+
+A read/write router (`apps/core/dbrouter.py`) is ACTIVE now: reads → the
+`replica` alias, writes → `default`, with read-after-write pinning (a request/task
+that has written, or any read inside a transaction, reads from the primary).
+
+**Provisioning a real replica is config-only — no code change:**
+
+```
+# Point the replica alias at the real read replica (else it falls back to a
+# second connection to the primary — which is what runs today):
+DB_REPLICA_HOST=<replica-host>
+DB_REPLICA_PORT=3306            # optional (defaults to the primary's)
+DB_REPLICA_USER=<ro-user>       # optional (defaults to the primary's)
+DB_REPLICA_PASSWORD=<ro-pass>   # optional
+```
+
+In tests the replica MIRRORS the primary's test DB (`TEST: {"MIRROR": "default"}`)
+so the runner never builds a second test database.
+
+**MySQL `max_connections` sizing** (the compose `mysql` caps at 100). With the
+replica split, the PRIMARY sees writes + read-after-write + in-transaction reads;
+the REPLICA sees the rest of the reads. Size each:
+
+```
+primary_peak  ≈ web_replicas × gunicorn_workers × threads      # write + RAW reads
+              + celery_worker_concurrency + headroom
+replica_peak  ≈ web_replicas × gunicorn_workers × threads      # steady-state reads
+```
+
+`CONN_MAX_AGE=60` + `CONN_HEALTH_CHECKS=True` apply to BOTH aliases (the replica
+inherits the primary's config). Celery closes old connections after each task
+(`task_postrun`), so long-lived workers don't leak/reuse dropped connections.
+Raise `--max-connections` (and DB resources) before scaling past the sizing math.

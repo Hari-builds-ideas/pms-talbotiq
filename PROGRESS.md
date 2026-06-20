@@ -3,7 +3,11 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_3 — ATOMIC_LIMITS_AND_DB_ROUTER · Phase 3.3 (DATABASE_ROUTERS read/write split)
+## Current: BUILD_3 — ATOMIC_LIMITS_AND_DB_ROUTER · 3.3+3.4 done → BUILD_3_REPORT, then BUILD_4
+
+Note: 3.3 (router) + 3.4 (connection sizing/resilience) committed together — they
+touch the same files (celery.py, RUNBOOK, test_dbrouter) and the env forbids
+interactive partial staging, so one cohesive DB-tier commit rather than a hacky split.
 
 BUILD_2 COMPLETE: 2.1–2.5 + report committed/pushed/green (`a27f8d3`); backend
 1092 passed, 2 deselected; frontend clean; all 5 AI seams async; chat stays sync.
@@ -64,6 +68,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+18 · BUILD_3/3.3+3.4 · DATABASE_ROUTERS read/write split + connection sizing/resilience · `apps/core/dbrouter.py` (new — PrimaryReplicaRouter reads→replica/writes→default, read-after-write via per-thread flag + in_atomic_block, allow_migrate default-only; DBRoutingResetMiddleware), `config/settings/base.py` (DATABASES[replica] env-DSN-or-fallback + TEST MIRROR; DATABASE_ROUTERS; middleware; sizing comment), `config/celery.py` (task_prerun reset_write_state + task_postrun close_old_connections, EAGER-guarded so it never tears down a test transaction), `apps/core/tests/test_dbrouter.py` (4), `docs/RUNBOOK.md` (replica provisioning + max_connections sizing for both aliases) · **[test]** router: reads→replica then→default after write, txn reads→default, migrate default-only; both aliases load + inherit CONN settings; **caught + fixed**: eager `close_old_connections` was tearing down 15 AI-seam test transactions → guarded on `CELERY_TASK_ALWAYS_EAGER`; dropped a flaky `transaction=True` queryset test (mirrored-replica DB-flush mid-suite) for a unit assert; `config/settings/test.py` CONN_MAX_AGE=0 so the replica connection can't accumulate · DECISIONS D9 · commit `BUILD_3 3.3+3.4`
 
 17 · BUILD_3/3.2 · atomic throttles + global ceiling + AIThrottle coverage · `apps/core/throttling.py` (_EntitlementThrottle.allow_request → atomic.incr_window fixed-window; +AI_THROTTLES bundle; +AtomicAnonThrottle), `apps/ai/groq.py` (_reserve_global → atomic.incr_window), `apps/ai/views.py`+5 seam views (throttle_classes=AI_THROTTLES on chat/nudges/review-draft/summarize/plan-enrich/jd-generate/career-enrich), `apps/identity/views.py` (login/MFA → AtomicAnonThrottle), `apps/core/tests/test_atomic_throttle.py` (6) · **[test]** 40 concurrent @5/min→exactly 5; global ceiling 3→exactly 3; anon per-IP limit; AI-route coverage; 453 affected pass · DECISIONS D8 · commit `BUILD_3 3.2`
 

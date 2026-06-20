@@ -28,6 +28,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { NineBoxGrid } from "@/components/NineBoxGrid";
+import { CoverageHeatmap } from "@/components/CoverageHeatmap";
 import { RoleSheet } from "./RoleSheet";
 import {
   useNineBox,
@@ -98,7 +99,9 @@ function CoverageTab({ onSelect }: { onSelect: (r: CriticalRoleSummary) => void 
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-4">
+      <CoverageHeatmap roles={roles} />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {roles.map((r) => (
         <button key={r.id} type="button" onClick={() => onSelect(r)} className="text-left">
           <Card className="h-full transition-shadow hover:shadow-sm">
@@ -120,6 +123,7 @@ function CoverageTab({ onSelect }: { onSelect: (r: CriticalRoleSummary) => void 
           </Card>
         </button>
       ))}
+      </div>
     </div>
   );
 }

@@ -3,7 +3,10 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: SERIES wrap — BUILDs 1–4 COMPLETE; BUILD_5 partial (5.1/5.6/5.7 done, 5.2–5.5 flagged for Hari)
+## Current: BUILD_5 — WEB_UX_COMPLETION · continuing 5.3/5.4b/5.5 (ux-spec as design authority; design skills unavailable)
+
+BUILDs 1–4 COMPLETE/pushed/green. BUILD_5 done so far: 5.1, 5.2, 5.4a, 5.6, 5.7.
+Now: 5.3 (review draft-vs-final), 5.4b (succession heatmap/9-box), 5.5 (polish).
 
 BUILDs 1–4 complete/pushed/green (backend 1123 passed, 2 deselected). BUILD_5:
 delivered 5.1 (actionable command center), 5.6 (AI-job UI tests, frontend 30
@@ -75,6 +78,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+26 · BUILD_5/5.4b · succession coverage heatmap · `frontend/src/components/CoverageHeatmap.tsx` (new — proportional RED/AMBER/GREEN band + counts across critical roles) wired atop the SuccessionPage coverage tab. Note: the per-role coverage grid, NineBoxGrid (read), and plan-detail RoleSheet were ALREADY built; nine-box DRAG-reposition is deferred (needs a persisted-override backend endpoint — no dead UI). · **[build]** tsc+lint+build clean · commit `BUILD_5 5.4b`. Verified non-redundant scope: 5.3 has no draft-vs-final diff (finalize copies draft→final; identical) + comments need a backend (Tier 3); 5.4c suppression already visually explicit; 5.5 error-boundary/tenant-config-lock already built.
 
 25 · BUILD_5/5.4a · career: adopt AI roadmap (accept→ACTIVE) · backend `apps/career/services.py` (adopt_roadmap: AI-DRAFT→ACTIVE, supersede prior ACTIVE to DRAFT, advisory preserved, audited, scoped), `apps/career/views.py` (RoadmapAdoptView) + `urls.py` (/adopt), `apps/career/tests/test_api.py` (adopt promotes+supersedes; non-AI-draft→422); frontend `endpoints.ts`+`useCareer.ts` (adopt mutation) + `CareerPage.tsx` ("Adopt as active" button on AI-draft card) · resolves the 5.4 flagged decision (DECISIONS D14) · **[test]** career 48 pass; no drift; tsc+lint+build clean · commit `BUILD_5 5.4a`
 

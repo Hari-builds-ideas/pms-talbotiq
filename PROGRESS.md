@@ -3,7 +3,17 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_1 COMPLETE (1.1–1.5 committed + pushed + green) — writing BUILD_1_REPORT, then BUILD_2
+## Current: BUILD_2 — ASYNC_AI · Phase 2.2 (run_agent_job Celery task)
+
+BUILD_1 COMPLETE: 1.1–1.5 + report + specs committed/pushed/green (`5e9f9fb`);
+backend 1073 passed, 2 deselected; frontend clean.
+
+Key BUILD_2 finding: all 5 AI seams are ALREADY `@shared_task`s
+(`draft_review_with_agent1`, `summarize_feedback`,
+`enrich_succession_with_agent4`, `generate_jd`, `generate_roadmap`) that bind
+tenant ctx, set artifact PENDING, meter via gateway, degrade gracefully — the
+views just call them SYNC. BUILD_2 = add AIJob status record + flip to `.delay()`
++ poll API. Not a rewrite.
 
 ### BUILD_1 headline — query count per page, before → after (5→25 rows)
 
@@ -50,6 +60,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+6 · BUILD_2/2.1 · AIJob model + async design · `apps/ai/models.py` (new — AIJob: status QUEUED→RUNNING→SUCCEEDED|DEGRADED|FAILED, loose target_type+target_id, requested_by, agent_code, confidence, token_ledger FK, error_code, 2 tenant-leading indexes), `apps/ai/migrations/0001_initial.py`, `apps/ai/tests/test_aijob_model.py` (5 scoping tests), `DECISIONS.md` D4 · **[test]** migration apply+reverse clean; no drift; 5 scoping tests + 56 ai-suite pass · commit `BUILD_2 2.1`
 
 1 · BUILD_1/1.1 · query-count harness + N+1 baseline · `apps/testsupport/query_budget.py` (count_queries/ScalingResult/measure_scaling, additive seeding), `apps/core/tests/test_query_budgets.py` (7 endpoint budget tests, recording mode) · **[test]** 7 passed; baseline table above · commit `BUILD_1 1.1`
 

@@ -89,3 +89,38 @@ fix as the directory: don't ship N rows to the client to count them.
   needs its structure, so expand-on-demand is a viz/UX feature for BUILD_5, not
   an ORM concern. The directory's per-row name needs are already met by the
   `*_name` payload fields added in 1.2, making the tree a fallback resolver.
+
+### D4 (BUILD_2/2.1) — The async AI job model + surfacing pattern
+
+**Context.** All 5 AI seams are ALREADY `@shared_task` Celery tasks
+(`draft_review_with_agent1`, `summarize_feedback`, `enrich_succession_with_agent4`,
+`generate_jd`, `generate_roadmap`) that bind tenant context, set the artifact
+PENDING via the audited state machine, meter through the gateway, and degrade
+gracefully. The ONLY problem: the views call them SYNCHRONOUSLY (inline), so a
+slow Groq call holds a gunicorn worker. BUILD_2 flips sync→`.delay()` and adds a
+status record + poll surface — it does NOT rewrite the tasks.
+
+**Decision — `AIJob` (tenant-scoped, in the new `apps/ai/models.py`):**
+- Status: QUEUED → RUNNING → SUCCEEDED → FAILED | DEGRADED.
+- **Target reference = loose `target_type` (CharField) + `target_id` (UUID), NOT
+  a GenericForeignKey.** The AIJob is a correlation/status record; the artifact
+  (Review / FeedbackSummary / SuccessionPlan / JobDescription / DevelopmentRoadmap)
+  remains the tenant-scoped source of truth in its own table. A loose reference
+  keeps AIJob decoupled, avoids the ContentType machinery, and sidesteps
+  GenericFK's cross-tenant footguns. The PK (UUID) IS the correlation id.
+- Fields: `requested_by` (FK User), `agent_code`, `target_type`+`target_id`,
+  `status`, `started_at`, `finished_at`, `confidence` (nullable), `token_ledger`
+  (nullable FK billing.TokenLedger — the usage ref, populated best-effort in 2.2),
+  `error_code` (the structured GatewayResult status on DEGRADED/FAILED).
+- INSERT + own/scope-bound reads only; cross-tenant → 404 (TenantScopedManager).
+
+**Surfacing pattern.** The endpoint that used to run the work synchronously now:
+(1) creates the PENDING placeholder if it makes one up front, (2) creates an
+AIJob (QUEUED), (3) enqueues `run_agent_job.delay(job_id)`, (4) returns
+`202 Accepted` with the job id (+ artifact id). The client POLLS
+`GET /api/ai/jobs/<id>`. No websockets — the app polls everywhere else.
+
+**Invariant (unchanged by async).** The result lands EXACTLY where the sync
+result did: the artifact locked PENDING_HUMAN_REVIEW, metered in TokenLedger,
+schema-validated, confidence/floor applied, anonymised (feedback) / name-free
+(succession). Only WHEN/WHERE it runs changes, never WHAT it produces.

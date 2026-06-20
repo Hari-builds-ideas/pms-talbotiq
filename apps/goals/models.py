@@ -64,7 +64,14 @@ class Goal(TenantScopedModel):
     class Meta:
         db_table = "goals_goal"
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["tenant", "cycle", "employee"], name="ix_goal_cohort")]
+        indexes = [
+            models.Index(fields=["tenant", "cycle", "employee"], name="ix_goal_cohort"),
+            # Serves the hottest Goal read — an employee's own goals and a
+            # manager's team goals: WHERE tenant=? AND employee[_id in ...] ORDER
+            # BY -created_at. The cycle-leading ix_goal_cohort can't serve an
+            # employee filter, so this is the only employee-leading index.
+            models.Index(fields=["tenant", "employee", "-created_at"], name="ix_goal_emp_recent"),
+        ]
 
     def __str__(self):
         return f"{self.title} ({self.employee_id})"

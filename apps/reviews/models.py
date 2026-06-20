@@ -102,6 +102,11 @@ class Review(TenantScopedModel):
         ]
         indexes = [
             models.Index(fields=["tenant", "cycle", "state"], name="ix_review_cycle_state"),
+            # Serves the default paginated list for the broad (Manager/HRBP/Admin)
+            # scopes: WHERE tenant=? ORDER BY -created_at LIMIT page — no filesort
+            # over the full tenant set. Employee-scope filtering is already covered
+            # by the (tenant, employee, cycle) unique constraint's index.
+            models.Index(fields=["tenant", "-created_at"], name="ix_review_tenant_recent"),
         ]
 
     def __str__(self):

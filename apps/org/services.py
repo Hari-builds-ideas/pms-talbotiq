@@ -222,7 +222,9 @@ def build_org_tree(actor) -> dict:
 def person_card(actor, user_id) -> dict:
     """Scoped detail for one person. Out-of-scope (or inactive / cross-tenant) is
     a 404, never a 403 that would leak existence."""
-    target = User.objects.filter(id=user_id, is_active=True).first()
+    # select_related the manager FK — the card resolves target.manager below, so
+    # fetch it in the same query instead of a second round-trip.
+    target = User.objects.select_related("manager").filter(id=user_id, is_active=True).first()
     if target is None or not actor_can_access(actor, target):
         raise NotFound("No such person in your org view.")
 

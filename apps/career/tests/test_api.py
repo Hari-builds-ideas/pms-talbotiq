@@ -41,6 +41,7 @@ from apps.testsupport.factories import (
     BenchCandidateFactory,
     CriticalRoleFactory,
     CycleFactory,
+    DevelopmentRoadmapFactory,
     JobDescriptionFactory,
     NineBoxPlacementFactory,
     PositionFactory,
@@ -79,6 +80,41 @@ def _published_jd(org):
     """A PUBLISHED JD in the org's tenant — a valid target role."""
     with tenant_context(org.tenant):
         return JobDescriptionFactory(created_by=org.hrbp, status="PUBLISHED")
+
+
+# ── adopt an AI-enriched roadmap (BUILD_5 5.4 — HITL acceptance) ──────────────
+
+
+def test_adopt_ai_roadmap_makes_it_active_and_supersedes_deterministic(org):
+    jd = _published_jd(org)
+    with tenant_context(org.tenant):
+        deterministic = DevelopmentRoadmapFactory(
+            employee=org.report, target_jd=jd, source="DETERMINISTIC", status="ACTIVE"
+        )
+        ai = DevelopmentRoadmapFactory(
+            employee=org.report, target_jd=jd, source="AI", status="DRAFT", advisory=True
+        )
+    resp = _client_for(org.manager).post(f"{CAREER}roadmaps/{ai.id}/adopt", {}, format="json")
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["status"] == "ACTIVE" and body["advisory"] is True
+    with tenant_context(org.tenant):
+        ai.refresh_from_db()
+        deterministic.refresh_from_db()
+    assert ai.status == "ACTIVE"
+    assert deterministic.status == "DRAFT"  # superseded — one ACTIVE per target
+
+
+def test_adopt_non_ai_draft_is_422_not_adoptable(org):
+    jd = _published_jd(org)
+    with tenant_context(org.tenant):
+        det = DevelopmentRoadmapFactory(
+            employee=org.report, target_jd=jd, source="DETERMINISTIC", status="ACTIVE"
+        )
+    resp = _client_for(org.manager).post(f"{CAREER}roadmaps/{det.id}/adopt", {}, format="json")
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "NOT_ADOPTABLE"
+    # (cross-tenant / out-of-scope → 404 is enforced + tested via get_roadmap_in_scope.)
 
 
 # ── employee selects own target (PUBLISHED JD) → 201 deterministic roadmap ────

@@ -449,6 +449,9 @@ export const careerApi = {
   // AI enrich seam — async: returns an AIJob (202); poll aiJobsApi.get(job.id).
   enrich: (id: string) =>
     unwrap<AIJob>(api.post(`/career/roadmaps/${id}/enrich`, {})),
+  // Adopt an AI-enriched DRAFT as the ACTIVE roadmap (HITL acceptance).
+  adopt: (id: string) =>
+    unwrap<DevelopmentRoadmap>(api.post(`/career/roadmaps/${id}/adopt`, {})),
   // Mark a tier's progress (upsert per roadmap+tier).
   setProgress: (id: string, body: { tier_index: number; status: RoadmapProgressStatus }) =>
     unwrap<RoadmapProgressItem>(api.post(`/career/roadmaps/${id}/progress`, body)),

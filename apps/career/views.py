@@ -183,6 +183,21 @@ class RoadmapRegenerateView(RBACMixin, APIView):
         return Response(DevelopmentRoadmapSerializer(roadmap).data)
 
 
+class RoadmapAdoptView(RBACMixin, APIView):
+    """``POST /api/career/roadmaps/<pk>/adopt`` (MANAGE_CAREER_ROADMAP) — the HITL
+    acceptance of an AI-enriched DRAFT roadmap: it becomes the ACTIVE roadmap for
+    its (employee, target) and the previously-active one is superseded. Only an
+    AI draft is adoptable (else 422); the roadmap stays advisory. Loaded
+    tenant-scoped (out-of-scope / cross-tenant → 404)."""
+
+    required_capability = Capability.MANAGE_CAREER_ROADMAP
+
+    def post(self, request, pk):
+        roadmap = services.get_roadmap_in_scope(request.user, pk)
+        roadmap = services.adopt_roadmap(request.user, roadmap)
+        return Response(DevelopmentRoadmapSerializer(roadmap).data)
+
+
 # ── the Career Roadmap agent (Module 10) enrich seam ───────────────────────────
 
 

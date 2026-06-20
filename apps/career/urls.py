@@ -16,6 +16,7 @@ from django.urls import path
 
 from .views import (
     MyRoadmapsView,
+    RoadmapAdoptView,
     RoadmapDetailView,
     RoadmapEnrichView,
     RoadmapListView,
@@ -40,6 +41,11 @@ urlpatterns = [
         "roadmaps/<uuid:pk>/skill-gap",
         RoadmapSkillGapView.as_view(),
         name="roadmap-skill-gap",
+    ),
+    path(
+        "roadmaps/<uuid:pk>/adopt",
+        RoadmapAdoptView.as_view(),
+        name="roadmap-adopt",
     ),
     path(
         "roadmaps/<uuid:pk>/regenerate",

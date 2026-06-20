@@ -1,5 +1,5 @@
 import * as React from "react";
-import { GraduationCap, Plus, RefreshCw, Sparkles, Target, Users } from "lucide-react";
+import { Check, GraduationCap, Plus, RefreshCw, Sparkles, Target, Users } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel } from "@/components/Panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -169,7 +169,7 @@ function RoadmapCard({
   showEmployee?: boolean;
 }) {
   const { hasFeature } = useAuth();
-  const { regenerate } = useCareerMutations();
+  const { regenerate, adopt } = useCareerMutations();
   const qc = useQueryClient();
   const gap = useSkillGap(roadmap.id);
   const isAiDraft = roadmap.source === "AI" && roadmap.status === "DRAFT";
@@ -210,8 +210,23 @@ function RoadmapCard({
           <HitlBanner
             source={roadmap.source}
             confidence={roadmap.confidence_score}
-            message="This is an AI-enriched draft alongside your deterministic roadmap. It's advisory — decide what to act on."
+            message="This is an AI-enriched draft alongside your deterministic roadmap. It's advisory — adopt it to make it the active plan, or keep the deterministic one."
           />
+        )}
+        {isAiDraft && canManage && (
+          <Button
+            variant="outline"
+            size="sm"
+            loading={adopt.isPending}
+            onClick={() =>
+              adopt
+                .mutateAsync(roadmap.id)
+                .then(() => notifySuccess("AI roadmap adopted", "It's now the active plan; the deterministic one is superseded."))
+                .catch(notifyError)
+            }
+          >
+            <Check className="h-4 w-4" /> Adopt as active
+          </Button>
         )}
 
         <AIJobBanner job={enrichAi.job} working="Enriching your roadmap with AI…" onRetry={enrichAi.start} />

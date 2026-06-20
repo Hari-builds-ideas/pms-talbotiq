@@ -17,6 +17,7 @@ explicitly (off-request safe).
 """
 from __future__ import annotations
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound
 
@@ -215,6 +216,46 @@ def regenerate_roadmap(actor, roadmap) -> DevelopmentRoadmap:
             target_position=roadmap.target_position,
             selection=roadmap.selection,
         )
+
+
+def adopt_roadmap(actor, roadmap) -> DevelopmentRoadmap:
+    """Adopt an AI-enriched DRAFT roadmap as the ACTIVE one for (employee, target)
+    (BUILD_5 5.4) — the human HITL acceptance of the advisory AI alternative.
+
+    Only a ``source=AI`` ``DRAFT`` roadmap is adoptable (else 422). The
+    previously-ACTIVE roadmap for the same target is demoted to DRAFT
+    (superseded), preserving the "one ACTIVE per (employee, target)" invariant.
+    Stays ``advisory=True`` (it's a coaching aid, never an auto-promotion).
+    Audited; scoped (out-of-scope employee → 404 via ``require_in_scope``)."""
+    employee = _employee_of(roadmap)
+    require_in_scope(actor, employee)
+    if (
+        roadmap.source != DevelopmentRoadmap.Source.AI
+        or roadmap.status != DevelopmentRoadmap.Status.DRAFT
+    ):
+        raise InvalidCareerInput(
+            "Only an AI-enriched draft roadmap can be adopted as active.",
+            code="NOT_ADOPTABLE",
+        )
+    with tenant_context(roadmap.tenant_id), transaction.atomic():
+        record(
+            action="career.roadmap_adopted",
+            actor=actor,
+            target_type="development_roadmap",
+            target_id=str(roadmap.id),
+            metadata={"employee": str(employee.id)},
+            tenant=roadmap.tenant_id,
+        )
+        # Supersede the current ACTIVE roadmap for the same target.
+        DevelopmentRoadmap.objects.filter(
+            employee=employee,
+            target_jd=roadmap.target_jd,
+            target_position=roadmap.target_position,
+            status=DevelopmentRoadmap.Status.ACTIVE,
+        ).exclude(pk=roadmap.pk).update(status=DevelopmentRoadmap.Status.DRAFT)
+        roadmap.status = DevelopmentRoadmap.Status.ACTIVE
+        roadmap.save(update_fields=["status", "updated_at"])
+        return roadmap
 
 
 # ── reads ──────────────────────────────────────────────────────────────────────

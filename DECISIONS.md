@@ -330,3 +330,22 @@ never an error. Sessions deliberately keep the default posture. Verified by a
 dead-Redis test (recompute, no 500) plus cache-hit (0 queries) / invalidation /
 tenant-isolation tests. Each cached read + TTL + invalidation trigger is in
 `docs/CACHING.md`.
+
+### D14 (BUILD_5/5.4) — Career: adopt an AI roadmap (accept→ACTIVE), not advisory-only
+
+**Decision.** Resolve the flagged career gap by ADDING an accept→ACTIVE endpoint
+(`POST /api/career/roadmaps/<id>/adopt`, MANAGE_CAREER_ROADMAP) rather than
+leaving the AI-enriched roadmap as a dead-end advisory alternative. A human
+adopts the AI-enriched **DRAFT** roadmap → it becomes the single **ACTIVE**
+roadmap for its (employee, target); the previously-ACTIVE one is demoted to DRAFT
+(superseded), preserving the "one ACTIVE per (employee, target)" invariant.
+
+**Why adopt over advisory-only.** The AI enrich already produces a real,
+grounded, tiered roadmap; with no adoption path it could only ever be looked at,
+never acted on — a HITL dead-end. Adoption is the human acceptance step that
+completes the loop, and it stays **advisory=True** (a coaching aid, never an
+auto-promotion — the DB CHECK still holds). Only a `source=AI` `DRAFT` is
+adoptable (else 422 NOT_ADOPTABLE); audited; scoped (out-of-scope → 404 via
+`get_roadmap_in_scope`). Frontend: an "Adopt as active" button on the AI-draft
+card (manager scope). Tested: adopt promotes the AI draft + supersedes the
+deterministic; a non-AI-draft → 422.

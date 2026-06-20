@@ -53,6 +53,10 @@ export function useCareerMutations() {
       mutationFn: (id: string) => careerApi.enrich(id),
       onSuccess: invalidate,
     }),
+    adopt: useMutation({
+      mutationFn: (id: string) => careerApi.adopt(id),
+      onSuccess: invalidate,
+    }),
     setProgress: useMutation({
       mutationFn: (v: { id: string; tier_index: number; status: RoadmapProgressStatus }) =>
         careerApi.setProgress(v.id, { tier_index: v.tier_index, status: v.status }),

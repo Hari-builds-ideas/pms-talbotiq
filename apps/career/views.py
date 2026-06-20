@@ -42,6 +42,7 @@ from apps.rbac.mixins import RBACMixin
 
 from apps.ai.serializers import AIJobSerializer
 from apps.ai.services import enqueue_agent_job
+from apps.core.throttling import AI_THROTTLES
 
 from . import services
 from .serializers import (
@@ -199,6 +200,7 @@ class RoadmapEnrichView(RBACMixin, APIView):
     """
 
     required_capability = Capability.MANAGE_CAREER_ROADMAP
+    throttle_classes = AI_THROTTLES  # AI-triggering route
 
     def post(self, request, pk):
         roadmap = services.get_roadmap_in_scope(request.user, pk)

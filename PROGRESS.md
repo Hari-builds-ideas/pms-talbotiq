@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_3 — ATOMIC_LIMITS_AND_DB_ROUTER · Phase 3.2 (atomic throttles + global ceiling)
+## Current: BUILD_3 — ATOMIC_LIMITS_AND_DB_ROUTER · Phase 3.3 (DATABASE_ROUTERS read/write split)
 
 BUILD_2 COMPLETE: 2.1–2.5 + report committed/pushed/green (`a27f8d3`); backend
 1092 passed, 2 deselected; frontend clean; all 5 AI seams async; chat stays sync.
@@ -64,6 +64,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+17 · BUILD_3/3.2 · atomic throttles + global ceiling + AIThrottle coverage · `apps/core/throttling.py` (_EntitlementThrottle.allow_request → atomic.incr_window fixed-window; +AI_THROTTLES bundle; +AtomicAnonThrottle), `apps/ai/groq.py` (_reserve_global → atomic.incr_window), `apps/ai/views.py`+5 seam views (throttle_classes=AI_THROTTLES on chat/nudges/review-draft/summarize/plan-enrich/jd-generate/career-enrich), `apps/identity/views.py` (login/MFA → AtomicAnonThrottle), `apps/core/tests/test_atomic_throttle.py` (6) · **[test]** 40 concurrent @5/min→exactly 5; global ceiling 3→exactly 3; anon per-IP limit; AI-route coverage; 453 affected pass · DECISIONS D8 · commit `BUILD_3 3.2`
 
 16 · BUILD_3/3.1 · atomic per-tenant budget reserve (Lua) · `apps/billing/atomic.py` (new — reserve/release/incr_window Lua via get_redis_connection + cache.make_key), `apps/billing/services.py` (check_and_reserve_budget → atomic.reserve; +release_budget refund), `apps/ai/gateway.py` (refund on NOT_CONFIGURED/PROVIDER_ERROR post-reserve, keep on OK/SCHEMA_INVALID), `apps/billing/tests/test_atomic_budget.py` (5) · **[test]** 64 threads @ cap 10 → exactly 10 reserve (1..10, none reused); refund frees a slot; release≥0; gateway refunds on provider error; billing+ai 133 pass · DECISIONS D7 · commit `BUILD_3 3.1`
 

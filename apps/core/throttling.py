@@ -24,8 +24,9 @@ from __future__ import annotations
 import math
 
 from rest_framework.exceptions import APIException, Throttled
-from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 
+from apps.billing import atomic
 from apps.billing.services import rate_limits_for
 
 
@@ -74,8 +75,14 @@ class _EntitlementThrottle(SimpleRateThrottle):
         return None
 
     def allow_request(self, request, view):
-        """Resolve the entitlement-derived rate for this request, then defer to
-        DRF's rolling-window check. Anonymous callers are never throttled here."""
+        """Resolve the entitlement-derived rate for this request, then enforce it
+        with an ATOMIC fixed-window counter (BUILD_3). Anonymous callers are never
+        throttled here.
+
+        The window counter is a single Redis Lua INCR+TTL (``atomic.incr_window``),
+        so concurrent requests across replicas can't overshoot the limit — the old
+        DRF read-modify-write of a timestamp list was racy at the edge. Fixed
+        window is acceptable here (and was the documented MVP choice)."""
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
             return True  # anon falls through to AnonRateThrottle on the login surface
@@ -86,13 +93,21 @@ class _EntitlementThrottle(SimpleRateThrottle):
         self._user_id = str(user.pk)
         self.rate = rate_limits_for(self._tenant_id)[self.rate_key]
         self.num_requests, self.duration = self.parse_rate(self.rate)
-        return super().allow_request(request, view)
+        if not self.num_requests or not self.duration:
+            return True  # no limit configured for this slot → allow
+        key = self.get_cache_key(request, view)
+        if key is None:
+            return True
+        count = atomic.incr_window(key, ttl_ms=int(self.duration * 1000))
+        if count > self.num_requests:
+            return self.throttle_failure()
+        return True
 
     def throttle_failure(self):
         """Raise our own 429 instead of returning ``False`` so we control the body
-        and the ``Retry-After`` header (DRF turns ``self.wait`` into that header)."""
+        and the ``Retry-After`` header. Fixed window → retry after the window."""
         raise RateLimited(
-            wait=self.wait(),
+            wait=int(self.duration),
             scope=self.rate_key,
             upgrade=self.include_upgrade_hint,
         )
@@ -125,3 +140,37 @@ class AIThrottle(_EntitlementThrottle):
 
     def get_cache_key(self, request, view):
         return f"thr:ai:{self._tenant_id}:{self._user_id}"
+
+
+#: Throttle stack for an AI-triggering route: the global tenant + user buckets
+#: (the DRF defaults) PLUS the per-user AI bucket. Setting ``throttle_classes``
+#: on a view replaces the defaults, so AI routes list all three to keep tenant +
+#: user limits AND add the AI limit. Attach to routes that fire an LLM call
+#: (chat + the five seam triggers) — NOT to the cheap, frequently-polled job
+#: status reads, which would otherwise trip the AI bucket on normal polling.
+AI_THROTTLES = [TenantThrottle, UserThrottle, AIThrottle]
+
+
+class AtomicAnonThrottle(AnonRateThrottle):
+    """IP-based anon throttle for the login/auth surface, hardened to the SAME
+    atomic fixed-window counter (BUILD_3). DRF's stock ``AnonRateThrottle`` does a
+    racy read-modify-write of a timestamp list, so two replicas could both admit a
+    credential-stuffing burst at the window edge; the Lua INCR closes that. Rate
+    comes from the ``anon`` scope (``DEFAULT_THROTTLE_RATES``); only anonymous
+    callers are counted (authenticated traffic is the tenant/user throttles' job)."""
+
+    def allow_request(self, request, view):
+        if self.rate is None:
+            return True
+        self.num_requests, self.duration = self.parse_rate(self.rate)
+        if not self.num_requests or not self.duration:
+            return True
+        key = self.get_cache_key(request, view)  # None for authenticated callers
+        if key is None:
+            return True
+        count = atomic.incr_window(key, ttl_ms=int(self.duration * 1000))
+        return count <= self.num_requests
+
+    def wait(self):
+        # Fixed window → retry after the window (no per-request history kept).
+        return self.duration

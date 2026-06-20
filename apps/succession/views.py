@@ -43,6 +43,7 @@ from rest_framework.views import APIView
 from apps.ai.serializers import AIJobSerializer
 from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
+from apps.core.throttling import AI_THROTTLES
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.org.models import Position
@@ -372,6 +373,7 @@ class PlanEnrichView(SuccessionMixin, APIView):
     """
 
     required_capability = Capability.GENERATE_SUCCESSION_ANALYSIS
+    throttle_classes = AI_THROTTLES  # AI-triggering route
 
     def post(self, request, pk):
         plan = plans.get_plan_in_scope(request.user, pk)

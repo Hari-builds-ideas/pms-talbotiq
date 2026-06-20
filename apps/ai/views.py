@@ -18,6 +18,7 @@ from apps.ai.agents.kpi import team_nudges
 from apps.ai.models import AIJob
 from apps.ai.serializers import AIJobSerializer
 from apps.billing.gate import requires_entitlement
+from apps.core.throttling import AI_THROTTLES
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
@@ -28,6 +29,7 @@ class ChatView(RBACMixin, APIView):
     429 (chat budget exhausted)."""
 
     required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES  # the one synchronous LLM route — AI-throttled
 
     def get_permissions(self):
         perms = super().get_permissions()  # IsAuthenticated + HasCapability(USE_CHAT)
@@ -68,6 +70,7 @@ class NudgesView(RBACMixin, APIView):
     """
 
     required_capability = Capability.VIEW_TEAM_SCORES
+    throttle_classes = AI_THROTTLES
 
     def get(self, request):
         return Response(team_nudges(request.user))

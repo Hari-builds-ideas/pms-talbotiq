@@ -28,6 +28,7 @@ from rest_framework.views import APIView
 from apps.ai.serializers import AIJobSerializer
 from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
+from apps.core.throttling import AI_THROTTLES
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
@@ -228,6 +229,7 @@ class ReviewRequestAIDraftView(RBACMixin, APIView):
 
     required_capability = Capability.RUN_AI_REVIEW_DRAFT
     scope_subject_attr = "employee"
+    throttle_classes = AI_THROTTLES  # AI-triggering route
 
     def post(self, request, pk):
         review = get_object_or_404(Review.objects.all(), pk=pk)

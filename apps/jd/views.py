@@ -37,6 +37,7 @@ from rest_framework.views import APIView
 from apps.ai.serializers import AIJobSerializer
 from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
+from apps.core.throttling import AI_THROTTLES
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
@@ -228,6 +229,7 @@ class JDGenerateView(RBACMixin, APIView):
     """
 
     required_capability = Capability.GENERATE_JD
+    throttle_classes = AI_THROTTLES  # AI-triggering route
 
     def post(self, request, pk):
         jd = get_object_or_404(JobDescription.objects.all(), pk=pk)

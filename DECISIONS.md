@@ -189,3 +189,28 @@ the gateway refunds on the two post-reserve provider-failure paths
 also keeps it (the provider responded and was metered before the schema check —
 real tokens were spent). So a failed call never permanently burns budget, and a
 successful one is never double-counted.
+
+### D8 (BUILD_3/3.2) — Atomic throttles + global ceiling; AIThrottle coverage
+
+**Atomic mechanism.** The entitlement throttles (`TenantThrottle`/`UserThrottle`/
+`AIThrottle`) and the global LLM ceiling (`groq._reserve_global`) now use the Lua
+fixed-window counter (`atomic.incr_window` — INCR + PEXPIRE-on-first in one step)
+instead of DRF's read-modify-write of a timestamp list / `cache.add`+`incr`. So
+concurrent requests across replicas can't overshoot the window (proven: 40
+concurrent attempts at a 5/min cap → exactly 5 pass; 16 concurrent at a global
+ceiling of 3 → exactly 3). The per-request rate still resolves from
+`rate_limits_for(tenant)`, so an entitlement upgrade still lifts limits
+everywhere. Fixed window was already the documented choice; Retry-After is the
+window length.
+
+**AIThrottle coverage.** `AIThrottle` is per-view (not a default). Attached to
+every AI-TRIGGERING route via the `AI_THROTTLES = [Tenant, User, AI]` bundle:
+chat, review request-ai-draft, feedback re-summarize, succession plan enrich, JD
+generate, career enrich (+ nudges, an /api/ai/ read). **Deliberately NOT on the
+job poll/list (`GET /api/ai/jobs[...]`)** — the UI polls those every 1.5s and the
+AI bucket would trip on normal polling; they keep the default tenant/user
+throttles. `feedback close` is a lifecycle transition (once per cycle) and keeps
+the defaults too. The login/auth surface now uses `AtomicAnonThrottle` (DRF's
+`AnonRateThrottle` hardened to the same Lua counter) so a credential-stuffing
+burst can't be edged across replicas either. A coverage test enumerates the AI
+views and asserts the bucket is present.

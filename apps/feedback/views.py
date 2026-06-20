@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from apps.ai.serializers import AIJobSerializer
 from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
+from apps.core.throttling import AI_THROTTLES
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.rbac.matrix import Capability, role_has_capability
@@ -173,6 +174,8 @@ class CycleSummarizeView(_CycleActionView):
     breach/sensitive → DEGRADED (ANONYMITY_HOLD, the summary held), clean →
     SUCCEEDED (summary PENDING). The CLOSED precondition stays a synchronous 409.
     """
+
+    throttle_classes = AI_THROTTLES  # AI-triggering route (re-summarize)
 
     def post(self, request, pk):
         cycle = self.get_cycle(pk)

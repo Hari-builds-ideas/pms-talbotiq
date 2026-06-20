@@ -25,7 +25,7 @@ import time
 
 import requests
 from django.conf import settings
-from django.core.cache import cache
+from apps.billing import atomic
 
 from .agent_config import system_prompt_for
 from .exceptions import LLMProviderError
@@ -74,8 +74,9 @@ class GroqProvider(LLMProvider):
         if self.global_ceiling <= 0:
             return
         try:
-            cache.add(_GLOBAL_CALL_KEY, 0, timeout=24 * 3600)
-            count = cache.incr(_GLOBAL_CALL_KEY)
+            # ATOMIC fixed-window INCR (BUILD_3): concurrent callers across
+            # replicas can't overshoot the global ceiling at the edge.
+            count = atomic.incr_window(_GLOBAL_CALL_KEY, ttl_ms=24 * 3600 * 1000)
         except Exception:  # noqa: BLE001 — cache miss must not wedge the call
             return
         if count > self.global_ceiling:

@@ -206,7 +206,14 @@ CACHES = {
         "LOCATION": REDIS_CACHE_URL,
         "KEY_PREFIX": "pms",
         "TIMEOUT": 300,
-        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # DEGRADE, don't error: if Redis is unreachable, cache reads return a
+            # miss (→ recompute from the DB) and writes no-op, rather than 500ing
+            # the request. The hot-read caches are an optimisation, never a hard
+            # dependency. Ignored failures are logged (below).
+            "IGNORE_EXCEPTIONS": True,
+        },
     },
     "sessions": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -219,6 +226,9 @@ CACHES = {
 # "write session to Redis"), isolated from the application cache.
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "sessions"
+# Log every ignored cache exception (above) so a Redis outage is visible in the
+# logs/Sentry even though requests keep serving from the DB.
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
 
 # ─── Auth: users, password hashing (Argon2), validators ────────────────
 AUTH_USER_MODEL = "identity.User"

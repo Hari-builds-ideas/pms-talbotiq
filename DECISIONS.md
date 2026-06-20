@@ -311,3 +311,22 @@ the second writer waits and re-validates against the first's committed change.
 the tenant-config form now SENDS the version it read (so the lock engages) and
 keeps the user's unsaved JSON on a conflict. Goals are create/approve-only in the
 UI (no edit form), so the Goal lock protects API/mobile clients (API-tested).
+
+### D13 (BUILD_4/4.4) — Hot-read caching: degrade-not-error; cache where it exists
+
+**Audit.** The genuinely hot reads were ALREADY cached with tenant-embedded keys,
+TTLs, and write-time invalidation: entitlement / rate-limit map / feature flags
+(300s, busted on any entitlement write), the org tree (600s, busted on org
+writes), the department analytics aggregate (300s, busted on a score recompute).
+So 4.4 did NOT speculatively add caches (the contract: only cache where staleness
+is acceptable and invalidation is clear) — the per-request lists are already O(1)
+via BUILD_1's select_related/indexes and would need per-filter invalidation.
+
+**The real gap: degradation posture.** `IGNORE_EXCEPTIONS` was unset, so a Redis
+outage would 500 the cached reads instead of recomputing. Set
+`IGNORE_EXCEPTIONS=True` (+ `DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS=True`) on the
+application cache: a cache miss/outage now degrades to a live DB query, logged,
+never an error. Sessions deliberately keep the default posture. Verified by a
+dead-Redis test (recompute, no 500) plus cache-hit (0 queries) / invalidation /
+tenant-isolation tests. Each cached read + TTL + invalidation trigger is in
+`docs/CACHING.md`.

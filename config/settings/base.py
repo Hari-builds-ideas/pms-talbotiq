@@ -101,6 +101,9 @@ MIDDLEWARE = [
     # every log line + Sentry event for this request is correlatable. Reset in
     # finally (no cross-request bleed).
     "apps.core.middleware.RequestIDMiddleware",
+    # Record per-request metrics (route-class + status) into the cross-worker
+    # counter for /metrics. Best-effort, never affects the response.
+    "apps.core.middleware.MetricsMiddleware",
     # Clear the read-after-write DB-routing flag at the start of each request.
     "apps.core.dbrouter.DBRoutingResetMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -466,6 +469,12 @@ LOGGING = {
         "pms": {"handlers": ["console"], "level": "DEBUG", "propagate": False},
     },
 }
+
+# ─── Metrics (/metrics) ────────────────────────────────────────────────
+# Bearer token for the Prometheus /metrics endpoint. Unset → the endpoint is
+# DISABLED (404), so metrics are never exposed unauthenticated. Set in prod to a
+# long random value the scraper presents.
+METRICS_TOKEN = env("METRICS_TOKEN", default="")
 
 # ─── Sentry (optional; disabled when SENTRY_DSN is unset) ──────────────
 # init_sentry no-ops without a DSN so the app boots normally. PII is scrubbed

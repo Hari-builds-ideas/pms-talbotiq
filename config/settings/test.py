@@ -62,6 +62,11 @@ for _db in DATABASES.values():  # noqa: F405
 # the rate low to force a trip.
 REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_CLASSES": ()}
 
+# /metrics is DISABLED by default in tests (hermetic — independent of any
+# METRICS_TOKEN the container env carries); the metrics tests opt in via
+# override_settings(METRICS_TOKEN=...).
+METRICS_TOKEN = ""
+
 # Fixed key so signed MFA tokens etc. are stable across the run.
 SECRET_KEY = "test-secret-key-not-for-production"
 SIMPLE_JWT["SIGNING_KEY"] = SECRET_KEY  # noqa: F405

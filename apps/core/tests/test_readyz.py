@@ -35,6 +35,28 @@ def test_readyz_returns_503_when_a_dependency_is_down(client):
 
 
 @pytest.mark.django_db
+def test_readyz_includes_the_replica_db_check(client):
+    """The read-replica alias (BUILD_3) is probed, so a real replica's failure
+    drains the node."""
+    body = client.get("/readyz").json()
+    assert "DatabaseReplica" in body["checks"]
+
+
+@pytest.mark.django_db
+def test_readyz_503_when_cache_is_down(client):
+    """A simulated cache outage → /readyz reports 503 and flags the cache down."""
+    from health_check.cache.backends import CacheBackend
+
+    with mock.patch.object(
+        CacheBackend, "check_status", side_effect=ServiceUnavailable("cache down")
+    ):
+        resp = client.get("/readyz")
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "not ready"
+    assert any(state == "down" for state in resp.json()["checks"].values())
+
+
+@pytest.mark.django_db
 def test_healthz_stays_pure_liveness_even_when_a_dependency_is_down(client):
     """Liveness must not run dependency checks: /healthz stays 200 even while a
     backend the readiness probe relies on is failing."""

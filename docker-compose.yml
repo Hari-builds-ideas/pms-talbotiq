@@ -28,6 +28,8 @@ x-app-environment: &app_environment
   SENTRY_DSN: ${SENTRY_DSN:-}
   SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-dev}
   SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
+  # Bearer token for the Prometheus /metrics endpoint (unset → /metrics is 404).
+  METRICS_TOKEN: ${METRICS_TOKEN:-dev-metrics-token}
   # ── AI / Groq (OpenAI-compatible). GROQ_API_KEY comes from the gitignored .env
   # via compose interpolation — it is NEVER written into this file. With the key
   # present the agents run on Groq; unset → GroqProvider is unconfigured → 503.

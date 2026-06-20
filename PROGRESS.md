@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_4 — PROD_OPS_CONCURRENCY_CACHE · Phase 4.1 (prod settings + baked image + controlled migrations)
+## Current: BUILD_4 — PROD_OPS_CONCURRENCY_CACHE · Phase 4.3 (optimistic locking + concurrency)
 
 BUILD_3 COMPLETE: 3.1–3.4 + report committed/pushed/green (`784a69f`); backend
 1107 passed, 2 deselected; atomic limits + DB router (replica-ready) live.
@@ -67,6 +67,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+20 · BUILD_4/4.2 · metrics + readiness + observability · `apps/core/metrics.py` (new — Prometheus exporter: cross-worker request counters in cache + live AIJob/token/queue/tenant aggregates, no per-tenant labels), `apps/core/views.py` (MetricsView token-gated/fail-closed) + `urls.py` (/metrics), `apps/core/middleware.py` (MetricsMiddleware), `config/settings/base.py` (METRICS_TOKEN), `apps/core/health.py`+`apps.py` (ReplicaDatabaseHealthCheck → /readyz), `frontend/nginx.conf` (proxy /metrics), `docker-compose.yml` (METRICS_TOKEN dev default), `docs/OBSERVABILITY.md` (new — probes, metrics, SLIs+thresholds), tests `test_metrics.py`(4)+`test_readyz.py`(+2) · **[test]** 9 pass; token gate 404/401/200; readyz 503-degraded + DatabaseReplica present · **[live]** /readyz 7/7 up incl DatabaseReplica; /metrics real series (request counts by route/status, queue depth, aijob-by-status, token-usage-by-agent, tenants=22). Sentry already wires CeleryIntegration (async failures captured) · commit `BUILD_4 4.2`
 
 19 · BUILD_4/4.1 · prod settings + baked image + controlled migrations · `config/settings/base.py` (+XFrameOptionsMiddleware → check --deploy clean), `docker-compose.prod.yml` (new — baked image INSTALL_DEV=false, no source mount, settings.prod, split cache/broker Redis, one-shot migrate service + web waits on it / never auto-migrates, `${VAR:?}` fail-closed secrets), `docs/RUNBOOK.md` (deploy order: migrate once → roll web), `apps/core/tests/test_prod_settings.py` (3 — fail-closed w/o SECRET_KEY + ALLOWED_HOSTS, loads secure with env) · **[build]** prod image builds (next); prod compose valid + fail-closed verified · **[test]** check --deploy clean under prod; 3 prod-settings tests pass · DECISIONS D10 · commit `BUILD_4 4.1`
 

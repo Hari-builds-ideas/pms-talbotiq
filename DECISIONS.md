@@ -267,3 +267,19 @@ prod). In prod a one-shot `migrate` service runs migrations ONCE; web/workers
 wait on `service_completed_successfully` and never migrate themselves. Deploy
 order (migrate → roll web) is in the RUNBOOK. Secrets stay env/vault-sourced (the
 `secret_ref` seam), never committed.
+
+### D11 (BUILD_4/4.2) — Custom /metrics exporter (no new dependency)
+
+**Decision.** A small custom Prometheus-text exporter (`apps/core/metrics.py`)
+rather than `django-prometheus` — adding a dep means an image rebuild + gunicorn
+multiprocess wiring, and the contract allows a custom exporter. REQUEST counters
+are incremented per request into the Redis CACHE (cross-worker — a per-process
+counter undercounts behind N gunicorn workers), bucketed by a coarse route class
++ status class (no ids → tiny cardinality). The AI/usage/tenant figures are live
+GAUGES queried at scrape time. Cross-tenant TOTALS use an explicitly unscoped
+queryset (read-only, aggregate-only, NO per-tenant labels → no leak); the
+endpoint is token-gated (`METRICS_TOKEN`) and **fail-closed** (unset → 404).
+Request-latency histograms + live DB-conn gauges are left to a future
+`prometheus_client` multiprocess setup (documented in OBSERVABILITY.md) — the
+exporter stays dependency-free. `/readyz` gained a `DatabaseReplica` check; Sentry
+already wired `CeleryIntegration`, so async AI-task failures are captured.

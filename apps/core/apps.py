@@ -13,6 +13,7 @@ class CoreConfig(AppConfig):
         """
         from health_check.plugins import plugin_dir
 
-        from .health import CeleryBrokerHealthCheck
+        from .health import CeleryBrokerHealthCheck, ReplicaDatabaseHealthCheck
 
         plugin_dir.register(CeleryBrokerHealthCheck)
+        plugin_dir.register(ReplicaDatabaseHealthCheck)

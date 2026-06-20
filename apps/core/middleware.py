@@ -33,3 +33,21 @@ class RequestIDMiddleware:
             return response
         finally:
             reset_request_id(token)
+
+
+class MetricsMiddleware:
+    """Record each request into the cross-worker request counter (BUILD_4 4.2).
+    Best-effort and AFTER the response, so it never affects latency or outcome."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        try:
+            from apps.core.metrics import record_request
+
+            record_request(request.path, response.status_code)
+        except Exception:  # noqa: BLE001 — metrics must never break a response
+            pass
+        return response

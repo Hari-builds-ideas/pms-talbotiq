@@ -188,5 +188,6 @@ def update_tenant_config(actor, *, settings) -> TenantConfig:
             tenant=tid,
         )
         config.settings = settings
-        config.save(update_fields=["settings", "updated_at"])
+        config.version = config.version + 1  # optimistic-lock bump (BUILD_4)
+        config.save(update_fields=["settings", "version", "updated_at"])
         return config

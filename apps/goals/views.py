@@ -27,6 +27,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import record
+from apps.core.concurrency import check_version
 from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
@@ -134,11 +135,14 @@ class GoalDetailView(RBACMixin, APIView):
 
     def patch(self, request, pk):
         goal = self._get_goal(pk)
+        # Optimistic lock: a stale `version` → 409 (no silent last-writer-wins).
+        check_version(goal, request.data)
         # Only the goal's own fields are patchable here (title/description/
         # objective/weight/status); KPIs are edited via the KPI sub-resources.
         serializer = GoalSerializer(goal, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        # Bump the version atomically with the field update (server-controlled).
+        serializer.save(version=goal.version + 1)
         return Response(serializer.data)
 
     def delete(self, request, pk):
@@ -198,6 +202,7 @@ class GoalKpiListCreateView(RBACMixin, APIView):
         serializer = KpiSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
+            _lock_goal(goal)  # serialise concurrent weight changes on this goal
             serializer.save(goal=goal)
             # The goal's KPIs must now sum to exactly 100.00; a non-100 total
             # raises a DRF ValidationError (400) and rolls the insert back.
@@ -228,6 +233,7 @@ class KpiDetailView(RBACMixin, APIView):
         serializer = KpiSerializer(kpi, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
+            _lock_goal(kpi.goal)  # serialise concurrent weight changes on this goal
             serializer.save()
             # If the weight moved, the parent goal must still sum to 100.00.
             if "weight" in serializer.validated_data:
@@ -238,6 +244,7 @@ class KpiDetailView(RBACMixin, APIView):
         kpi = self._get_kpi(pk)
         goal = kpi.goal
         with transaction.atomic():
+            _lock_goal(goal)  # serialise concurrent weight changes on this goal
             kpi.delete()  # soft delete
             # After removal the remaining KPIs must still sum to 100.00.
             _assert_goal_weight_complete(goal)
@@ -328,6 +335,17 @@ class KpiTemplateInstantiateView(RBACMixin, APIView):
             employee=employee, cycle=cycle, created_by=request.user, role=role
         )
         return Response(GoalSerializer(goal).data, status=status.HTTP_201_CREATED)
+
+
+def _lock_goal(goal):
+    """Take a row lock on the goal (BUILD_4) for a KPI weight critical section.
+
+    The KPI weight-sum invariant (= 100.00) is read-modify-write across a goal's
+    KPIs: two concurrent KPI adds/edits could each read a valid sum and both
+    commit, corrupting the total. ``select_for_update`` serialises them — the
+    second waits, then re-validates against the first's committed change. Hits
+    the PRIMARY DB (the router routes a write/locked read to default)."""
+    Goal.objects.select_for_update().filter(pk=goal.pk).first()
 
 
 def _assert_goal_weight_complete(goal):

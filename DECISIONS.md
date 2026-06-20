@@ -283,3 +283,31 @@ Request-latency histograms + live DB-conn gauges are left to a future
 `prometheus_client` multiprocess setup (documented in OBSERVABILITY.md) — the
 exporter stays dependency-free. `/readyz` gained a `DatabaseReplica` check; Sentry
 already wired `CeleryIntegration`, so async AI-task failures are captured.
+
+### D12 (BUILD_4/4.3) — Optimistic locking scope + the KPI weight critical section
+
+**Versioned entities (justified subset, NOT everywhere):** `Goal` and
+`TenantConfig` — the two clearest plain-field PATCH/PUT last-writer-wins cases
+(a manager/HRBP editing a goal; two admins editing tenant settings). Each carries
+a server-controlled `version`; a stale version on update → 409 STALE_VERSION
+(`apps/core/concurrency.py`). `version` is read-only on the serializer (client
+reads + echoes it; the server bumps via `serializer.save(version=+1)`); omitting
+it is allowed (back-compat / non-form callers).
+
+**Deliberately NOT versioned (justified):** review content is edited by a single
+reviewer during EDITING and the state machine already 409s on a stale state; JD
+body goes through the lifecycle's own legality/HITL gates on a single working
+version; succession plan edits are low-frequency HRBP actions. These can adopt
+the same `version` later if contention shows up.
+
+**KPI weight-sum critical section.** The = 100.00 invariant is read-modify-write
+across a goal's KPIs — two concurrent adds/edits could each read a valid sum and
+both commit, corrupting the total. The three weight paths (KPI create / weight
+PATCH / delete) now take a `SELECT ... FOR UPDATE` row lock on the goal
+(`_lock_goal`, on the primary DB) inside their existing `transaction.atomic()`, so
+the second writer waits and re-validates against the first's committed change.
+
+**Frontend.** The 409 "conflict" message already reads "reload and try again";
+the tenant-config form now SENDS the version it read (so the lock engages) and
+keeps the user's unsaved JSON on a conflict. Goals are create/approve-only in the
+UI (no edit form), so the Goal lock protects API/mobile clients (API-tested).

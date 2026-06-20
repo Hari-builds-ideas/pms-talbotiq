@@ -197,6 +197,7 @@ export const store = {
   tenantConfig: {
     id: "cfg-1",
     settings: { locale: "en-GB", weekStart: "MON", fiscalYearStart: "04-01" },
+    version: 0,
   } as TenantConfig,
 };
 

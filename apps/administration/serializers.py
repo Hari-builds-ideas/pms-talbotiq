@@ -39,7 +39,7 @@ class TenantConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TenantConfig
-        fields = ["id", "settings"]
+        fields = ["id", "settings", "version"]
         read_only_fields = fields
 
 

@@ -60,6 +60,10 @@ class Goal(TenantScopedModel):
         related_name="approved_goals",
     )
     approved_at = models.DateTimeField(null=True, blank=True)
+    #: Optimistic-lock version (BUILD_4) — bumped on every plain-field PATCH; a
+    #: stale version on update → 409. Goals are edited by managers/HRBP and are a
+    #: classic last-writer-wins risk.
+    version = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = "goals_goal"

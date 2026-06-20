@@ -72,6 +72,8 @@ export interface AdminUserStats {
 export interface TenantConfig {
   id: UUID;
   settings: Record<string, unknown>;
+  /** Optimistic-lock version (BUILD_4): echo back on save; a stale value → 409. */
+  version: number;
 }
 
 export interface PerformanceCycle {
@@ -528,6 +530,8 @@ export interface Goal {
   approved_at: ISODate | null;
   kpis: Kpi[];
   kpi_weight_total?: Decimal;
+  /** Optimistic-lock version (BUILD_4): echo back on a plain-field PATCH; stale → 409. */
+  version: number;
 }
 
 export interface CycleScore {

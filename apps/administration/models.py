@@ -20,6 +20,9 @@ class TenantConfig(TenantScopedModel):
     later without a data migration of the values themselves."""
 
     settings = models.JSONField(default=dict, blank=True)
+    #: Optimistic-lock version (BUILD_4) — two admins editing tenant settings
+    #: concurrently would otherwise clobber each other (last-writer-wins).
+    version = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = "administration_tenant_config"

@@ -110,6 +110,7 @@ class GoalSerializer(serializers.ModelSerializer):
             "approved_at",
             "kpis",
             "kpi_weight_total",
+            "version",
             "created_at",
             "updated_at",
         ]
@@ -121,6 +122,9 @@ class GoalSerializer(serializers.ModelSerializer):
             "approved_by",
             "approved_by_name",
             "approved_at",
+            # version is server-controlled: the client reads it + echoes it back
+            # for the optimistic-lock check, but can never set the stored value.
+            "version",
             "created_at",
             "updated_at",
         ]

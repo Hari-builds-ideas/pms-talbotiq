@@ -123,8 +123,8 @@ export const adminApi = {
   setDisplayName: (id: string, display_name: string | null) =>
     unwrap<AdminUser>(api.post(`/admin/users/${id}/display-name`, { display_name })),
   tenantConfig: () => unwrap<TenantConfig>(api.get("/admin/tenant-config")),
-  saveTenantConfig: (settings: Record<string, unknown>) =>
-    unwrap<TenantConfig>(api.put("/admin/tenant-config", { settings })),
+  saveTenantConfig: (settings: Record<string, unknown>, version?: number) =>
+    unwrap<TenantConfig>(api.put("/admin/tenant-config", { settings, version })),
 };
 
 // ---- Approvals -------------------------------------------------------------

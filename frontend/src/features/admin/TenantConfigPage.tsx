@@ -58,7 +58,8 @@ export function TenantConfigPage() {
       return;
     }
     try {
-      await save.mutateAsync(parsed);
+      // Send the version we loaded → a concurrent admin's save makes ours 409.
+      await save.mutateAsync({ settings: parsed, version: data?.version });
       notifySuccess("Tenant settings saved");
       setDirty(false);
     } catch (err) {

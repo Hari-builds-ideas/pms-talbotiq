@@ -23,6 +23,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.concurrency import check_version
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -190,6 +191,8 @@ class TenantConfigView(RBACMixin, APIView):
         return Response(TenantConfigSerializer(config).data)
 
     def put(self, request):
+        # Optimistic lock: a stale `version` → 409 (two admins can't clobber).
+        check_version(services.get_tenant_config(request.user), request.data)
         config = services.update_tenant_config(
             request.user, settings=request.data.get("settings", {})
         )

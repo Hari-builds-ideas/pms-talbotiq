@@ -56,7 +56,8 @@ export function useTenantConfig() {
 export function useSaveTenantConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (settings: Record<string, unknown>) => adminApi.saveTenantConfig(settings),
+    mutationFn: ({ settings, version }: { settings: Record<string, unknown>; version?: number }) =>
+      adminApi.saveTenantConfig(settings, version),
     onSuccess: (data) => qc.setQueryData(TENANT_KEY, data),
   });
 }

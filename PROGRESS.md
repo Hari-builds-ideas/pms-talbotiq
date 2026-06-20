@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_4 — PROD_OPS_CONCURRENCY_CACHE · Phase 4.3 (optimistic locking + concurrency)
+## Current: BUILD_4 — PROD_OPS_CONCURRENCY_CACHE · Phase 4.4 (hot-read response caching)
 
 BUILD_3 COMPLETE: 3.1–3.4 + report committed/pushed/green (`784a69f`); backend
 1107 passed, 2 deselected; atomic limits + DB router (replica-ready) live.
@@ -67,6 +67,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+21 · BUILD_4/4.3 · optimistic locking + KPI weight critical section · `apps/core/concurrency.py` (new — StaleVersion 409 + check_version), `apps/goals/models.py`+`administration/models.py` (+version, migrations), serializers expose version read-only, `apps/goals/views.py` (GoalDetailView.patch check+bump; `_lock_goal` select_for_update in 3 KPI weight paths), `apps/administration/{views,services}.py` (TenantConfig check+bump), frontend (Goal/TenantConfig types +version; saveTenantConfig sends version; mock fix), `apps/core/tests/test_optimistic_locking.py` (3) · **[test]** Goal+TenantConfig stale→409 STALE_VERSION (no-version still works); KPI add issues SELECT…FOR UPDATE on the goal; 133 affected pass; frontend tsc+lint+build clean · DECISIONS D12 · commit `BUILD_4 4.3`
 
 20 · BUILD_4/4.2 · metrics + readiness + observability · `apps/core/metrics.py` (new — Prometheus exporter: cross-worker request counters in cache + live AIJob/token/queue/tenant aggregates, no per-tenant labels), `apps/core/views.py` (MetricsView token-gated/fail-closed) + `urls.py` (/metrics), `apps/core/middleware.py` (MetricsMiddleware), `config/settings/base.py` (METRICS_TOKEN), `apps/core/health.py`+`apps.py` (ReplicaDatabaseHealthCheck → /readyz), `frontend/nginx.conf` (proxy /metrics), `docker-compose.yml` (METRICS_TOKEN dev default), `docs/OBSERVABILITY.md` (new — probes, metrics, SLIs+thresholds), tests `test_metrics.py`(4)+`test_readyz.py`(+2) · **[test]** 9 pass; token gate 404/401/200; readyz 503-degraded + DatabaseReplica present · **[live]** /readyz 7/7 up incl DatabaseReplica; /metrics real series (request counts by route/status, queue depth, aijob-by-status, token-usage-by-agent, tenants=22). Sentry already wires CeleryIntegration (async failures captured) · commit `BUILD_4 4.2`
 

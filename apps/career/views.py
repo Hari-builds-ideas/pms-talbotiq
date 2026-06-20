@@ -40,6 +40,9 @@ from apps.org.models import Position
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
+from apps.ai.serializers import AIJobSerializer
+from apps.ai.services import enqueue_agent_job
+
 from . import services
 from .serializers import (
     DevelopmentRoadmapSerializer,
@@ -48,7 +51,6 @@ from .serializers import (
     TargetRoleSelectionSerializer,
     TargetSelectSerializer,
 )
-from .tasks import generate_roadmap
 
 
 # ── target selection + deterministic generation ───────────────────────────────
@@ -185,14 +187,16 @@ class RoadmapRegenerateView(RBACMixin, APIView):
 
 class RoadmapEnrichView(RBACMixin, APIView):
     """``POST /api/career/roadmaps/<pk>/enrich`` (MANAGE_CAREER_ROADMAP) — the Career
-    Roadmap agent (Module 10) seam. Calls the enrichment task SYNCHRONOUSLY.
+    Roadmap agent (Module 10) seam. ENQUEUES the enrichment and returns ``202`` +
+    an AI job id; the client polls ``GET /api/ai/jobs/<id>``.
 
-    The LOUD seam: until Module 10 ships a provider this returns 503 with
-    ``reason: no_provider`` and the DETERMINISTIC roadmap stays COMPLETELY INTACT —
-    no fake roadmap is ever written. A successful enrichment locks a NEW AI roadmap
-    (DRAFT, advisory) and returns 200 with the result; any other skip reason is a
-    409. The roadmap is loaded through ``services.get_roadmap_in_scope``
-    (out-of-scope / cross-tenant → 404)."""
+    Async by design (BUILD_2). The roadmap is loaded tenant-scoped
+    (``get_roadmap_in_scope`` → 404 out-of-scope / cross-tenant) and its target is
+    resolved synchronously, then the work is enqueued (the target_ref rides in the
+    job's ``params``). The DETERMINISTIC roadmap stays COMPLETELY INTACT while the
+    job runs; on success the worker locks a NEW AI roadmap (DRAFT, ADVISORY —
+    unchanged); no provider lands the job DEGRADED and no fake roadmap is written.
+    """
 
     required_capability = Capability.MANAGE_CAREER_ROADMAP
 
@@ -203,23 +207,14 @@ class RoadmapEnrichView(RBACMixin, APIView):
             if roadmap.target_jd_id
             else {"position": str(roadmap.target_position_id)}
         )
-        # Synchronous call by design for the MVP (production may .delay() later).
-        result = generate_roadmap(
-            str(request.user.tenant_id),
-            str(roadmap.employee_id),
-            target_ref,
-            actor_id=str(request.user.id),
+        job = enqueue_agent_job(
+            actor=request.user,
+            agent_code="career_roadmap",
+            target_type="career_roadmap",
+            target_id=roadmap.employee_id,
+            params={"target_ref": target_ref},
         )
-        if result.get("generated"):
-            return Response(result)
-        if result.get("reason") == "no_provider":
-            body = dict(result)
-            body["detail"] = (
-                "The Career Roadmap agent is not configured; it lands in Module 10. "
-                "The deterministic roadmap is left intact."
-            )
-            return Response(body, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response(result, status=status.HTTP_409_CONFLICT)
+        return Response(AIJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
 # ── per-tier progress ───────────────────────────────────────────────────────────

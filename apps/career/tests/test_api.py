@@ -32,6 +32,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.ai.models import AIJob
 from apps.career.models import DevelopmentRoadmap
 from apps.goals.models import CycleScore
 from apps.identity.tokens import issue_tokens_for_user
@@ -251,22 +252,26 @@ def test_data_boundary_no_succession_leak_in_roadmap_or_skillgap(org):
     assert str(org.manager.id) not in roadmap_json
 
 
-# ── the Career Roadmap agent seam → 503; deterministic roadmap intact ─────────
+# ── the Career Roadmap agent seam → async; deterministic roadmap intact ───────
 
 
-def test_enrich_is_loud_503_and_roadmap_unchanged(org):
+def test_enrich_enqueues_job_degraded_and_roadmap_unchanged(org):
     emp = _client_for(org.report)
     jd = _published_jd(org)
     roadmap_id = emp.post(
         f"{CAREER}target", {"target_jd": str(jd.id)}, format="json"
     ).json()["roadmap"]["id"]
 
-    # No provider is configured (Module 10) → loud 503.
+    # Enqueue → 202 + an AI job; the (eager) job DEGRADES with no provider.
     resp = emp.post(f"{CAREER}roadmaps/{roadmap_id}/enrich", {}, format="json")
-    assert resp.status_code == 503, resp.content
+    assert resp.status_code == 202, resp.content
     body = resp.json()
-    assert body["reason"] == "no_provider"
-    assert body["generated"] is False
+    assert body["agent_code"] == "career_roadmap"
+    assert body["target_id"] == str(org.report.id)  # the employee
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=body["id"])
+        assert job.status == AIJob.Status.DEGRADED
+        assert job.error_code == "NOT_CONFIGURED"
 
     # The deterministic roadmap is left COMPLETELY INTACT.
     resp = emp.get(f"{CAREER}roadmaps/{roadmap_id}")

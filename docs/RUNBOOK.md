@@ -73,6 +73,36 @@ python3 scripts/smoke.py    # 47 journeys across every surface + RBAC boundaries
 - **Docs:** `docs/BUILD_NOTES.md` (per-module behaviour), `docs/AI_GOLIVE.md`, `docs/frontend-contract/`. Repo-root `NEEDS_HARI_*.md` are open product decisions with safe defaults.
 - **Test script for Hari:** `TEST-THIS-HARI.md`. **Mobile plan:** `MOBILE_BUILD_PLAN.md`.
 
+## Production deploy posture (BUILD_4)
+
+`docker-compose.prod.yml` is the production CONFIG (it provisions nothing — point
+it at managed MySQL/Redis for a real deploy). It runs `config.settings.prod`
+(DEBUG off, HSTS, secure cookies, fail-closed secrets), a BAKED image (code
+COPYed in, `INSTALL_DEV=false`, no source mount), a SEPARATE cache Redis
+(allkeys-lru) from the broker Redis (noeviction), and **controlled migrations**.
+
+**Deploy order (migrate once → roll web):**
+
+```
+# 1. Provide secrets via env / vault (compose REFUSES to start without them):
+export DJANGO_SECRET_KEY=...        # long + random
+export DJANGO_ALLOWED_HOSTS=app.example.com
+export DB_PASSWORD=...  DB_ROOT_PASSWORD=...
+# 2. Build the baked prod image:
+docker compose -f docker-compose.prod.yml build
+# 3. Run migrations ONCE (the only place they run in prod — no N-replica race):
+docker compose -f docker-compose.prod.yml run --rm migrate
+# 4. Roll the web + workers (they do NOT auto-migrate; they wait for `migrate`):
+docker compose -f docker-compose.prod.yml up -d
+```
+
+The web container in prod runs gunicorn ONLY — it never migrates. (Dev keeps the
+one-command `migrate && gunicorn` for convenience.) `manage.py check --deploy` is
+clean under prod settings; the only residual warning (`security.W009`, weak
+SECRET_KEY) clears once a real long/random key is supplied. Secrets read from the
+environment via `env(...)` — the `secret_ref` indirection is the seam for a future
+vault; no secret is ever committed.
+
 ## Database: read replica + connection sizing (BUILD_3)
 
 A read/write router (`apps/core/dbrouter.py`) is ACTIVE now: reads → the

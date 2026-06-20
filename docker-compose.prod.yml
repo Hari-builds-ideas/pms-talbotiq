@@ -1,0 +1,127 @@
+# PMS — Talbotiq · PRODUCTION posture (CONFIG only — provisions nothing).
+#
+# Differences from the dev stack (docker-compose.yml) that make this prod-ready
+# at the CODE/CONFIG level:
+#   * runs under config.settings.prod (DEBUG off, HSTS, secure cookies, fail-closed
+#     secrets — see config/settings/prod.py);
+#   * the code is BAKED into the image (INSTALL_DEV=false, NO `.:/app` source
+#     mount), so a container runs exactly what was built;
+#   * CONTROLLED MIGRATIONS: a one-shot `migrate` service runs migrations ONCE;
+#     the web/worker containers do NOT auto-migrate (no N-replica migrate race).
+#     Deploy order: `migrate` to completion, then roll web. See docs/RUNBOOK.md;
+#   * the cache Redis is a SEPARATE instance from the broker Redis (allkeys-lru
+#     vs noeviction) so cache churn can never evict queued jobs;
+#   * required secrets use `${VAR:?...}` — compose REFUSES to start if unset
+#     (fail-closed; secrets come from the environment / a vault, never a file).
+#
+# A real deploy points DB_HOST / the Redis URLs at managed services and drops the
+# mysql/redis-* services here (they are included for a self-contained reference).
+#
+#   docker compose -f docker-compose.prod.yml run --rm migrate   # once
+#   docker compose -f docker-compose.prod.yml up -d               # roll web/workers
+
+x-app-environment: &app_environment
+  DJANGO_SETTINGS_MODULE: config.settings.prod
+  # Fail-closed: these MUST be supplied (no insecure defaults).
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set a long random production secret}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?comma-separated prod hostnames}
+  DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+  DB_NAME: ${DB_NAME:-pms}
+  DB_USER: ${DB_USER:-pms}
+  DB_PASSWORD: ${DB_PASSWORD:?set the database password}
+  DB_HOST: ${DB_HOST:-mysql}
+  DB_PORT: ${DB_PORT:-3306}
+  # Optional read replica (BUILD_3): set DB_REPLICA_HOST to route reads there.
+  DB_REPLICA_HOST: ${DB_REPLICA_HOST:-}
+  # Cache + sessions on the SEPARATE cache Redis (allkeys-lru); broker on its own.
+  REDIS_CACHE_URL: ${REDIS_CACHE_URL:-redis://redis-cache:6379/1}
+  REDIS_SESSION_URL: ${REDIS_SESSION_URL:-redis://redis-cache:6379/2}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis-broker:6379/0}
+  CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis-broker:6379/0}
+  SENTRY_DSN: ${SENTRY_DSN:-}
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+  SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.05}
+  # AI: the key is injected from the environment / vault — never written here.
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  LLM_PROVIDER: ${LLM_PROVIDER:-apps.ai.groq.GroqProvider}
+  LLM_BASE_URL: ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
+  LLM_MAX_CALLS: ${LLM_MAX_CALLS:-0}
+  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-900}
+
+# Baked production image: code COPYed in, NO dev/test toolchain, NO source mount.
+x-app-build: &app_build
+  build:
+    context: .
+    args:
+      INSTALL_DEV: "false"
+  image: pms-talbotiq:prod
+
+services:
+  # ── one-shot migration (the SINGLE place migrations run in prod) ────────────
+  migrate:
+    <<: *app_build
+    command: python manage.py migrate --noinput
+    environment: *app_environment
+    restart: "no"
+
+  web:
+    <<: *app_build
+    # gunicorn ONLY — NO migrate here (the migrate service owns that), so N web
+    # replicas never race on schema. Tuned by gunicorn.conf.py.
+    command: gunicorn config.wsgi:application -c gunicorn.conf.py
+    environment: *app_environment
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  celery-worker:
+    <<: *app_build
+    command: celery -A config worker -l info
+    environment: *app_environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  celery-beat:
+    <<: *app_build
+    command: celery -A config beat -l info
+    environment: *app_environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ── reference data services (a real deploy uses managed MySQL/Redis) ────────
+  mysql:
+    image: mysql:8.0
+    command: >
+      --default-authentication-plugin=caching_sha2_password
+      --log-bin-trust-function-creators=1
+      --max-connections=${DB_MAX_CONNECTIONS:-200}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set the mysql root password}
+      MYSQL_DATABASE: ${DB_NAME:-pms}
+      MYSQL_USER: ${DB_USER:-pms}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set the database password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+  # Broker Redis — noeviction (a dropped queued job is data loss).
+  redis-broker:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+
+  # Cache + sessions Redis — allkeys-lru (safe to evict; can't starve the broker).
+  redis-cache:
+    image: redis:7-alpine
+    command: ["redis-server", "--maxmemory-policy", "allkeys-lru"]
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

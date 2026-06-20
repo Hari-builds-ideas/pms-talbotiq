@@ -246,3 +246,24 @@ flushes the DB mid-suite and was flaky under full-suite load; the router's
 integration variant added risk without real coverage. (3) Test settings set
 `CONN_MAX_AGE=0` so the second (replica) connection can't accumulate across a
 long suite. Full suite green at 1100+ with the router active.
+
+### D10 (BUILD_4/4.1) — Production posture: baked image + controlled migrations
+
+**Decision.** `config/settings/prod.py` was already fail-closed (DEBUG off, HSTS,
+secure cookies, no-default SECRET_KEY/ALLOWED_HOSTS, SECURE_PROXY_SSL_HEADER for a
+TLS-terminating proxy). Added the missing `XFrameOptionsMiddleware` so the
+`X_FRAME_OPTIONS=DENY` setting actually emits its header (`check --deploy`'s
+`security.W002`) — `manage.py check --deploy` is now clean under prod settings
+(the only residual, `W009` weak SECRET_KEY, clears with a real long/random key).
+
+`docker-compose.prod.yml` (standalone, not an override — an override can't unset
+the dev `.:/app` mount): runs `config.settings.prod`, a BAKED image
+(`INSTALL_DEV=false`, no source mount), a SEPARATE cache Redis (allkeys-lru) from
+the broker Redis (noeviction), required secrets via `${VAR:?...}` so compose
+refuses to start without them (verified fail-closed).
+
+**Controlled migrations.** Dev web auto-migrates on boot (an N-replica race in
+prod). In prod a one-shot `migrate` service runs migrations ONCE; web/workers
+wait on `service_completed_successfully` and never migrate themselves. Deploy
+order (migrate → roll web) is in the RUNBOOK. Secrets stay env/vault-sourced (the
+`secret_ref` seam), never committed.

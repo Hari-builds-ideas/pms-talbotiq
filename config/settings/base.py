@@ -104,6 +104,9 @@ MIDDLEWARE = [
     # Clear the read-after-write DB-routing flag at the start of each request.
     "apps.core.dbrouter.DBRoutingResetMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Apply the X_FRAME_OPTIONS=DENY header (anti-clickjacking); the setting was
+    # already DENY but the header needs this middleware to emit it (security.W002).
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

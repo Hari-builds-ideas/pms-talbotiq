@@ -3,11 +3,10 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_3 — ATOMIC_LIMITS_AND_DB_ROUTER · 3.3+3.4 done → BUILD_3_REPORT, then BUILD_4
+## Current: BUILD_4 — PROD_OPS_CONCURRENCY_CACHE · Phase 4.1 (prod settings + baked image + controlled migrations)
 
-Note: 3.3 (router) + 3.4 (connection sizing/resilience) committed together — they
-touch the same files (celery.py, RUNBOOK, test_dbrouter) and the env forbids
-interactive partial staging, so one cohesive DB-tier commit rather than a hacky split.
+BUILD_3 COMPLETE: 3.1–3.4 + report committed/pushed/green (`784a69f`); backend
+1107 passed, 2 deselected; atomic limits + DB router (replica-ready) live.
 
 BUILD_2 COMPLETE: 2.1–2.5 + report committed/pushed/green (`a27f8d3`); backend
 1092 passed, 2 deselected; frontend clean; all 5 AI seams async; chat stays sync.
@@ -68,6 +67,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+19 · BUILD_4/4.1 · prod settings + baked image + controlled migrations · `config/settings/base.py` (+XFrameOptionsMiddleware → check --deploy clean), `docker-compose.prod.yml` (new — baked image INSTALL_DEV=false, no source mount, settings.prod, split cache/broker Redis, one-shot migrate service + web waits on it / never auto-migrates, `${VAR:?}` fail-closed secrets), `docs/RUNBOOK.md` (deploy order: migrate once → roll web), `apps/core/tests/test_prod_settings.py` (3 — fail-closed w/o SECRET_KEY + ALLOWED_HOSTS, loads secure with env) · **[build]** prod image builds (next); prod compose valid + fail-closed verified · **[test]** check --deploy clean under prod; 3 prod-settings tests pass · DECISIONS D10 · commit `BUILD_4 4.1`
 
 18 · BUILD_3/3.3+3.4 · DATABASE_ROUTERS read/write split + connection sizing/resilience · `apps/core/dbrouter.py` (new — PrimaryReplicaRouter reads→replica/writes→default, read-after-write via per-thread flag + in_atomic_block, allow_migrate default-only; DBRoutingResetMiddleware), `config/settings/base.py` (DATABASES[replica] env-DSN-or-fallback + TEST MIRROR; DATABASE_ROUTERS; middleware; sizing comment), `config/celery.py` (task_prerun reset_write_state + task_postrun close_old_connections, EAGER-guarded so it never tears down a test transaction), `apps/core/tests/test_dbrouter.py` (4), `docs/RUNBOOK.md` (replica provisioning + max_connections sizing for both aliases) · **[test]** router: reads→replica then→default after write, txn reads→default, migrate default-only; both aliases load + inherit CONN settings; **caught + fixed**: eager `close_old_connections` was tearing down 15 AI-seam test transactions → guarded on `CELERY_TASK_ALWAYS_EAGER`; dropped a flaky `transaction=True` queryset test (mirrored-replica DB-flush mid-suite) for a unit assert; `config/settings/test.py` CONN_MAX_AGE=0 so the replica connection can't accumulate · DECISIONS D9 · commit `BUILD_3 3.3+3.4`
 

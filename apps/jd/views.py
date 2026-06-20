@@ -33,6 +33,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai.serializers import AIJobSerializer
+from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -50,7 +52,6 @@ from .serializers import (
     JobDescriptionSerializer,
     TemplateInstantiateSerializer,
 )
-from .tasks import generate_jd
 
 
 class JDListCreateView(RBACMixin, APIView):
@@ -214,33 +215,30 @@ class JDArchiveView(_JDTransitionView):
 
 class JDGenerateView(RBACMixin, APIView):
     """``POST /api/jd/<pk>/generate`` (GENERATE_JD) — the JD-Generator seam.
-    Calls the drafting task SYNCHRONOUSLY.
+    ENQUEUES the generation and returns ``202`` + an AI job id; the client polls
+    ``GET /api/ai/jobs/<id>``.
 
-    The LOUD seam: until Module 10 ships a provider this returns 503 with
-    ``reason: no_provider`` and the JD stays in DRAFT — the manual path is never
-    blocked and no fake body is ever written. A missing inputs snapshot raises
-    ``InvalidJDInput`` (422) inside the task and propagates automatically; any
-    other skip reason (not_found / bad_state / actor_*) is a 409.
+    Async by design (BUILD_2). Two checks stay SYNCHRONOUS so the user gets an
+    immediate, correct error rather than a doomed job: the JD is loaded
+    tenant-scoped (cross-tenant → 404), and the inputs snapshot is validated
+    (missing → 422 ``INVALID_JD_INPUT``). Then the work is enqueued. On success
+    the worker writes the AI body onto the DRAFT and locks PENDING_HUMAN_REVIEW;
+    no provider lands the job DEGRADED and the JD is left untouched (no fake body).
     """
 
     required_capability = Capability.GENERATE_JD
 
     def post(self, request, pk):
-        # Synchronous call by design for the MVP (production may .delay() later).
-        # InvalidJDInput (missing inputs) propagates as 422 — do NOT catch it.
-        result = generate_jd(
-            str(request.user.tenant_id), str(pk), actor_id=str(request.user.id)
-        )
-        if not result.get("generated"):
-            if result.get("reason") == "no_provider":
-                body = dict(result)
-                body["detail"] = (
-                    "The JD Generator is not configured; it lands in Module 10."
-                )
-                return Response(body, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-            return Response(result, status=status.HTTP_409_CONFLICT)
         jd = get_object_or_404(JobDescription.objects.all(), pk=pk)
-        return Response(JobDescriptionSerializer(jd).data)
+        # Validate inputs synchronously (preserve the 422 UX) before enqueue.
+        lifecycle.validate_generation_inputs(jd, lifecycle.working_version(jd))
+        job = enqueue_agent_job(
+            actor=request.user,
+            agent_code="jd_generator",
+            target_type="job_description",
+            target_id=jd.id,
+        )
+        return Response(AIJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
 class JDTemplateListView(RBACMixin, APIView):

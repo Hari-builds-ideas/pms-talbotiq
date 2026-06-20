@@ -61,6 +61,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 
 (ordinal · build/phase · what · files · verification · commit)
 
+11 · BUILD_2/2.3d · jd generate async · `apps/jd/views.py` (JDGenerateView: sync 404-scope + validate_generation_inputs 422, then enqueue jd_generator → 202; dropped unused task import), `apps/ai/tasks.py` (run_agent_job: defensive try/except around dispatch → uncaught seam exception lands FAILED, never stuck RUNNING), `apps/jd/tests/test_api.py` · **[test]** no-inputs→422 preserved (sync), no-provider→202+job DEGRADED, JD untouched; jd+ai 112 pass · commit `BUILD_2 2.3d`
+
 10 · BUILD_2/2.3c · succession enrich async · `apps/succession/views.py` (PlanEnrichView: scope-load plan via get_plan_in_scope → enqueue agent4 → 202; dropped now-unused task import), `apps/succession/tests/test_api.py` (202+job DEGRADED; deterministic plan COMPLETELY INTACT, no AI plan created) · **[test]** name-free evidence + PENDING gate run in worker; succession 56 pass · commit `BUILD_2 2.3c`
 
 9 · BUILD_2/2.3b · feedback summary async · `apps/feedback/services.py` (close_cycle: sync audited COLLECTING→CLOSED, then enqueue agent3 → returns (cycle, job)), `apps/feedback/views.py` (CycleCloseView → {cycle, job}; CycleSummarizeView keeps sync CLOSED-409 then enqueue → 202), `apps/feedback/tests/{test_api,test_services}.py` · **[test]** anonymised payload + breach guard + HRBP_HOLD + PENDING all still run in the worker; no-provider→DEGRADED(NOT_CONFIGURED) via DB poll; feedback 52 pass · note: frontend close consumer (`summary` key→`job`) rewired in 2.4 · commit `BUILD_2 2.3b`

@@ -18,6 +18,7 @@ Themes:
 import pytest
 from rest_framework.test import APIClient
 
+from apps.ai.models import AIJob
 from apps.audit.models import AuditLog
 from apps.identity.tokens import issue_tokens_for_user
 from apps.jd import services
@@ -180,20 +181,23 @@ def test_employee_cannot_create_jd_request(org):
     assert resp.status_code == 403
 
 
-# ── the JD-Generator seam: no provider → 503 / no inputs → 422 ─────────────
+# ── the JD-Generator seam: async (enqueue+poll) / no inputs → 422 ──────────
 
 
-def test_generate_without_provider_is_503_and_jd_untouched(org):
-    # WITH inputs so input-validation passes and we reach the provider check.
+def test_generate_without_provider_enqueues_job_degraded_and_jd_untouched(org):
+    # WITH inputs so input-validation passes and we reach the enqueue.
     jd = _draft_jd(org, inputs={"brief": "Reliability-focused SRE."})
     hrbp = _client_for(org.hrbp)
 
     resp = hrbp.post(f"{JD}{jd.id}/generate")
-    assert resp.status_code == 503
+    assert resp.status_code == 202
     body = resp.json()
-    assert body["generated"] is False
-    assert body["reason"] == "no_provider"
-    assert "Module 10" in body["detail"]
+    assert body["agent_code"] == "jd_generator"
+    assert body["target_id"] == str(jd.id)
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=body["id"])
+        assert job.status == AIJob.Status.DEGRADED  # no provider -> graceful
+        assert job.error_code == "NOT_CONFIGURED"
 
     # The loud seam never strands the JD: still DRAFT, manual path open.
     after = hrbp.get(f"{JD}{jd.id}")

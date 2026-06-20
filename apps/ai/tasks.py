@@ -132,7 +132,21 @@ def run_agent_job(self, tenant_id, job_id):
             job.save(update_fields=["status", "started_at", "updated_at"])
 
         actor_id = str(job.requested_by_id) if job.requested_by_id else None
-        result, success_key = _dispatch(job, actor_id)
+        try:
+            result, success_key = _dispatch(job, actor_id)
+        except Exception as exc:  # noqa: BLE001
+            # A seam that raises (e.g. an uncaught validation error, or an unknown
+            # agent_code) must NEVER strand the job RUNNING — record FAILED and
+            # return. The seam's own guards mean the artifact is left pre-AI.
+            logger.error(
+                "run_agent_job: job %s (%s) dispatch raised; marking FAILED",
+                job.id, job.agent_code, exc_info=True,
+            )
+            job.status = AIJob.Status.FAILED
+            job.error_code = type(exc).__name__[:32]
+            job.finished_at = timezone.now()
+            job.save(update_fields=["status", "error_code", "finished_at", "updated_at"])
+            return {"job_id": str(job.id), "status": job.status, "error_code": job.error_code}
         status, error_code = _classify(result, success_key)
 
         job.status = status

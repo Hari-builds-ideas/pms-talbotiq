@@ -3,7 +3,24 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_1 — ORM & queries · Phase 1.5 (regression guard + QUERY_BUDGETS doc)
+## Current: BUILD_1 COMPLETE (1.1–1.5 committed + pushed + green) — writing BUILD_1_REPORT, then BUILD_2
+
+### BUILD_1 headline — query count per page, before → after (5→25 rows)
+
+| endpoint | before | after |
+|---|---|---|
+| reviews | 18 → 78 (Δ60, N+1) | 3 → 3 (Δ0) |
+| goals | 23 → 103 (Δ80, N+1) | 4 → 4 (Δ0) |
+| org positions | 13 → 53 (Δ40, N+1) | 3 → 3 (Δ0) |
+| feedback cycles | 8 → 28 (Δ20, N+1) | 3 → 3 (Δ0) |
+| jd library | 8 → 28 (Δ20, N+1) | 3 → 3 (Δ0) |
+| career roadmaps | 8 → 28 (Δ20, N+1) | 3 → 3 (Δ0) |
+| succession bench | 3 → 3 (already bounded) | 3 → 3 (Δ0) |
+
+Every paginated list is now O(1) in rows; worst offender (goals) 103 → 4.
+Guard: `test_query_budgets.py` runs in the normal suite (`ENFORCE_BOUNDED=True`);
+sanity-checked — removing a `select_related` turns it red. Full doc:
+`docs/QUERY_BUDGETS.md`.
 
 Baseline (start of series): backend suite **1065 passing** (grew from the
 contract's stated 1059 via the names + display work). Stack runs as one Docker
@@ -35,6 +52,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 (ordinal · build/phase · what · files · verification · commit)
 
 1 · BUILD_1/1.1 · query-count harness + N+1 baseline · `apps/testsupport/query_budget.py` (count_queries/ScalingResult/measure_scaling, additive seeding), `apps/core/tests/test_query_budgets.py` (7 endpoint budget tests, recording mode) · **[test]** 7 passed; baseline table above · commit `BUILD_1 1.1`
+
+5 · BUILD_1/1.5 · regression guard + QUERY_BUDGETS.md · `docs/QUERY_BUDGETS.md` (the rule, the guard, per-endpoint before→after, how to add a list), `PROGRESS.md` (headline before/after table) · **[test]** budget guard runs in the normal suite (7 collected, not gated); sanity-check: removing reviews `select_related` → `test_reviews_list_bounded` FAILS (Δ=60), restored → 7 passed · commit `BUILD_1 1.5`
 
 4 · BUILD_1/1.4 · pagination + large-tenant correctness · `apps/core/tests/test_large_tenant.py` (gated `large_tenant` marker; ~1.2k employees; reviews/goals page-bounded + ≤15 queries in HRBP & Manager scope; org tree scope-bounded), `pytest.ini` (register marker, deselect by default), `apps/administration/{services,views,urls}.py` (+`user_stats` DB GROUP-BY aggregate + `GET /api/admin/users/stats`), `apps/administration/tests/test_api.py` (stats counts/deactivation/403/single-GROUP-BY), frontend `lib/types.ts`+`lib/api/endpoints.ts` (`AdminUserStats`/`userStats`), `features/dashboard/{cockpit,DashboardPage}.tsx` (tiles read the aggregate, no full-user-list download) · **[test]** large-tenant 2/2 pass (5s); admin suite 33 pass; frontend tsc+lint+build clean · **[live]** stats `{total:31,active:31,roles sum 31}` 70ms, org tree 31 nodes 68ms, reviews `{count,next,previous,results}` 39ms · audit: all entity LISTs already paginate + client reads `Paginated<T>` correctly (the reskin fixed the array-mishandling); bare sub-lists are per-parent bounded · commit `BUILD_1 1.4`
 

@@ -14,8 +14,10 @@ Themes:
   * the timeline (approval tracker) and the audit trail.
 """
 import pytest
+from django.test import override_settings
 from rest_framework.test import APIClient
 
+from apps.ai.models import AIJob
 from apps.audit.models import AuditLog
 from apps.identity.tokens import issue_tokens_for_user
 from apps.reviews.models import Review, ReviewAssessment
@@ -403,24 +405,52 @@ def test_employee_cannot_submit_manager_assessment(org):
     assert resp.status_code == 403
 
 
-# ── the Agent-1 seam: request-ai-draft with no provider ────────────────────
+# ── the Agent-1 seam: request-ai-draft is async (enqueue + poll) ───────────
 
 
-def test_request_ai_draft_without_provider_is_503_and_review_untouched(org):
+def test_request_ai_draft_enqueues_job_and_degrades_without_provider(org):
+    """Async seam: the endpoint returns 202 + an AI job; with no provider the
+    (eager) job DEGRADES and the review is never stranded (stays DRAFT)."""
     review = _make_review(org, state="DRAFT")
     mgr = _client_for(org.manager)
 
     resp = mgr.post(f"{REVIEWS}{review.id}/request-ai-draft")
-    assert resp.status_code == 503
+    assert resp.status_code == 202
     body = resp.json()
-    assert body["drafted"] is False
-    assert body["reason"] == "no_provider"
-    assert "Module 10" in body["detail"]
+    assert body["agent_code"] == "agent1"
+    assert body["target_type"] == "review"
+    assert body["target_id"] == str(review.id)
+
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=body["id"])
+        assert job.status == AIJob.Status.DEGRADED  # no provider -> graceful
+        assert job.error_code == "NOT_CONFIGURED"
 
     # The loud seam never strands the review: still DRAFT, manual path open.
     after = mgr.get(f"{REVIEWS}{review.id}")
     assert after.status_code == 200
     assert after.json()["state"] == "DRAFT"
+
+
+@override_settings(
+    LLM_PROVIDER="apps.ai.providers.FakeLLMProvider",
+    REVIEW_ASSISTANT_PROVIDER="apps.ai.agents.review.ReviewAssistantProvider",
+)
+def test_request_ai_draft_async_locks_pending_when_wired(org):
+    """With a provider wired, the enqueued job runs (eager) and the HITL gate is
+    preserved: the review ends PENDING_HUMAN_REVIEW, exactly as the sync seam did."""
+    review = _make_review(org, state="DRAFT")
+    mgr = _client_for(org.manager)
+
+    resp = mgr.post(f"{REVIEWS}{review.id}/request-ai-draft")
+    assert resp.status_code == 202
+    assert resp.json()["target_id"] == str(review.id)
+
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=resp.json()["id"])
+        assert job.status == AIJob.Status.SUCCEEDED
+    after = mgr.get(f"{REVIEWS}{review.id}")
+    assert after.json()["state"] == "PENDING_HUMAN_REVIEW"  # HITL lock preserved
 
 
 # ── audit trail ────────────────────────────────────────────────────────────

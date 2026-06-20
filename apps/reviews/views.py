@@ -25,6 +25,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai.serializers import AIJobSerializer
+from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
@@ -214,11 +216,14 @@ class ReviewFinalizeView(_TransitionView):
 
 class ReviewRequestAIDraftView(RBACMixin, APIView):
     """``POST /api/reviews/<pk>/request-ai-draft`` — the Agent-1 seam
-    (RUN_AI_REVIEW_DRAFT). Calls the drafting task SYNCHRONOUSLY.
+    (RUN_AI_REVIEW_DRAFT). ENQUEUES the drafting work and returns ``202`` with an
+    AI job id; the client polls ``GET /api/ai/jobs/<id>``.
 
-    The LOUD seam: until Module 10 ships a provider, this returns 503 with
-    ``reason: no_provider`` and the review stays in DRAFT — the manual path is
-    never blocked and no fake draft is ever written.
+    Async by design (BUILD_2): the LLM call no longer holds the request thread.
+    The HITL gate is unchanged — on success the worker still locks the draft
+    PENDING_HUMAN_REVIEW; no provider / over budget lands the job DEGRADED (the
+    review stays in DRAFT); no fake draft is ever written. Scope is still checked
+    synchronously here (a cross-tenant / out-of-scope review 404s before enqueue).
     """
 
     required_capability = Capability.RUN_AI_REVIEW_DRAFT
@@ -227,23 +232,13 @@ class ReviewRequestAIDraftView(RBACMixin, APIView):
     def post(self, request, pk):
         review = get_object_or_404(Review.objects.all(), pk=pk)
         self.check_object_scope(review)
-        # Synchronous call by design for the MVP (production may .delay() later).
-        from .tasks import draft_review_with_agent1
-
-        result = draft_review_with_agent1(
-            str(request.user.tenant_id), str(pk), actor_id=str(request.user.id)
+        job = enqueue_agent_job(
+            actor=request.user,
+            agent_code="agent1",
+            target_type="review",
+            target_id=review.id,
         )
-        if not result.get("drafted"):
-            if result.get("reason") == "no_provider":
-                body = dict(result)
-                body["detail"] = (
-                    "Review Assistant (Agent 1) is not configured; "
-                    "it lands in Module 10."
-                )
-                return Response(body, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-            return Response(result, status=status.HTTP_409_CONFLICT)
-        review.refresh_from_db()
-        return Response(ReviewSerializer(review).data)
+        return Response(AIJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
 class ReviewAssessmentListCreateView(RBACMixin, APIView):

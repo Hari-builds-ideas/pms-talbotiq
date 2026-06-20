@@ -67,7 +67,7 @@ export function CommandPalette() {
         {(people.data?.results ?? []).length > 0 && (
           <CommandGroup heading="People">
             {people.data!.results.map((p) => (
-              <CommandItem key={p.id} value={`person-${p.id}-${p.display}`} onSelect={() => go("/org")}>
+              <CommandItem key={p.id} value={`person-${p.id}-${p.display}`} onSelect={() => go(`/org?person=${p.id}`)}>
                 <User />
                 <span className="font-medium">{p.display}</span>
                 <span className="ml-auto text-2xs text-muted-foreground">{ROLE_LABEL[p.role as Role]}</span>

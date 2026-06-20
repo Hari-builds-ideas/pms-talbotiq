@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Briefcase, MoreHorizontal, Network, Plus } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
@@ -51,6 +52,19 @@ import type { Position } from "@/lib/types";
 export function OrgPage() {
   const { atLeast } = useAuth();
   const [selected, setSelected] = React.useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Deep-link: /org?person=<id> (e.g. picked from the ⌘K palette) opens that
+  // person's sheet, then the param is consumed so a refresh or closing the sheet
+  // doesn't keep re-opening it.
+  React.useEffect(() => {
+    const pid = searchParams.get("person");
+    if (!pid) return;
+    setSelected(pid);
+    const next = new URLSearchParams(searchParams);
+    next.delete("person");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   return (
     <div>

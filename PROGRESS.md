@@ -61,6 +61,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 
 (ordinal · build/phase · what · files · verification · commit)
 
+10 · BUILD_2/2.3c · succession enrich async · `apps/succession/views.py` (PlanEnrichView: scope-load plan via get_plan_in_scope → enqueue agent4 → 202; dropped now-unused task import), `apps/succession/tests/test_api.py` (202+job DEGRADED; deterministic plan COMPLETELY INTACT, no AI plan created) · **[test]** name-free evidence + PENDING gate run in worker; succession 56 pass · commit `BUILD_2 2.3c`
+
 9 · BUILD_2/2.3b · feedback summary async · `apps/feedback/services.py` (close_cycle: sync audited COLLECTING→CLOSED, then enqueue agent3 → returns (cycle, job)), `apps/feedback/views.py` (CycleCloseView → {cycle, job}; CycleSummarizeView keeps sync CLOSED-409 then enqueue → 202), `apps/feedback/tests/{test_api,test_services}.py` · **[test]** anonymised payload + breach guard + HRBP_HOLD + PENDING all still run in the worker; no-provider→DEGRADED(NOT_CONFIGURED) via DB poll; feedback 52 pass · note: frontend close consumer (`summary` key→`job`) rewired in 2.4 · commit `BUILD_2 2.3b`
 
 8 · BUILD_2/2.3a · reviews AI draft async · `apps/ai/serializers.py` (new — AIJobSerializer poll shape), `apps/ai/services.py` (new — enqueue_agent_job: create QUEUED AIJob + run_agent_job.delay, tenant from actor), `apps/reviews/views.py` (ReviewRequestAIDraftView: scope-check then enqueue → 202 + job; was sync 503/409/200), `apps/reviews/tests/test_api.py` (202+job: DEGRADED w/o provider review-stays-DRAFT; WIRED→SUCCEEDED→review PENDING) · **[test]** reviews 67 + ai 62 pass · commit `BUILD_2 2.3a`

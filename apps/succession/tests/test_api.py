@@ -27,6 +27,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.ai.models import AIJob
 from apps.goals.models import CycleScore
 from apps.identity.tokens import issue_tokens_for_user
 from apps.succession.models import SuccessionPlan
@@ -415,10 +416,10 @@ def test_cross_tenant_is_404(org, other_tenant):
     assert other.get(f"{SUCC}plans/{plan_id}").status_code == 404
 
 
-# ── Agent-4 seam → 503; the deterministic plan stays intact ───────────────────
+# ── Agent-4 seam → async (enqueue+poll); the deterministic plan stays intact ──
 
 
-def test_agent4_enrich_is_loud_503_and_plan_unchanged(org):
+def test_agent4_enrich_enqueues_job_degraded_and_plan_unchanged(org):
     hrbp = _client_for(org.hrbp)
     role_id = hrbp.post(
         f"{SUCC}critical-roles", {"name": "AI-curious Role"}, format="json"
@@ -432,12 +433,16 @@ def test_agent4_enrich_is_loud_503_and_plan_unchanged(org):
         f"{SUCC}critical-roles/{role_id}/generate", {}, format="json"
     ).json()["id"]
 
-    # No provider is configured (Module 10) → loud 503.
+    # Enqueue → 202 + an AI job; the (eager) job DEGRADES with no provider.
     resp = hrbp.post(f"{SUCC}plans/{plan_id}/enrich", {}, format="json")
-    assert resp.status_code == 503, resp.content
+    assert resp.status_code == 202, resp.content
     body = resp.json()
-    assert body["reason"] == "no_provider"
-    assert body["enriched"] is False
+    assert body["agent_code"] == "agent4"
+    assert body["target_id"] == plan_id
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=body["id"])
+        assert job.status == AIJob.Status.DEGRADED
+        assert job.error_code == "NOT_CONFIGURED"
 
     # The deterministic plan is left COMPLETELY INTACT.
     resp = hrbp.get(f"{SUCC}plans/{plan_id}")

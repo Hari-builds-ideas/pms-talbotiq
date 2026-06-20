@@ -40,6 +40,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai.serializers import AIJobSerializer
+from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
@@ -61,7 +63,6 @@ from .serializers import (
     ReadinessSerializer,
     SuccessionPlanSerializer,
 )
-from .tasks import enrich_succession_with_agent4
 
 
 # ── dashboard ─────────────────────────────────────────────────────────────────
@@ -360,29 +361,24 @@ class PlanPublishView(SuccessionMixin, APIView):
 class PlanEnrichView(SuccessionMixin, APIView):
     """``POST /api/succession/plans/<pk>/enrich``
     (GENERATE_SUCCESSION_ANALYSIS — HRBP+) — the Agent-4 (Successor Planning) seam.
-    Calls the enrichment task SYNCHRONOUSLY.
+    ENQUEUES the enrichment and returns ``202`` + an AI job id; the client polls
+    ``GET /api/ai/jobs/<id>``.
 
-    The LOUD seam: until Module 10 ships a provider this returns 503 with
-    ``reason: no_provider`` and the DETERMINISTIC plan stays COMPLETELY INTACT — no
-    fake analysis is ever written (the baseline is core, not faked). Any other
-    skip reason (not_found / actor_*) is a 409; a successful enrichment locks a NEW
-    AI plan PENDING_HUMAN_REVIEW and returns 200 with the result.
+    Async by design (BUILD_2). The DETERMINISTIC plan stays COMPLETELY INTACT
+    while the job runs; on success the worker locks a NEW AI plan
+    PENDING_HUMAN_REVIEW (name-free evidence, unchanged). No provider lands the
+    job DEGRADED — no fake analysis is ever written. The plan is loaded
+    tenant-scoped here (cross-tenant / out-of-tier → 404 before enqueue).
     """
 
     required_capability = Capability.GENERATE_SUCCESSION_ANALYSIS
 
     def post(self, request, pk):
-        # Synchronous call by design for the MVP (production may .delay() later).
-        result = enrich_succession_with_agent4(
-            str(request.user.tenant_id), str(pk), actor_id=str(request.user.id)
+        plan = plans.get_plan_in_scope(request.user, pk)
+        job = enqueue_agent_job(
+            actor=request.user,
+            agent_code="agent4",
+            target_type="succession_plan",
+            target_id=plan.id,
         )
-        if result.get("enriched"):
-            return Response(result)
-        if result.get("reason") == "no_provider":
-            body = dict(result)
-            body["detail"] = (
-                "The Succession Analyzer (Agent 4) is not configured; it lands in "
-                "Module 10. The deterministic plan is left intact."
-            )
-            return Response(body, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response(result, status=status.HTTP_409_CONFLICT)
+        return Response(AIJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)

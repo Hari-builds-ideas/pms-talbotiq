@@ -20,6 +20,7 @@ import json
 
 from apps.ai.evidence import confidence_with_sufficiency, review_evidence
 from apps.ai.gateway import DEFAULT_CONFIDENCE_FLOOR, gateway
+from apps.ai.exceptions import AgentUnavailable
 from apps.ai.graph import run_graph
 from apps.ai.providers import llm_configured, register_fake_output
 from apps.ai.schemas import NonEmpty
@@ -115,7 +116,7 @@ class ReviewAssistantProvider(_BaseReviewAssistantProvider):
         if not result.ok:
             # Budget/schema/provider problem — do NOT fabricate; let the Module-3
             # task log it and leave the review in AI_DRAFTING.
-            raise RuntimeError(f"Agent 1 unavailable: {result.status}")
+            raise AgentUnavailable(result.status, f"Agent 1 unavailable: {result.status}")
         return {
             "draft_body": state["draft_body"],
             "confidence_score": state.get("confidence", result.confidence),

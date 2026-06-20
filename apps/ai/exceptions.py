@@ -14,3 +14,19 @@ class LLMNotConfiguredError(RuntimeError):
 class LLMProviderError(RuntimeError):
     """A real provider failed at call time (network / bad response). The gateway
     converts this into a ``PROVIDER_ERROR`` result; no output is fabricated."""
+
+
+class AgentUnavailable(LLMProviderError):
+    """A gateway-fronted agent could not serve because the GatewayResult was not
+    ``OK`` (and not ``NOT_CONFIGURED``, which agents raise as their own
+    NotConfigured error). Carries the structured ``gateway_status`` so the async
+    seam task can distinguish a graceful DEGRADE (``BUDGET_EXCEEDED`` — over
+    budget / global ceiling) from a hard FAIL (``PROVIDER_ERROR`` /
+    ``SCHEMA_INVALID``).
+
+    Subclasses ``RuntimeError`` so existing broad ``except Exception`` handlers
+    (and ``pytest.raises(RuntimeError)``) keep working unchanged."""
+
+    def __init__(self, gateway_status: str, message: str | None = None):
+        self.gateway_status = gateway_status
+        super().__init__(message or gateway_status)

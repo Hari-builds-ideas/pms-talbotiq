@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_2 — ASYNC_AI · Phase 2.2 (run_agent_job Celery task)
+## Current: BUILD_2 — ASYNC_AI · Phase 2.3 (convert each AI seam to enqueue)
 
 BUILD_1 COMPLETE: 1.1–1.5 + report + specs committed/pushed/green (`5e9f9fb`);
 backend 1073 passed, 2 deselected; frontend clean.
@@ -60,6 +60,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+7 · BUILD_2/2.2 · run_agent_job Celery task · `apps/ai/tasks.py` (new — dispatcher: binds tenant, idempotent terminal-guard, RUNNING→dispatch by agent_code→classify result; SUCCEEDED/DEGRADED/FAILED + error_code + token_ledger link), `apps/ai/exceptions.py` (+AgentUnavailable carrying gateway_status), 5 agents (`raise AgentUnavailable(status)` not bare RuntimeError), 5 seam tasks (generic except maps BUDGET_EXCEEDED→budget_exceeded else provider_error), `apps/ai/models.py`+migration 0002 (params JSONField for career target_ref), `apps/ai/tests/test_run_agent_job.py` (6 tests) · **[test]** SUCCEEDED(artifact PENDING, metered once), provider_error→FAILED(artifact unpublished), NOT_CONFIGURED→DEGRADED(review stays DRAFT, 0 metered), over-budget→DEGRADED(0 metered), cross-tenant→no-op, idempotent 2nd run no double-meter; 332 affected-suite pass; no drift · commit `BUILD_2 2.2`
 
 6 · BUILD_2/2.1 · AIJob model + async design · `apps/ai/models.py` (new — AIJob: status QUEUED→RUNNING→SUCCEEDED|DEGRADED|FAILED, loose target_type+target_id, requested_by, agent_code, confidence, token_ledger FK, error_code, 2 tenant-leading indexes), `apps/ai/migrations/0001_initial.py`, `apps/ai/tests/test_aijob_model.py` (5 scoping tests), `DECISIONS.md` D4 · **[test]** migration apply+reverse clean; no drift; 5 scoping tests + 56 ai-suite pass · commit `BUILD_2 2.1`
 

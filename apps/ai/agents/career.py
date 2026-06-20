@@ -12,6 +12,7 @@ import json
 
 from apps.ai.evidence import confidence_with_sufficiency
 from apps.ai.gateway import gateway
+from apps.ai.exceptions import AgentUnavailable
 from apps.ai.providers import llm_configured, register_fake_output
 from apps.career.roadmap_agent import CareerRoadmapNotConfiguredError
 from apps.career.roadmap_agent import CareerRoadmapProvider as _BaseCareerRoadmapProvider
@@ -60,7 +61,7 @@ class CareerRoadmapProvider(_BaseCareerRoadmapProvider):
         if result.status == "NOT_CONFIGURED":
             raise CareerRoadmapNotConfiguredError("Career Roadmap agent is not configured.")
         if not result.ok:
-            raise RuntimeError(f"Career Roadmap unavailable: {result.status}")
+            raise AgentUnavailable(result.status, f"Career Roadmap unavailable: {result.status}")
         return {
             "tiers": result.content["tiers"],
             "confidence_score": confidence_with_sufficiency(

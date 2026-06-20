@@ -59,6 +59,11 @@ class AIJob(TenantScopedModel):
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
 
+    #: Agent-specific extra args the seam task needs beyond (tenant, target, actor)
+    #: — e.g. the career agent's ``target_ref``. Server-set at enqueue; never a
+    #: free-form client channel into the task.
+    params = models.JSONField(default=dict, blank=True)
+
     #: Result summary. ``confidence`` from the GatewayResult on success;
     #: ``token_ledger`` the usage row the gateway metered (best-effort link);
     #: ``error_code`` the structured status on DEGRADED/FAILED

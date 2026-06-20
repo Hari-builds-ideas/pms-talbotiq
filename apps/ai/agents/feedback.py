@@ -16,6 +16,7 @@ import json
 
 from apps.ai.evidence import confidence_with_sufficiency
 from apps.ai.gateway import gateway
+from apps.ai.exceptions import AgentUnavailable
 from apps.ai.graph import run_graph
 from apps.ai.pii import contains_pii
 from apps.ai.providers import llm_configured, register_fake_output
@@ -109,7 +110,7 @@ class FeedbackSummarizerProvider(_BaseFeedbackSummarizerProvider):
         if state.get("_halt") == "NOT_CONFIGURED" or result is None:
             raise FeedbackSummarizerNotConfiguredError("Agent 3 (Feedback) is not configured.")
         if not result.ok:
-            raise RuntimeError(f"Agent 3 unavailable: {result.status}")
+            raise AgentUnavailable(result.status, f"Agent 3 unavailable: {result.status}")
         return {
             "sections": result.content["sections"],
             "confidence_score": state.get("confidence", result.confidence),

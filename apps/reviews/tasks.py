@@ -106,7 +106,12 @@ def draft_review_with_agent1(tenant_id, review_id, actor_id=None):
                 review_id,
             )
             return {"drafted": False, "reason": "no_provider"}
-        except Exception:  # noqa: BLE001 - a provider bug must not crash the worker
+        except Exception as exc:  # noqa: BLE001 - a provider bug must not crash the worker
+            reason = (
+                "budget_exceeded"
+                if getattr(exc, "gateway_status", None) == "BUDGET_EXCEEDED"
+                else "provider_error"
+            )
             logger.error(
                 "Agent-1 provider failed for tenant=%s review=%s; review left "
                 "in AI_DRAFTING for ops to inspect.",
@@ -114,7 +119,7 @@ def draft_review_with_agent1(tenant_id, review_id, actor_id=None):
                 review_id,
                 exc_info=True,
             )
-            return {"drafted": False, "reason": "provider_error"}
+            return {"drafted": False, "reason": reason}
 
         # SYSTEM transition: lock the draft PENDING_HUMAN_REVIEW (HITL gate).
         state_machine.ai_draft_ready(

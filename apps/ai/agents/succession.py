@@ -15,6 +15,7 @@ import json
 
 from apps.ai.evidence import confidence_with_sufficiency, succession_evidence
 from apps.ai.gateway import gateway
+from apps.ai.exceptions import AgentUnavailable
 from apps.ai.providers import llm_configured, register_fake_output
 from apps.ai.schemas import NonEmpty
 from apps.succession.agent4 import SuccessionAnalyzerNotConfiguredError
@@ -60,7 +61,7 @@ class SuccessionAnalyzerProvider(_BaseSuccessionAnalyzerProvider):
         if result.status == "NOT_CONFIGURED":
             raise SuccessionAnalyzerNotConfiguredError("Agent 4 (Succession) is not configured.")
         if not result.ok:
-            raise RuntimeError(f"Agent 4 unavailable: {result.status}")
+            raise AgentUnavailable(result.status, f"Agent 4 unavailable: {result.status}")
 
         red_flags = list(analysis["red_flags"])
         red_flags.append({"code": "AI_NARRATIVE", "detail": result.content["narrative"]})

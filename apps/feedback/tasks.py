@@ -181,7 +181,12 @@ def summarize_feedback(tenant_id, cycle_id, actor_id=None):
                 "summary_id": str(summary.id),
                 "status": summary.status,
             }
-        except Exception:  # noqa: BLE001 - a provider bug must not crash the worker
+        except Exception as exc:  # noqa: BLE001 - a provider bug must not crash the worker
+            reason = (
+                "budget_exceeded"
+                if getattr(exc, "gateway_status", None) == "BUDGET_EXCEEDED"
+                else "provider_error"
+            )
             logger.error(
                 "Agent-3 provider failed for tenant=%s cycle=%s; summary %s "
                 "left as-is (sections NULL) for ops to inspect.",
@@ -192,7 +197,7 @@ def summarize_feedback(tenant_id, cycle_id, actor_id=None):
             )
             return {
                 "summarized": False,
-                "reason": "provider_error",
+                "reason": reason,
                 "summary_id": str(summary.id),
             }
 

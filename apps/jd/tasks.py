@@ -104,7 +104,12 @@ def generate_jd(tenant_id, jd_id, actor_id=None):
                 jd.status,
             )
             return {"generated": False, "reason": "no_provider"}
-        except Exception:  # noqa: BLE001 - a provider bug must not crash the worker
+        except Exception as exc:  # noqa: BLE001 - a provider bug must not crash the worker
+            reason = (
+                "budget_exceeded"
+                if getattr(exc, "gateway_status", None) == "BUDGET_EXCEEDED"
+                else "provider_error"
+            )
             logger.error(
                 "JD generator failed for tenant=%s jd=%s; JD left in %s for ops "
                 "to inspect.",
@@ -113,7 +118,7 @@ def generate_jd(tenant_id, jd_id, actor_id=None):
                 jd.status,
                 exc_info=True,
             )
-            return {"generated": False, "reason": "provider_error"}
+            return {"generated": False, "reason": reason}
 
         # Write the generated body onto the working DRAFT version (source=AI),
         # then lock it PENDING_HUMAN_REVIEW via the audited lifecycle (HITL gate).

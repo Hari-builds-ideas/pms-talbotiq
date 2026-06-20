@@ -87,7 +87,12 @@ def enrich_succession_with_agent4(tenant_id, plan_id, actor_id=None):
                 plan_id,
             )
             return {"enriched": False, "reason": "no_provider"}
-        except Exception:  # noqa: BLE001 - a provider bug must not crash the worker
+        except Exception as exc:  # noqa: BLE001 - a provider bug must not crash the worker
+            reason = (
+                "budget_exceeded"
+                if getattr(exc, "gateway_status", None) == "BUDGET_EXCEEDED"
+                else "provider_error"
+            )
             logger.error(
                 "Agent-4 provider failed for tenant=%s plan=%s; deterministic plan "
                 "left intact for ops to inspect.",
@@ -95,7 +100,7 @@ def enrich_succession_with_agent4(tenant_id, plan_id, actor_id=None):
                 plan_id,
                 exc_info=True,
             )
-            return {"enriched": False, "reason": "provider_error"}
+            return {"enriched": False, "reason": reason}
 
         # A NEW AI plan, locked PENDING_HUMAN_REVIEW for HRBP re-review — the
         # deterministic baseline is never overwritten.

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 from apps.ai.gateway import gateway
+from apps.ai.exceptions import AgentUnavailable
 from apps.ai.providers import llm_configured, register_fake_output
 from apps.ai.schemas import NonEmpty
 from apps.jd.generator import JDGeneratorNotConfiguredError
@@ -48,7 +49,7 @@ class JDGeneratorProvider(_BaseJDGeneratorProvider):
         if result.status == "NOT_CONFIGURED":
             raise JDGeneratorNotConfiguredError("JD Generator is not configured.")
         if not result.ok:
-            raise RuntimeError(f"JD Generator unavailable: {result.status}")
+            raise AgentUnavailable(result.status, f"JD Generator unavailable: {result.status}")
         return {
             "body": result.content["body"],
             "confidence_score": result.confidence,

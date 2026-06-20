@@ -126,7 +126,12 @@ def generate_roadmap(tenant_id, employee_id, target_ref, actor_id=None):
                 employee_id,
             )
             return {"generated": False, "reason": "no_provider"}
-        except Exception:  # noqa: BLE001 - a provider bug must not crash the worker
+        except Exception as exc:  # noqa: BLE001 - a provider bug must not crash the worker
+            reason = (
+                "budget_exceeded"
+                if getattr(exc, "gateway_status", None) == "BUDGET_EXCEEDED"
+                else "provider_error"
+            )
             logger.error(
                 "Career Roadmap provider failed for tenant=%s employee=%s; "
                 "deterministic roadmap left intact for ops to inspect.",
@@ -134,7 +139,7 @@ def generate_roadmap(tenant_id, employee_id, target_ref, actor_id=None):
                 employee_id,
                 exc_info=True,
             )
-            return {"generated": False, "reason": "provider_error"}
+            return {"generated": False, "reason": reason}
 
         # A NEW AI roadmap, locked as a DRAFT (advisory, never auto-promotion) for
         # the human to accept — the deterministic baseline is never overwritten.

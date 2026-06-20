@@ -3,12 +3,15 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_5 — WEB_UX_COMPLETION · Phase 5.1 (command-center dashboards)
+## Current: SERIES wrap — BUILDs 1–4 COMPLETE; BUILD_5 partial (5.1/5.6/5.7 done, 5.2–5.5 flagged for Hari)
 
-BUILD_4 COMPLETE: 4.1–4.4 + report committed/pushed/green (`e007c19`); backend
-1123 passed, 2 deselected; prod posture + metrics + concurrency + caching live.
-Live cache hit/miss confirmed (org tree 57ms→14ms). Consulting design skills
-(frontend-design / web-design-guidelines / theme-factory) for the UX work.
+BUILDs 1–4 complete/pushed/green (backend 1123 passed, 2 deselected). BUILD_5:
+delivered 5.1 (actionable command center), 5.6 (AI-job UI tests, frontend 30
+passed), 5.7 (mobile readiness gate = GO). The deep subjective UX redesign
+(5.2–5.5) is flagged for Hari's eye + a pass with the design skills (which were
+NOT available in this env — `frontend-design`/`web-design-guidelines`/
+`theme-factory` all returned Unknown skill). See BUILD_5_REPORT.md +
+SERIES_COMPLETE_REPORT.md.
 
 BUILD_3 COMPLETE: 3.1–3.4 + report committed/pushed/green (`784a69f`); backend
 1107 passed, 2 deselected; atomic limits + DB router (replica-ready) live.

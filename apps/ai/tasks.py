@@ -48,6 +48,16 @@ _DEGRADED = {
     "anonymity_breach": "ANONYMITY_HOLD",
 }
 
+#: The key under which each seam returns the id of the artifact it PRODUCED — for
+#: create-new seams (agent4/career) this is the NEW artifact, not the input.
+_RESULT_ID_KEY = {
+    "agent1": "review_id",
+    "agent3": "summary_id",
+    "agent4": "plan_id",
+    "jd_generator": "jd_id",
+    "career_roadmap": "roadmap_id",
+}
+
 
 def _dispatch(job, actor_id):
     """Call the right seam task for ``job.agent_code`` and return
@@ -154,9 +164,13 @@ def run_agent_job(self, tenant_id, job_id):
         job.finished_at = timezone.now()
         if status == AIJob.Status.SUCCEEDED:
             _link_usage(job)
+            produced = result.get(_RESULT_ID_KEY.get(job.agent_code, ""))
+            if produced:
+                job.result_id = produced
         job.save(
             update_fields=[
-                "status", "error_code", "finished_at", "confidence", "token_ledger", "updated_at",
+                "status", "error_code", "finished_at", "confidence",
+                "token_ledger", "result_id", "updated_at",
             ]
         )
         logger.info(

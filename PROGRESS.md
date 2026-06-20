@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_2 — ASYNC_AI · Phase 2.4 (job-status API + frontend polling)
+## Current: BUILD_2 — ASYNC_AI · Phase 2.5 (chat decision + sync-path cleanup)
 
 BUILD_1 COMPLETE: 1.1–1.5 + report + specs committed/pushed/green (`5e9f9fb`);
 backend 1073 passed, 2 deselected; frontend clean.
@@ -60,6 +60,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+14 · BUILD_2/2.4b · AI job result_id + frontend polling UX · backend: `apps/ai/models.py`+migration 0003 (result_id UUID), `apps/ai/tasks.py` (populate result_id from seam id on success), `apps/ai/serializers.py` (+result_id), `apps/ai/tests/test_run_agent_job.py` (assert result_id). frontend: `lib/types.ts` (AIJob + result_id), `lib/api/endpoints.ts` (aiJobsApi + 6 action methods → AIJob/{cycle,job}), `lib/hooks/useAIJob.ts`+`useAIAction.ts` (poll-to-terminal + fire/react), `components/AIJobBanner.tsx` (working/DEGRADED-calm/FAILED), wired all 5 UIs (ReviewDetailPage, CareerPage, RoleSheet[result_id nav], CycleSheet[close+resummarize], JdDetailPage[save-inputs→generate]) · **[test]** ai 67 pass; tsc+lint+build clean · **[live]** DRAFT review → fire → 202 QUEUED (async) → worker → SUCCEEDED → review PENDING_HUMAN_REVIEW (HITL intact), after `restart web celery-worker` · commit `BUILD_2 2.4b`
 
 13 · BUILD_2/2.4a · AI job-status API (backend) · `apps/ai/views.py` (AIJobDetailView GET /api/ai/jobs/<id> own+tenant-scoped; AIJobListView GET /api/ai/jobs?target=<id>), `apps/ai/urls.py`, `apps/ai/tests/test_jobs_api.py` (5: own 200, cross-user 404, cross-tenant 404, ?target filter own-only, unauth 401) · **[test]** full suite 1090 passed, 2 deselected · commit `BUILD_2 2.4a`
 

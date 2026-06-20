@@ -19,6 +19,7 @@ class AIJobSerializer(serializers.ModelSerializer):
             "agent_code",
             "target_type",
             "target_id",
+            "result_id",
             "confidence",
             "error_code",
             "created_at",

@@ -49,11 +49,16 @@ class AIJob(TenantScopedModel):
     #: Which agent ran — e.g. ``agent1`` (review), ``agent3`` (feedback),
     #: ``agent4`` (succession), ``jd``, ``career``.
     agent_code = models.CharField(max_length=32)
-    #: Loose reference to the produced/affected artifact (NOT a DB FK — see D4).
+    #: Loose reference to the INPUT artifact (NOT a DB FK — see D4).
     #: ``target_type`` e.g. "review"; ``target_id`` the artifact UUID (may be set
     #: up front when a PENDING placeholder is created before the work runs).
     target_type = models.CharField(max_length=32)
     target_id = models.UUIDField(null=True, blank=True)
+    #: The artifact the run PRODUCED, set on SUCCEEDED. For mutate-in-place seams
+    #: (review/JD/feedback) this equals ``target_id``; for create-new seams
+    #: (succession/career) it's the NEW AI plan/roadmap — so the client can
+    #: navigate to what was created, which ``target_id`` (the input) can't tell it.
+    result_id = models.UUIDField(null=True, blank=True)
 
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.QUEUED)
     started_at = models.DateTimeField(null=True, blank=True)

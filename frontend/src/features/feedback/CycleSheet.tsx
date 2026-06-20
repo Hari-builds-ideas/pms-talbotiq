@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Lock, Send, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
+import { Lock, Send, Sparkles, UserPlus } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field } from "@/components/Field";
 import {
   Select,
@@ -21,8 +20,11 @@ import {
 import { LinesSkeleton } from "@/components/Skeletons";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAnonymized, useFeedbackMutations, useInvitations } from "./useFeedback";
 import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useAIAction } from "@/lib/hooks/useAIAction";
+import { AIJobBanner } from "@/components/AIJobBanner";
 import { FEEDBACK_RELATIONSHIP, humanize } from "@/lib/enums";
 import { mapApiError } from "@/lib/errors";
 import { notifyError, notifySuccess } from "@/lib/toast";
@@ -57,37 +59,36 @@ export function CycleSheet({
 
 function CycleBody({ cycle }: { cycle: FeedbackCycle }) {
   const m = useFeedbackMutations();
+  const qc = useQueryClient();
   const invitations = useInvitations(cycle.id);
   const anonymized = useAnonymized(cycle.id, cycle.status === "CLOSED");
-  const [lastResult, setLastResult] = React.useState<{ reason?: string; status?: string; summarized?: boolean } | null>(null);
-  const [noProvider, setNoProvider] = React.useState(false);
 
   const isDraft = cycle.status === "DRAFT";
   const isCollecting = cycle.status === "COLLECTING";
   const isClosed = cycle.status === "CLOSED";
 
-  async function close() {
-    setNoProvider(false);
-    try {
-      const res = await m.closeCycle.mutateAsync(cycle.id);
-      setLastResult(res.summary);
-      notifySuccess("Cycle closed", res.summary.summarized ? "AI summary generated — pending HRBP release." : "Summary held / pending — see status.");
-    } catch (err) {
-      notifyError(err);
-    }
-  }
-
-  async function resummarize() {
-    setNoProvider(false);
-    try {
-      const res = await m.summarize.mutateAsync(cycle.id);
-      setLastResult(res);
-      notifySuccess("Summary regenerated");
-    } catch (err) {
-      if (mapApiError(err).kind === "ai_unavailable") setNoProvider(true);
-      else notifyError(err);
-    }
-  }
+  // Close is synchronous (the cycle freezes immediately); the Agent-3 summary it
+  // fires is async. Re-summarize is fully async. Both poll the AI job: the banner
+  // shows working / held-for-anonymity (DEGRADED) / unavailable; SUCCEEDED toasts.
+  const closeAi = useAIAction(
+    () =>
+      m.closeCycle.mutateAsync(cycle.id).then((r) => {
+        void qc.invalidateQueries({ queryKey: ["feedback"] }); // cycle is now CLOSED
+        return r.job;
+      }),
+    {
+      onSucceeded: () => {
+        void qc.invalidateQueries({ queryKey: ["feedback"] });
+        notifySuccess("Summary generated", "Pending HRBP release.");
+      },
+    },
+  );
+  const resummarizeAi = useAIAction(() => m.summarize.mutateAsync(cycle.id), {
+    onSucceeded: () => {
+      void qc.invalidateQueries({ queryKey: ["feedback"] });
+      notifySuccess("Summary regenerated", "Pending HRBP release.");
+    },
+  });
 
   return (
     <div className="space-y-6">
@@ -99,38 +100,20 @@ function CycleBody({ cycle }: { cycle: FeedbackCycle }) {
           </Button>
         )}
         {isCollecting && (
-          <Button onClick={close} loading={m.closeCycle.isPending}>
+          <Button onClick={closeAi.start} loading={closeAi.isWorking}>
             <Sparkles className="h-4 w-4" /> Close &amp; summarize (Agent 3)
           </Button>
         )}
         {isClosed && (
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={resummarize} loading={m.summarize.isPending}>
+            <Button variant="outline" onClick={resummarizeAi.start} loading={resummarizeAi.isWorking}>
               <Sparkles className="h-4 w-4 text-ai" /> Re-summarize
             </Button>
             <span className="text-2xs text-muted-foreground">Released summaries live in “Summaries to release”.</span>
           </div>
         )}
-        {lastResult && (
-          <Alert variant={lastResult.summarized ? "ai" : "warning"}>
-            <ShieldCheck />
-            <AlertTitle>
-              {lastResult.summarized ? "Summary generated → pending HRBP release" : lastResult.reason === "anonymity_breach" ? "Held: possible anonymity breach" : `Held / ${humanize(lastResult.status ?? "pending")}`}
-            </AlertTitle>
-            <AlertDescription>
-              {lastResult.reason === "anonymity_breach"
-                ? "The generated text was held HRBP_HOLD for human judgement — never auto-released."
-                : "An HRBP must review and release it before the subject can see it."}
-            </AlertDescription>
-          </Alert>
-        )}
-        {noProvider && (
-          <Alert variant="ai">
-            <Sparkles />
-            <AlertTitle>AI summary not configured</AlertTitle>
-            <AlertDescription>The Feedback Summarizer (Agent 3) isn't connected for this tenant.</AlertDescription>
-          </Alert>
-        )}
+        <AIJobBanner job={closeAi.job} working="Closing & summarizing…" />
+        <AIJobBanner job={resummarizeAi.job} working="Re-summarizing…" onRetry={resummarizeAi.start} />
       </section>
 
       {/* Invitations */}

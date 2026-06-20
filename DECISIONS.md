@@ -124,3 +124,28 @@ AIJob (QUEUED), (3) enqueues `run_agent_job.delay(job_id)`, (4) returns
 result did: the artifact locked PENDING_HUMAN_REVIEW, metered in TokenLedger,
 schema-validated, confidence/floor applied, anonymised (feedback) / name-free
 (succession). Only WHEN/WHERE it runs changes, never WHAT it produces.
+
+### D5 (BUILD_2/2.4) — `result_id` for create-new seams + frontend poll pattern
+
+**Problem.** Two seams MUTATE the input artifact in place (review draft, JD
+generate, feedback summary → `result_id == target_id`); two CREATE a new artifact
+(succession enrich → a new source=AI plan; career enrich → a new AI roadmap), so
+the job's `target_id` (the input) can't tell the client what was produced — the
+new plan/roadmap would be unreachable in the UI.
+
+**Decision.** Add `AIJob.result_id` (nullable UUID), populated on SUCCEEDED from
+the seam's returned id (`review_id`/`summary_id`/`plan_id`/`jd_id`/`roadmap_id`).
+The poll surface now reports both the input (`target_id`) and the produced
+artifact (`result_id`). Succession's panel switches to `result_id` on SUCCEEDED;
+career's list refreshes (the new roadmap appears). Mutate-in-place seams just
+re-fetch `target_id`.
+
+**Frontend pattern.** One shared `useAIJob` (polls every 1.5s until terminal) +
+`useAIAction` (fire → poll → react) + `<AIJobBanner>` (working / DEGRADED-calm /
+FAILED-recoverable; null on SUCCEEDED — the artifact refetch shows the result).
+All five seam UIs use it; AI stays assistive (manual path always available).
+
+**Note (dev stack).** Celery worker + gunicorn don't autoreload, so the running
+dev stack needs `docker compose restart web celery-worker` to pick up new task
+code — a deploy concern, not a code issue. Verified live after restart: a DRAFT
+review fired → 202 QUEUED → worker → SUCCEEDED → review PENDING_HUMAN_REVIEW.

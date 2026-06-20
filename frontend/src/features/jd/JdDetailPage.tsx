@@ -26,10 +26,13 @@ import { LinesSkeleton } from "@/components/Skeletons";
 import { ErrorState } from "@/components/ErrorState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SourceBadge, HitlBanner, ConfidenceBadge } from "@/components/Hitl";
+import { useQueryClient } from "@tanstack/react-query";
 import { useJd, useJdMutations, useJdVersions } from "./useJd";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { notifyError, notifySuccess } from "@/lib/toast";
-import { mapApiError } from "@/lib/errors";
+import { jdApi } from "@/lib/api/endpoints";
+import { useAIAction } from "@/lib/hooks/useAIAction";
+import { AIJobBanner } from "@/components/AIJobBanner";
 import type { JdBody } from "@/lib/types";
 
 const EMPTY_BODY: JdBody = { summary: "", responsibilities: [], must_haves: [], nice_to_haves: [] };
@@ -45,13 +48,23 @@ export function JdDetailPage() {
   const versions = useJdVersions(id);
   const { atLeast, hasFeature } = useAuth();
   const m = useJdMutations(id);
+  const qc = useQueryClient();
+
+  // The AI generate seam is async: inputs are saved first (sync, 422 if missing),
+  // then the job is fired and polled. On SUCCEEDED the JD body is written + the
+  // JD is PENDING, so re-fetch. DEGRADED/FAILED surface in the banner.
+  const generateAi = useAIAction(() => jdApi.generate(id, {}), {
+    onSucceeded: () => {
+      void qc.invalidateQueries({ queryKey: ["jd"] });
+      notifySuccess("AI draft generated", "Review it below, then submit/approve.");
+    },
+  });
 
   // Editor holds raw multiline strings so typing newlines is natural.
   const [summary, setSummary] = React.useState("");
   const [resp, setResp] = React.useState("");
   const [must, setMust] = React.useState("");
   const [nice, setNice] = React.useState("");
-  const [aiUnavailable, setAiUnavailable] = React.useState(false);
   const [genOpen, setGenOpen] = React.useState(false);
 
   const working = versions.data?.[0];
@@ -103,19 +116,12 @@ export function JdDetailPage() {
   // The generator needs a saved role brief (inputs) first — otherwise it 422s.
   // Collect the brief in a dialog, save it, then generate.
   async function generateWithInputs(brief: Record<string, unknown>) {
-    setAiUnavailable(false);
     try {
-      await m.saveInputs.mutateAsync(brief);
-      await m.generate.mutateAsync();
-      notifySuccess("AI draft generated", "Review it below, then submit/approve.");
+      await m.saveInputs.mutateAsync(brief); // inputs first (else generate 422s)
       setGenOpen(false);
+      generateAi.start(); // async: poll the job via the banner below
     } catch (err) {
-      if (mapApiError(err).kind === "ai_unavailable") {
-        setAiUnavailable(true);
-        setGenOpen(false);
-      } else {
-        notifyError(err);
-      }
+      notifyError(err);
     }
   }
 
@@ -145,13 +151,7 @@ export function JdDetailPage() {
             <AlertDescription>This JD is moving through its approval route and will publish when the route completes.</AlertDescription>
           </Alert>
         )}
-        {aiUnavailable && (
-          <Alert variant="ai">
-            <Sparkles />
-            <AlertTitle>JD generator not configured</AlertTitle>
-            <AlertDescription>The AI generator isn't connected for this tenant. Author the JD manually below.</AlertDescription>
-          </Alert>
-        )}
+        <AIJobBanner job={generateAi.job} working="Generating the JD with AI…" onRetry={generateAi.start} />
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
@@ -190,7 +190,7 @@ export function JdDetailPage() {
               <ActionBar
                 status={j.status}
                 hasGenerator={hasFeature("jd_generator")}
-                pending={{ submit: m.submit.isPending, approve: m.approve.isPending, revise: m.revise.isPending, archive: m.archive.isPending, generate: m.generate.isPending }}
+                pending={{ submit: m.submit.isPending, approve: m.approve.isPending, revise: m.revise.isPending, archive: m.archive.isPending, generate: generateAi.isWorking }}
                 onSubmit={() => run(() => m.saveDraft.mutateAsync(currentBody()).then(() => m.submit.mutateAsync()), "Submitted for review")}
                 onApprove={() => run(() => m.approve.mutateAsync(), "JD published")}
                 onRevise={() => run(() => m.revise.mutateAsync(), "New draft version created")}

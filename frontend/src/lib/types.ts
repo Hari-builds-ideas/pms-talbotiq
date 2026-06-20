@@ -181,6 +181,29 @@ export interface InboxItem {
   escalated?: boolean;
 }
 
+// ---- Async AI jobs ---------------------------------------------------------
+
+export type AIJobStatus = "QUEUED" | "RUNNING" | "SUCCEEDED" | "DEGRADED" | "FAILED";
+
+/** The poll shape of an async AI run. The seam endpoints return one of these
+ *  (202); the client polls `aiJobsApi.get(id)` until `status` is terminal, then
+ *  re-fetches `target_id` (the artifact) on SUCCEEDED. */
+export interface AIJob {
+  id: UUID;
+  status: AIJobStatus;
+  agent_code: string;
+  target_type: string;
+  target_id: UUID | null;
+  /** The artifact the run produced (set on SUCCEEDED). Equals target_id for
+   *  mutate-in-place seams; the NEW artifact for create-new (succession/career). */
+  result_id: UUID | null;
+  confidence: number | null;
+  error_code: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 // ---- Reviews ---------------------------------------------------------------
 
 export interface Review {

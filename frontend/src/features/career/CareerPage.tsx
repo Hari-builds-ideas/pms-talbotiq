@@ -34,12 +34,13 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { SourceBadge, HitlBanner, ConfidenceBadge } from "@/components/Hitl";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { jdApi, orgApi } from "@/lib/api/endpoints";
-import { useQuery } from "@tanstack/react-query";
+import { careerApi, jdApi, orgApi } from "@/lib/api/endpoints";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { humanize } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
-import { mapApiError } from "@/lib/errors";
 import { notifyError, notifySuccess } from "@/lib/toast";
+import { useAIAction } from "@/lib/hooks/useAIAction";
+import { AIJobBanner } from "@/components/AIJobBanner";
 import type { DevelopmentRoadmap, RoadmapProgressStatus } from "@/lib/types";
 import {
   useCareerMutations,
@@ -168,26 +169,22 @@ function RoadmapCard({
   showEmployee?: boolean;
 }) {
   const { hasFeature } = useAuth();
-  const { regenerate, enrich } = useCareerMutations();
+  const { regenerate } = useCareerMutations();
+  const qc = useQueryClient();
   const gap = useSkillGap(roadmap.id);
   const isAiDraft = roadmap.source === "AI" && roadmap.status === "DRAFT";
   const targetLabel =
     targets.jdLabel(roadmap.target_jd) ?? targets.positionLabel(roadmap.target_position) ?? "Selected role";
 
-  async function doEnrich() {
-    try {
-      const res = await enrich.mutateAsync(roadmap.id);
-      if (res.generated) notifySuccess("AI roadmap drafted", "Review the AI-enriched draft below.");
-      else notifyError(res.detail ?? "Enrichment was skipped.");
-    } catch (err) {
-      const e = mapApiError(err);
-      if (e.code === "no_provider" || e.status === 503) {
-        notifyError("AI enrichment isn't configured yet — the deterministic roadmap is unchanged.");
-      } else {
-        notifyError(err);
-      }
-    }
-  }
+  // AI enrich is async: fire → poll the AI job → on SUCCEEDED a NEW source=AI
+  // DRAFT roadmap exists, so re-fetch. DEGRADED/FAILED surface in the banner;
+  // the deterministic roadmap is always intact.
+  const enrichAi = useAIAction(() => careerApi.enrich(roadmap.id), {
+    onSucceeded: () => {
+      void qc.invalidateQueries({ queryKey: ["career"] });
+      notifySuccess("AI roadmap drafted", "Review the AI-enriched draft below.");
+    },
+  });
 
   return (
     <Panel
@@ -217,6 +214,8 @@ function RoadmapCard({
           />
         )}
 
+        <AIJobBanner job={enrichAi.job} working="Enriching your roadmap with AI…" onRetry={enrichAi.start} />
+
         <SkillGapView roadmapId={roadmap.id} gapQuery={gap} fallback={roadmap.skill_gap} />
 
         <TiersList roadmap={roadmap} canManage={canManage} />
@@ -244,8 +243,8 @@ function RoadmapCard({
                       variant="outline"
                       size="sm"
                       disabled={!hasFeature("career_roadmap")}
-                      loading={enrich.isPending}
-                      onClick={doEnrich}
+                      loading={enrichAi.isWorking}
+                      onClick={enrichAi.start}
                     >
                       <Sparkles className="h-4 w-4 text-ai" /> Enrich with AI
                     </Button>

@@ -23,12 +23,15 @@ import { LinesSkeleton } from "@/components/Skeletons";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { HitlBanner, SourceBadge } from "@/components/Hitl";
+import { useQueryClient } from "@tanstack/react-query";
 import { useBench, usePlan, useSuccessionMutations } from "./useSuccession";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
 import { READINESS, humanize, type Readiness } from "@/lib/enums";
 import { notifyError, notifySuccess } from "@/lib/toast";
-import { mapApiError } from "@/lib/errors";
+import { successionApi } from "@/lib/api/endpoints";
+import { useAIAction } from "@/lib/hooks/useAIAction";
+import { AIJobBanner } from "@/components/AIJobBanner";
 import type { CriticalRoleSummary } from "@/lib/types";
 
 export function RoleSheet({
@@ -214,30 +217,30 @@ function PlanReview({
   onPlanChange: (id: string) => void;
 }) {
   const plan = usePlan(planId);
+  const qc = useQueryClient();
   const [actionText, setActionText] = React.useState("");
-  const [enrichUnavailable, setEnrichUnavailable] = React.useState(false);
   const p = plan.data;
+
+  // Agent 4 is async and creates a NEW source=AI plan (deterministic plan
+  // untouched). On SUCCEEDED the job's result_id IS that new plan — switch the
+  // panel to it so the AI narrative is reviewed in its own HITL gate.
+  // DEGRADED/FAILED surface in the banner.
+  const enrichAi = useAIAction(() => successionApi.enrichPlan(planId), {
+    onSucceeded: () => {
+      void qc.invalidateQueries({ queryKey: ["succession"] });
+    },
+  });
+  React.useEffect(() => {
+    if (enrichAi.job?.status === "SUCCEEDED" && enrichAi.job.result_id) {
+      onPlanChange(enrichAi.job.result_id);
+      notifySuccess("AI-enriched plan created", "Review the AI narrative, then publish.");
+    }
+  }, [enrichAi.job?.status, enrichAi.job?.result_id, onPlanChange]);
 
   if (plan.isLoading) return <LinesSkeleton lines={4} />;
   if (!p) return <p className="text-sm text-muted-foreground">Plan unavailable.</p>;
 
   const isPending = p.status === "PENDING_HUMAN_REVIEW";
-
-  async function enrich() {
-    setEnrichUnavailable(false);
-    try {
-      // Agent 4 creates a NEW source=AI plan (deterministic plan untouched).
-      // Switch the panel to it so the real AI narrative is reviewed in its HITL gate.
-      const res = await mutations.enrich.mutateAsync(planId);
-      if (res?.plan_id) {
-        onPlanChange(res.plan_id);
-        notifySuccess("AI-enriched plan created", "Review the AI narrative, then publish.");
-      }
-    } catch (err) {
-      if (mapApiError(err).kind === "ai_unavailable") setEnrichUnavailable(true);
-      else notifyError(err);
-    }
-  }
 
   return (
     <div className="space-y-3">
@@ -309,17 +312,11 @@ function PlanReview({
         )}
       </div>
 
-      {enrichUnavailable && (
-        <Alert variant="ai">
-          <Sparkles />
-          <AlertTitle>AI enrichment not available</AlertTitle>
-          <AlertDescription>The Succession Analyzer isn't configured yet. The deterministic plan is unchanged.</AlertDescription>
-        </Alert>
-      )}
+      <AIJobBanner job={enrichAi.job} working="Enriching the plan with AI…" onRetry={enrichAi.start} />
 
       {canHrbp && (
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
-          <Button variant="outline" onClick={enrich} loading={mutations.enrich.isPending}>
+          <Button variant="outline" onClick={enrichAi.start} loading={enrichAi.isWorking}>
             <Sparkles className="h-4 w-4 text-ai" /> Enrich (Agent 4)
           </Button>
           <Button

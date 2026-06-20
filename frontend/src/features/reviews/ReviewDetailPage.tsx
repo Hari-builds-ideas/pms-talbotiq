@@ -38,9 +38,11 @@ import { RouteTracker } from "@/features/approvals/RouteTracker";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { humanize } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
-import { mapApiError } from "@/lib/errors";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import { useCycles } from "@/lib/hooks/useCycles";
+import { useAIAction } from "@/lib/hooks/useAIAction";
+import { AIJobBanner } from "@/components/AIJobBanner";
+import { reviewsApi } from "@/lib/api/endpoints";
 
 export function ReviewDetailPage() {
   const { id = "" } = useParams();
@@ -82,7 +84,15 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
 
   const [body, setBody] = React.useState(r.draft_body);
   const [rejectOpen, setRejectOpen] = React.useState(false);
-  const [aiUnavailable, setAiUnavailable] = React.useState(false);
+  // The Agent-1 draft is async: fire → poll the AI job → on SUCCEEDED the review
+  // is PENDING, so re-fetch it (and the timeline). DEGRADED/FAILED surface in the
+  // banner; the manual path is always available.
+  const ai = useAIAction(() => reviewsApi.requestAiDraft(reviewId), {
+    onSucceeded: () => {
+      void review.refetch();
+      void timeline.refetch();
+    },
+  });
 
   // Keep the editor in sync when entering EDITING / when the draft changes.
   React.useEffect(() => {
@@ -102,17 +112,6 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
     } catch (err) {
       notifyError(err);
       void review.refetch();
-    }
-  }
-
-  async function requestAi() {
-    setAiUnavailable(false);
-    try {
-      await t.requestAiDraft.mutateAsync();
-    } catch (err) {
-      const mapped = mapApiError(err);
-      if (mapped.kind === "ai_unavailable") setAiUnavailable(true);
-      else notifyError(err);
     }
   }
 
@@ -141,28 +140,23 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
         />
 
         {isPending && <HitlBanner source={r.source} confidence={r.confidence_score} />}
-        {isDrafting && (
-          <Alert variant="ai">
-            <Loader2 className="animate-spin" />
-            <AlertTitle>AI is drafting this review…</AlertTitle>
-            <AlertDescription>This page will update automatically when the draft is ready.</AlertDescription>
-          </Alert>
+        {/* Active AI draft job (this session): working / unavailable / failed. */}
+        {ai.job ? (
+          <AIJobBanner job={ai.job} working="AI is drafting this review…" onRetry={ai.start} />
+        ) : (
+          isDrafting && (
+            <Alert variant="ai">
+              <Loader2 className="animate-spin" />
+              <AlertTitle>AI is drafting this review…</AlertTitle>
+              <AlertDescription>This page will update automatically when the draft is ready.</AlertDescription>
+            </Alert>
+          )
         )}
         {isRejected && r.rejected_reason && (
           <Alert variant="danger">
             <X />
             <AlertTitle>Rejected</AlertTitle>
             <AlertDescription>{r.rejected_reason}</AlertDescription>
-          </Alert>
-        )}
-        {aiUnavailable && (
-          <Alert variant="ai">
-            <Sparkles />
-            <AlertTitle>AI not configured yet</AlertTitle>
-            <AlertDescription>
-              The Review Assistant isn't connected for this tenant. Draft the review manually below — the
-              human-gated flow is unchanged.
-            </AlertDescription>
           </Alert>
         )}
 
@@ -225,13 +219,13 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
                 startEdit: t.startEdit.isPending,
                 approve: t.approve.isPending,
                 finalize: t.finalize.isPending,
-                ai: t.requestAiDraft.isPending,
+                ai: ai.isWorking,
               }}
               onStartEdit={() => run(() => t.startEdit.mutateAsync(), "Editing")}
               onApprove={() => run(() => t.approve.mutateAsync(), "Review approved")}
               onReject={() => setRejectOpen(true)}
               onFinalize={() => run(() => t.finalize.mutateAsync(), "Review finalized")}
-              onRequestAi={requestAi}
+              onRequestAi={ai.start}
             />
 
             {/* Evidence the review (and any AI draft) is grounded in. */}

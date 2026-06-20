@@ -69,6 +69,7 @@ def test_succeeds_artifact_pending_and_metered_once(org):
     assert job.status == AIJob.Status.SUCCEEDED
     assert job.started_at is not None and job.finished_at is not None
     assert job.token_ledger_id is not None  # usage linked
+    assert str(job.result_id) == str(review.id)  # produced artifact recorded
     assert review.state == Review.State.PENDING_HUMAN_REVIEW  # HITL lock preserved
     assert _ledger_count(org) == 1  # metered exactly once
 

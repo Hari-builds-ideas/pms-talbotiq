@@ -2,6 +2,7 @@ import { api } from "./client";
 import type {
   AdminUser,
   AdminUserStats,
+  AIJob,
   ApprovalRoute,
   ApprovalWorkflow,
   AnonymizedPayload,
@@ -16,10 +17,8 @@ import type {
   RoadmapProgressItem,
   RoadmapProgressStatus,
   TargetSelectResult,
-  RoadmapEnrichResult,
   FeedbackCycle,
   FeedbackRequestItem,
-  FeedbackSummarizeResult,
   FeedbackSummary,
   MyFeedbackCycle,
   Goal,
@@ -187,8 +186,9 @@ export const reviewsApi = {
     unwrap<Review>(api.post(`/reviews/${id}/reject`, { reason })),
   finalize: (id: string) =>
     unwrap<Review>(api.post(`/reviews/${id}/finalize`, {})),
+  // AI draft seam — async: returns an AIJob (202); poll aiJobsApi.get(job.id).
   requestAiDraft: (id: string) =>
-    unwrap<Review>(api.post(`/reviews/${id}/request-ai-draft`, {})),
+    unwrap<AIJob>(api.post(`/reviews/${id}/request-ai-draft`, {})),
 };
 
 // ---- JD --------------------------------------------------------------------
@@ -208,8 +208,9 @@ export const jdApi = {
   approve: (id: string) => unwrap<JobDescription>(api.post(`/jd/${id}/approve`, {})),
   revise: (id: string) => unwrap<JobDescription>(api.post(`/jd/${id}/revise`, {})),
   archive: (id: string) => unwrap<JobDescription>(api.post(`/jd/${id}/archive`, {})),
+  // AI generate seam — async: returns an AIJob (202); poll aiJobsApi.get(job.id).
   generate: (id: string, body: { prompt?: string }) =>
-    unwrap<JobDescription>(api.post(`/jd/${id}/generate`, body)),
+    unwrap<AIJob>(api.post(`/jd/${id}/generate`, body)),
   requests: (params: PageParams = {}) =>
     unwrap<Paginated<JdRequest>>(api.get("/jd/requests", { params })),
   createRequest: (body: { title: string; level: string; notes: string }) =>
@@ -294,10 +295,9 @@ export const successionApi = {
     unwrap<SuccessionPlan>(api.post(`/succession/plans/${id}/action-item`, { text })),
   publishPlan: (id: string) =>
     unwrap<SuccessionPlan>(api.post(`/succession/plans/${id}/publish`, {})),
+  // AI enrich seam — async: returns an AIJob (202); poll aiJobsApi.get(job.id).
   enrichPlan: (id: string) =>
-    unwrap<{ enriched: boolean; plan_id: string; status: string }>(
-      api.post(`/succession/plans/${id}/enrich`, {}),
-    ),
+    unwrap<AIJob>(api.post(`/succession/plans/${id}/enrich`, {})),
 };
 
 // ---- Analytics -------------------------------------------------------------
@@ -348,6 +348,14 @@ export const integrationsApi = {
 export const aiApi = {
   chat: (query: string) => unwrap<ChatResponse>(api.post("/ai/chat", { query })),
   nudges: () => unwrap<Nudge[]>(api.get("/ai/nudges")),
+};
+
+// ---- Async AI jobs (poll surface) ------------------------------------------
+
+export const aiJobsApi = {
+  get: (id: string) => unwrap<AIJob>(api.get(`/ai/jobs/${id}`)),
+  listForTarget: (target: string) =>
+    unwrap<AIJob[]>(api.get("/ai/jobs", { params: { target } })),
 };
 
 // ---- Goals & KPIs ----------------------------------------------------------
@@ -406,12 +414,15 @@ export const feedbackApi = {
     unwrap<FeedbackRequestItem[]>(api.get(`/feedback/cycles/${cycleId}/requests`)),
   invite: (cycleId: string, body: { giver: string; relationship: string }) =>
     unwrap<FeedbackRequestItem>(api.post(`/feedback/cycles/${cycleId}/requests`, body)),
+  // Close is synchronous; the summarize seam it fires is async — the enqueued
+  // AIJob rides back under `job` (poll aiJobsApi.get(job.id)).
   closeCycle: (id: string) =>
-    unwrap<{ cycle: FeedbackCycle; summary: FeedbackSummarizeResult }>(
+    unwrap<{ cycle: FeedbackCycle; job: AIJob }>(
       api.post(`/feedback/cycles/${id}/close`, {}),
     ),
+  // AI summarize seam — async: returns an AIJob (202); poll aiJobsApi.get(job.id).
   summarize: (id: string) =>
-    unwrap<FeedbackSummarizeResult>(api.post(`/feedback/cycles/${id}/summarize`, {})),
+    unwrap<AIJob>(api.post(`/feedback/cycles/${id}/summarize`, {})),
   anonymized: (id: string) =>
     unwrap<AnonymizedPayload>(api.get(`/feedback/cycles/${id}/anonymized`)),
   summary: (id: string) =>
@@ -435,9 +446,9 @@ export const careerApi = {
   // Deterministic refresh of the roadmap's gap + tiers.
   regenerate: (id: string) =>
     unwrap<DevelopmentRoadmap>(api.post(`/career/roadmaps/${id}/regenerate`, {})),
-  // AI enrich seam — creates a NEW source=AI DRAFT roadmap (503 when no provider).
+  // AI enrich seam — async: returns an AIJob (202); poll aiJobsApi.get(job.id).
   enrich: (id: string) =>
-    unwrap<RoadmapEnrichResult>(api.post(`/career/roadmaps/${id}/enrich`, {})),
+    unwrap<AIJob>(api.post(`/career/roadmaps/${id}/enrich`, {})),
   // Mark a tier's progress (upsert per roadmap+tier).
   setProgress: (id: string, body: { tier_index: number; status: RoadmapProgressStatus }) =>
     unwrap<RoadmapProgressItem>(api.post(`/career/roadmaps/${id}/progress`, body)),

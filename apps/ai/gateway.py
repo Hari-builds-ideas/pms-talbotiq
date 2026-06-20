@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass, field
 
 from apps.billing.exceptions import BudgetExceeded
-from apps.billing.services import check_and_reserve_budget, record_usage
+from apps.billing.services import check_and_reserve_budget, record_usage, release_budget
 
 from .exceptions import LLMNotConfiguredError
 from .pii import scrub
@@ -75,9 +75,13 @@ class LLMGateway:
             with trace(agent_code, model=model):
                 raw = provider.generate(agent_code=agent_code, prompt=scrubbed, model=model)
         except LLMNotConfiguredError:
+            # Reserved but the provider couldn't serve — refund (no real usage).
+            release_budget(tenant, agent_code)
             return GatewayResult(status="NOT_CONFIGURED")
         except Exception:  # noqa: BLE001 — never crash/fabricate; surface a result
             logger.error("LLM provider failed for agent=%s", agent_code, exc_info=True)
+            # Reserved but the call failed before metering — refund the reservation.
+            release_budget(tenant, agent_code)
             return GatewayResult(status="PROVIDER_ERROR")
 
         content = raw.get("content") or {}

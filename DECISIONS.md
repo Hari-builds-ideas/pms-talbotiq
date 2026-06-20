@@ -167,3 +167,25 @@ by `test_async_sweep.py` (with `CELERY_TASK_ALWAYS_EAGER=False` the seam returns
 SYNCHRONOUSLY" docstrings on the JD and succession views were updated. The
 deterministic paths (`regenerate_roadmap`, the baseline plan/roadmap) are
 untouched and remain the always-available manual fallback.
+
+### D7 (BUILD_3/3.1) — Atomic budget reserve (Lua) + refund-on-failure
+
+**Decision.** The per-tenant budget reserve is now a Redis Lua step
+(`apps/billing/atomic.py::reserve`) doing GET + compare + INCR + PEXPIRE in one
+atomic server-side call. The old check-then-incr (two round trips) let two
+replicas both read `current < limit` and both increment, overshooting at the cap
+edge; the Lua step makes "exactly M succeed at cap M" hold under any concurrency
+(proven by a 64-thread test). Keys are unchanged (tenant-namespaced, period-
+stamped, via `cache.make_key` so they match django-redis's stored keys);
+behaviour at the API surface is identical (over budget → BudgetExceeded → 429,
+the gateway never raises). TokenLedger stays the source of truth for ACTUAL usage;
+the Redis counter is the fast pre-check.
+
+**Refund-on-failure (the contract's default).** A reserved call that does NOT
+consume real usage is refunded via `release_budget` (atomic DECR, never below 0):
+the gateway refunds on the two post-reserve provider-failure paths
+(`NOT_CONFIGURED` raised at call time, `PROVIDER_ERROR`) — both BEFORE
+`record_usage`. A SUCCESSFUL metered call KEEPS its reservation; `SCHEMA_INVALID`
+also keeps it (the provider responded and was metered before the schema check —
+real tokens were spent). So a failed call never permanently burns budget, and a
+successful one is never double-counted.

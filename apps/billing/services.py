@@ -21,6 +21,7 @@ from apps.audit.services import record
 from apps.core.cache import invalidate_tenant_cache, tenant_cache_key
 from apps.tenancy.context import tenant_context
 
+from . import atomic
 from .exceptions import BudgetExceeded
 from .models import DEFAULT_PACKS, AgentBudget, Entitlement, TokenLedger
 from .packs import (
@@ -384,15 +385,21 @@ def check_and_reserve_budget(
     limit = resolve_budget_limit(tenant, agent_code, window)
     period = _budget_period(window, now)
     key = tenant_cache_key(tid, _BUDGET_COUNTER_PART, agent_code, window, period)
-    current = cache.get(key) or 0
-    if current >= limit:
+    # ATOMIC reserve (BUILD_3): the read+compare+incr+TTL run in one Lua step, so
+    # concurrent reservers across replicas cannot both pass at the cap edge.
+    reserved = atomic.reserve(key, limit=limit, ttl_ms=_budget_ttl(window) * 1000)
+    if reserved == -1:
         raise BudgetExceeded(agent_code=agent_code, window=window, limit=limit)
-    # Reserve: ensure the key exists (with the window TTL) then atomically incr.
-    cache.add(key, 0, _budget_ttl(window))
-    try:
-        reserved = cache.incr(key)
-    except ValueError:
-        # The key expired between add and incr (a rare race) — re-seed at 1.
-        cache.set(key, 1, _budget_ttl(window))
-        reserved = 1
     return {"reserved": reserved, "limit": limit, "window": window, "agent_code": agent_code}
+
+
+def release_budget(tenant, agent_code, *, window=AgentBudget.Window.DAILY, now=None) -> int:
+    """Refund one reserved agent call (BUILD_3) — called when a reserved call did
+    NOT consume real usage (a provider error / unconfigured at call time), so a
+    failed call never permanently burns budget. A SUCCESSFUL metered call keeps
+    its reservation (TokenLedger is the source of truth for actual usage). Atomic
+    and never below zero; uses the SAME period key as the reserve."""
+    tid = _tenant_id(tenant)
+    period = _budget_period(window, now)
+    key = tenant_cache_key(tid, _BUDGET_COUNTER_PART, agent_code, window, period)
+    return atomic.release(key)

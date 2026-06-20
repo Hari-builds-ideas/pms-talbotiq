@@ -3,7 +3,11 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_2 — ASYNC_AI · Phase 2.5 done → BUILD_2_REPORT, then BUILD_3
+## Current: BUILD_3 — ATOMIC_LIMITS_AND_DB_ROUTER · Phase 3.2 (atomic throttles + global ceiling)
+
+BUILD_2 COMPLETE: 2.1–2.5 + report committed/pushed/green (`a27f8d3`); backend
+1092 passed, 2 deselected; frontend clean; all 5 AI seams async; chat stays sync.
+Tests use REAL django-redis (scratch DBs 15/14) → Lua scripts testable.
 
 BUILD_1 COMPLETE: 1.1–1.5 + report + specs committed/pushed/green (`5e9f9fb`);
 backend 1073 passed, 2 deselected; frontend clean.
@@ -60,6 +64,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+16 · BUILD_3/3.1 · atomic per-tenant budget reserve (Lua) · `apps/billing/atomic.py` (new — reserve/release/incr_window Lua via get_redis_connection + cache.make_key), `apps/billing/services.py` (check_and_reserve_budget → atomic.reserve; +release_budget refund), `apps/ai/gateway.py` (refund on NOT_CONFIGURED/PROVIDER_ERROR post-reserve, keep on OK/SCHEMA_INVALID), `apps/billing/tests/test_atomic_budget.py` (5) · **[test]** 64 threads @ cap 10 → exactly 10 reserve (1..10, none reused); refund frees a slot; release≥0; gateway refunds on provider error; billing+ai 133 pass · DECISIONS D7 · commit `BUILD_3 3.1`
 
 15 · BUILD_2/2.5 · chat decision + sync-path cleanup · `apps/ai/tests/test_async_sweep.py` (new — review seam: EAGER=False + spy on run_agent_job.delay → 202, review stays DRAFT, 0 metered, job QUEUED; feedback close: sync CLOSED but summary deferred), `apps/jd/views.py`+`apps/succession/views.py` (stale "SYNCHRONOUSLY" docstrings → async), `DECISIONS.md` D6 (chat stays sync — the deliberate exception, RBAC-bound/write-blocked/503-429-graceful) · **[test]** 2 sweep tests pass; no seam runs the gateway in-request · commit `BUILD_2 2.5`
 

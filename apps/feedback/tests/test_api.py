@@ -23,6 +23,7 @@ import json
 import pytest
 from rest_framework.test import APIClient
 
+from apps.ai.models import AIJob
 from apps.audit.models import AuditLog
 from apps.identity.tokens import issue_tokens_for_user
 from apps.tenancy.context import tenant_context
@@ -115,11 +116,15 @@ def test_e2e_360_flow(org):
         assert resp.status_code == 201, resp.content
         assert "giver" not in resp.json()
 
-    # Close → 200; the seam result is embedded (no provider until Module 10).
+    # Close → 200; the async summarize job is embedded (enqueued, polled later).
     closed = mgr.post(f"{FB}cycles/{cycle_id}/close")
     assert closed.status_code == 200
     assert closed.json()["cycle"]["status"] == "CLOSED"
-    assert closed.json()["summary"]["reason"] == "no_provider"
+    # The (eager) job ran and DEGRADED — no provider until Module 10; gates ran.
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=closed.json()["job"]["id"])
+        assert job.status == AIJob.Status.DEGRADED
+        assert job.error_code == "NOT_CONFIGURED"
 
     # The subject reads the anonymised payload: ZERO giver identifiers.
     anon = subject.get(f"{FB}cycles/{cycle_id}/anonymized")
@@ -578,12 +583,14 @@ def test_summarize_endpoint_seam(org):
 
     assert mgr.post(f"{FB}cycles/{cycle.id}/close").status_code == 200
 
-    # CLOSED but no provider → 503, loudly pointing at Module 10.
+    # CLOSED → 202 + an AI job; the (eager) job DEGRADES with no provider (Module 10).
     resp = mgr.post(f"{FB}cycles/{cycle.id}/summarize")
-    assert resp.status_code == 503
-    body = resp.json()
-    assert body["reason"] == "no_provider"
-    assert "Module 10" in body["detail"]
+    assert resp.status_code == 202
+    assert resp.json()["agent_code"] == "agent3"
+    with tenant_context(org.tenant):
+        job = AIJob.objects.get(id=resp.json()["id"])
+        assert job.status == AIJob.Status.DEGRADED
+        assert job.error_code == "NOT_CONFIGURED"
 
 
 # ── 12. the audit trail ─────────────────────────────────────────────────────

@@ -48,11 +48,13 @@ def collecting_cycle(org):
 def test_open_then_close_with_audit(org, draft_cycle):
     open_cycle(draft_cycle, org.manager)
     assert draft_cycle.status == "COLLECTING" and draft_cycle.opened_at is not None
-    cycle, result = close_cycle(draft_cycle, org.manager)
+    cycle, job = close_cycle(draft_cycle, org.manager)
     assert cycle.status == "CLOSED" and cycle.closed_at is not None
-    # No provider configured: the seam reports it; the gates still ran.
-    assert result["summarized"] is False and result["reason"] == "no_provider"
+    # The summarize seam is now async: close enqueues an AIJob that (eager)
+    # degrades gracefully with no provider configured; the gates still ran.
     with tenant_context(org.tenant):
+        job.refresh_from_db()
+        assert job.status == "DEGRADED" and job.error_code == "NOT_CONFIGURED"
         actions = set(AuditLog.objects.values_list("action", flat=True))
     assert {"feedback_cycle.opened", "feedback_cycle.closed"} <= actions
 

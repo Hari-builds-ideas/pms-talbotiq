@@ -26,6 +26,8 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai.serializers import AIJobSerializer
+from apps.ai.services import enqueue_agent_job
 from apps.core.pagination import StandardResultsSetPagination
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
@@ -147,45 +149,42 @@ class CycleOpenView(_CycleActionView):
 
 
 class CycleCloseView(_CycleActionView):
-    """``POST /api/feedback/cycles/<pk>/close`` — COLLECTING → CLOSED, then the
-    summarize pipeline runs (anonymise → threshold → breach guard → Agent-3
-    seam). 200 with the seam result embedded: the CLOSE succeeded even when the
-    summary is held or the provider is absent."""
+    """``POST /api/feedback/cycles/<pk>/close`` — COLLECTING → CLOSED (sync,
+    audited), then ENQUEUES the summarize pipeline (anonymise → threshold →
+    breach guard → Agent-3 seam) to run async. 200 with the enqueued AI job
+    embedded under ``job``: the CLOSE succeeded; the summary is produced off the
+    request thread and polled via ``GET /api/ai/jobs/<id>``."""
 
     def post(self, request, pk):
-        cycle, result = close_cycle(self.get_cycle(pk), request.user)
+        cycle, job = close_cycle(self.get_cycle(pk), request.user)
         return Response(
-            {"cycle": FeedbackCycleSerializer(cycle).data, "summary": result}
+            {"cycle": FeedbackCycleSerializer(cycle).data, "job": AIJobSerializer(job).data}
         )
 
 
 class CycleSummarizeView(_CycleActionView):
     """``POST /api/feedback/cycles/<pk>/summarize`` — (re-)run the summarize
-    pipeline on a CLOSED cycle (409 otherwise).
+    pipeline on a CLOSED cycle (409 otherwise). ENQUEUES Agent 3 and returns
+    ``202`` + an AI job id; the client polls ``GET /api/ai/jobs/<id>``.
 
-    Result mapping: ``no_provider`` → 503 (the LOUD Agent-3 seam — Module 10);
-    ``anonymity_breach`` → 200 (the HRBP hold IS the correct outcome, not an
-    error); summarized → 200.
+    Async by design (BUILD_2). The anonymised payload, the deterministic breach
+    guard, the HRBP_HOLD and the PENDING_HUMAN_REVIEW gate all still run — in the
+    worker. Outcome maps onto the job: no provider → DEGRADED (NOT_CONFIGURED), a
+    breach/sensitive → DEGRADED (ANONYMITY_HOLD, the summary held), clean →
+    SUCCEEDED (summary PENDING). The CLOSED precondition stays a synchronous 409.
     """
 
     def post(self, request, pk):
         cycle = self.get_cycle(pk)
         if cycle.status != FeedbackCycle.Status.CLOSED:
             raise IllegalCycleTransition(cycle.status, "summarize")
-        # Lazy import — mirrors close_cycle; keeps the tasks edge one-way.
-        from .tasks import summarize_feedback
-
-        result = summarize_feedback(
-            str(request.user.tenant_id), str(cycle.id), actor_id=str(request.user.id)
+        job = enqueue_agent_job(
+            actor=request.user,
+            agent_code="agent3",
+            target_type="feedback_cycle",
+            target_id=cycle.id,
         )
-        if result.get("reason") == "no_provider":
-            body = dict(result)
-            body["detail"] = (
-                "Feedback Summarization (Agent 3) is not configured; "
-                "it lands in Module 10."
-            )
-            return Response(body, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        return Response(result)
+        return Response(AIJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
 class CycleRequestListCreateView(_CycleActionView):

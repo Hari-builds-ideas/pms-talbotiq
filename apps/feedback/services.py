@@ -43,9 +43,9 @@ def open_cycle(cycle, actor):
 def close_cycle(cycle, actor):
     """COLLECTING -> CLOSED — the fence that ends capture — then summarize.
 
-    Closing immutably freezes the cycle's feedback and fires the summarize
-    pipeline (anonymise -> threshold -> breach guard -> Agent-3 seam). Returns
-    ``(cycle, summarize_result)``.
+    Closing immutably freezes the cycle's feedback and ENQUEUES the summarize
+    pipeline (anonymise -> threshold -> breach guard -> Agent-3 seam) to run async.
+    Returns ``(cycle, aijob)`` — the caller surfaces the job id for polling.
     """
     with tenant_context(cycle.tenant_id):
         if cycle.status != FeedbackCycle.Status.COLLECTING:
@@ -62,13 +62,19 @@ def close_cycle(cycle, actor):
         cycle.closed_at = timezone.now()
         cycle.save(update_fields=["status", "closed_at", "updated_at"])
 
-    # Lazy import: tasks.py imports this module's siblings; keep the edge one-way.
-    from .tasks import summarize_feedback
+    # The CLOSE is synchronous + audited above; the Agent-3 summarize pipeline
+    # (anonymise -> threshold -> breach guard -> LLM) now runs ASYNC off the
+    # request thread. Returns the enqueued AIJob; the breach/HRBP_HOLD and
+    # PENDING gates are unchanged (they run in the worker).
+    from apps.ai.services import enqueue_agent_job
 
-    result = summarize_feedback(
-        str(cycle.tenant_id), str(cycle.id), actor_id=str(actor.id) if actor else None
+    job = enqueue_agent_job(
+        actor=actor,
+        agent_code="agent3",
+        target_type="feedback_cycle",
+        target_id=cycle.id,
     )
-    return cycle, result
+    return cycle, job
 
 
 def send_feedback_request(*, cycle, giver, relationship, actor):

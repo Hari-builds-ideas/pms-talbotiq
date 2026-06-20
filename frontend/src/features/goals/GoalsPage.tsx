@@ -26,6 +26,8 @@ import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
+import { WeightBar } from "@/components/WeightBar";
+import { AttainmentBar } from "@/components/AttainmentBar";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useCycles } from "@/lib/hooks/useCycles";
 import { useDirectory } from "@/lib/hooks/useDirectory";
@@ -188,12 +190,16 @@ function KpiRow({
 }) {
   const [value, setValue] = React.useState("");
   return (
-    <li className="flex items-center justify-between gap-2 rounded-md bg-secondary/40 px-2.5 py-1.5">
-      <div className="min-w-0">
-        <span className="text-sm font-medium">{kpi.name}</span>
-        <span className="ml-2 text-2xs text-muted-foreground">
-          weight {kpi.weight} · target {formatScore(kpi.target_value)} {kpi.unit} · {humanize(kpi.direction)}
-        </span>
+    <li className="flex items-center justify-between gap-3 rounded-md bg-secondary/40 px-2.5 py-1.5">
+      <div className="min-w-0 flex-1 space-y-1">
+        <div>
+          <span className="text-sm font-medium">{kpi.name}</span>
+          <span className="ml-2 text-2xs text-muted-foreground">
+            weight {kpi.weight} · target {formatScore(kpi.target_value)} {kpi.unit} · {humanize(kpi.direction)}
+          </span>
+        </div>
+        {/* Attainment: latest actual vs target, direction-aware (BUILD_5 5.2). */}
+        <AttainmentBar actual={kpi.latest_actual} target={kpi.target_value} direction={kpi.direction} className="max-w-xs" />
       </div>
       {/* Actuals are own-only (update_own_actuals) — managers don't record for reports. */}
       {canRecord && (
@@ -257,15 +263,17 @@ function NewGoalDialog({
   const [weight, setWeight] = React.useState("100");
   const [kpis, setKpis] = React.useState<DraftKpi[]>([newKpi()]);
   const [error, setError] = React.useState<string | null>(null);
+  const [step, setStep] = React.useState<1 | 2>(1);
 
   React.useEffect(() => {
     if (open) {
-      setEmployee(""); setTitle(""); setObjective(""); setWeight("100"); setKpis([newKpi()]); setError(null);
+      setEmployee(""); setTitle(""); setObjective(""); setWeight("100"); setKpis([newKpi()]); setError(null); setStep(1);
     }
   }, [open]);
 
   const kpiTotal = sumWeights(kpis);
   const kpiOk = weightsSumTo100(kpis);
+  const detailsOk = Boolean(employee) && Boolean(title.trim());
   const existingActive = employee
     ? activeWeightTotal(existingGoals, employee)
     : 0;
@@ -294,12 +302,23 @@ function NewGoalDialog({
         <DialogHeader>
           <DialogTitle>New goal · {cycleName}</DialogTitle>
           <DialogDescription>
-            KPI weights must sum to exactly 100, and the employee's active goal weights must also sum to 100.
+            {step === 1
+              ? "Step 1 of 2 — who the goal is for and what success looks like."
+              : "Step 2 of 2 — add KPIs; their weights must sum to exactly 100."}
           </DialogDescription>
         </DialogHeader>
 
+        {/* Two-step wizard: details → KPIs & weights. */}
+        <div className="flex items-center gap-2 text-2xs font-medium">
+          <span className={step === 1 ? "text-foreground" : "text-muted-foreground"}>1 · Details</span>
+          <span className="h-px flex-1 bg-border" />
+          <span className={step === 2 ? "text-foreground" : "text-muted-foreground"}>2 · KPIs &amp; weights</span>
+        </div>
+
         <div className="max-h-[60vh] space-y-4 overflow-y-auto scrollbar-thin pr-1">
           {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger">{error}</p>}
+          {step === 1 && (
+          <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Employee" required>
               <Select value={employee} onValueChange={setEmployee}>
@@ -325,12 +344,13 @@ function NewGoalDialog({
           <Field label="Objective">
             <Input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="What success looks like" />
           </Field>
+          </>
+          )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">KPIs</span>
-              <Badge variant={kpiOk ? "success" : "warning"}>KPI weight: {kpiTotal.toFixed(2)} / 100</Badge>
-            </div>
+          {step === 2 && (
+          <div className="space-y-3">
+            <span className="text-sm font-medium">KPIs</span>
+            <WeightBar total={kpiTotal} />
             <div className="space-y-2">
               {kpis.map((k, i) => (
                 <div key={i} className="grid grid-cols-12 items-end gap-2 rounded-md border border-border p-2.5">
@@ -361,17 +381,27 @@ function NewGoalDialog({
               </Button>
             </div>
           </div>
+          )}
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            onClick={submit}
-            loading={mutation.isPending}
-            disabled={!employee || !title.trim() || !kpiOk || kpis.some((k) => !k.name.trim())}
-          >
-            Create goal
-          </Button>
+          {step === 1 ? (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button onClick={() => setStep(2)} disabled={!detailsOk}>Next: KPIs</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
+              <Button
+                onClick={submit}
+                loading={mutation.isPending}
+                disabled={!detailsOk || !kpiOk || kpis.some((k) => !k.name.trim())}
+              >
+                Create goal
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

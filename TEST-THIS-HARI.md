@@ -16,7 +16,7 @@ output quality (Phase B).
 
 ```bash
 docker compose up -d --build
-docker compose run --rm web python manage.py seed_demo     # idempotent; safe to re-run
+docker compose run --rm web python manage.py seed_demo    
 open http://localhost:8080
 ```
 

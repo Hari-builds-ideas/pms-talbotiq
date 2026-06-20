@@ -130,6 +130,33 @@ def list_users(actor) -> list[User]:
         return list(User.objects.all().order_by("email"))
 
 
+def user_stats(actor) -> dict:
+    """Tenant user counts for the admin dashboard, aggregated IN THE DB.
+
+    The dashboard tiles previously fetched the whole user list just to reduce it
+    to a handful of counts — fine for a 20-person tenant, an O(N)-row download for
+    a 2k-person one. This returns the same numbers (active total, inactive total,
+    active-by-role) in a single GROUP BY, so the dashboard never pulls the list."""
+    from django.db.models import Count, Q
+
+    with tenant_context(actor.tenant_id):
+        rows = list(
+            User.objects.values("role").annotate(
+                active=Count("id", filter=Q(is_active=True)),
+                total=Count("id"),
+            )
+        )
+    active_by_role = {r["role"]: r["active"] for r in rows}
+    total = sum(r["total"] for r in rows)
+    active = sum(r["active"] for r in rows)
+    return {
+        "total": total,
+        "active": active,
+        "inactive": total - active,
+        "active_by_role": active_by_role,
+    }
+
+
 # ── tenant config ──────────────────────────────────────────────────────────────
 
 

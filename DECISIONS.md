@@ -54,3 +54,38 @@ Both migrations apply AND reverse cleanly; DDL verified (`… created_at DESC`).
   rows, so it is the optimal shape.
 - `person_card`: added `select_related("manager")` (saves one round-trip on a
   hot detail endpoint; covered by existing org tests).
+
+### D3 (BUILD_1/1.4) — Pagination audit; dashboard counts moved server-side
+
+**Audit result.** Every employee-/entity-scaling LIST already paginates
+(`StandardResultsSetPagination`) AND the React client already consumes each as
+`Paginated<T>` (reviews, goals, org positions, feedback cycles, jd library/
+requests, career roadmaps, succession roles/bench/nine-box). The contract's
+"some lists treated as arrays" worry was already resolved in the reskin — so the
+"one frontend touch" was NOT a pagination-shape fix. The bare-array responses
+that remain are per-parent bounded sub-lists (a goal's KPIs, a review's
+timeline/assessments, a cycle's requests, a jd's versions, a roadmap's progress,
+template/integration libraries) — not employee-scaling, so they stay bare.
+
+**The real large-tenant smell + fix.** Two screens fetched a whole collection
+just to derive a few numbers: the admin dashboard tiles pulled the FULL user
+list to compute active-count + role distribution (O(users) download to show ~5
+numbers). Fixed with a DB-aggregated `GET /api/admin/users/stats` (one GROUP BY)
+and rewired the two tiles to it — this IS the one frontend touch. Same class of
+fix as the directory: don't ship N rows to the client to count them.
+
+**Considered and chosen NOT to change in BUILD_1 (logged as Q1):**
+- `GET /api/admin/users` (the admin user TABLE) stays unpaginated: its remaining
+  consumer is the admin table itself, and paginating it needs page controls +
+  server-side search to stay usable — a UI change that belongs in BUILD_5, not
+  an ORM build. Its dashboard-aggregate consumer is already removed (above).
+- `GET /api/cycles/<id>/scores` (team scores) stays unpaginated: consumers
+  (`ReviewEvidence`, `useGoals`) fetch the cohort to pick ONE employee's score;
+  the clean fix is a scoped single-score lookup, deferred. `/scores/me` already
+  exists for the self case.
+- Org CHART lazy-loading (expand-on-demand): the tree endpoint is already
+  scope-bounded (an Employee gets only their line — now asserted by the
+  large-tenant test), so non-admins are safe today. A full org CHART inherently
+  needs its structure, so expand-on-demand is a viz/UX feature for BUILD_5, not
+  an ORM concern. The directory's per-row name needs are already met by the
+  `*_name` payload fields added in 1.2, making the tree a fallback resolver.

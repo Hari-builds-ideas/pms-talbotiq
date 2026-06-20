@@ -21,6 +21,7 @@ from apps.testsupport.factories import UserFactory
 pytestmark = pytest.mark.django_db
 
 USERS = "/api/admin/users"
+USER_STATS = "/api/admin/users/stats"
 TENANT_CONFIG = "/api/admin/tenant-config"
 
 
@@ -114,6 +115,38 @@ def test_tenant_config_get_then_put_reflects(org):
     assert resp.json()["settings"] == {"locale": "en-GB", "weekStart": "MON"}
 
 
+# ── user stats (DB-aggregated; the dashboard's bounded substitute for the list) ─
+
+
+def test_user_stats_counts_match_and_track_deactivation(org):
+    from django.db import connection
+    from django.test.utils import CaptureQueriesContext
+
+    admin = _client_for(org.admin)
+
+    # org fixture: admin, hrbp, manager, report, peer — all active.
+    resp = admin.get(USER_STATS)
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["total"] == 5
+    assert body["active"] == 5
+    assert body["inactive"] == 0
+    assert body["active_by_role"] == {"ADMIN": 1, "HRBP": 1, "MANAGER": 1, "EMPLOYEE": 2}
+
+    # Deactivating a user moves them out of active + into inactive.
+    assert admin.post(f"{USERS}/{org.peer.id}/deactivate", {}, format="json").status_code == 200
+    body = admin.get(USER_STATS).json()
+    assert body["active"] == 4
+    assert body["inactive"] == 1
+    assert body["active_by_role"]["EMPLOYEE"] == 1
+
+    # The whole rollup is a single GROUP BY — not an O(users) download.
+    with CaptureQueriesContext(connection) as ctx:
+        admin.get(USER_STATS)
+    aggregate_qs = [q for q in ctx.captured_queries if "GROUP BY" in q["sql"].upper()]
+    assert len(aggregate_qs) == 1
+
+
 # ── Admin-only: every endpoint 403 for a non-Admin ─────────────────────────────
 
 
@@ -124,6 +157,7 @@ def test_every_admin_endpoint_is_403_for_non_admin(org, role):
     rid = str(org.report.id)
 
     assert client.get(USERS).status_code == 403
+    assert client.get(USER_STATS).status_code == 403
     assert (
         client.post(USERS, {"email": "x@acme.test", "role": "EMPLOYEE"}, format="json").status_code
         == 403

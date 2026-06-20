@@ -79,6 +79,17 @@ class UserListCreateView(RBACMixin, APIView):
         )
 
 
+class UserStatsView(RBACMixin, APIView):
+    """``GET /api/admin/users/stats`` (MANAGE_USERS_ROLES — Admin) — tenant user
+    counts (active/inactive totals + active-by-role), aggregated in the DB so the
+    dashboard never downloads the whole user list just to count it."""
+
+    required_capability = Capability.MANAGE_USERS_ROLES
+
+    def get(self, request):
+        return Response(services.user_stats(request.user))
+
+
 class UserRoleView(RBACMixin, APIView):
     """``POST /api/admin/users/<pk>/role`` (MANAGE_USERS_ROLES — Admin) — assign a
     role. The target user is resolved through the tenant-scoped manager

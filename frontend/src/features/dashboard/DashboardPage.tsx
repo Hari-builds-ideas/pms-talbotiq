@@ -172,11 +172,13 @@ function HrbpCockpit() {
 
 // ── Admin ──────────────────────────────────────────────────────────────────
 function AdminCockpit() {
-  const users = useQuery({ queryKey: ["admin", "users"], queryFn: adminApi.users });
+  // Active-user count comes from the DB-aggregated stats endpoint, not a full
+  // user-list download — bounded regardless of tenant size.
+  const users = useQuery({ queryKey: ["admin", "users", "stats"], queryFn: adminApi.userStats });
   const ent = useQuery({ queryKey: ["billing", "entitlement"], queryFn: billingApi.entitlement });
   const succession = useQuery({ queryKey: ["succession", "dashboard"], queryFn: successionApi.dashboard });
 
-  const activeUsers = (users.data ?? []).filter((u) => u.is_active).length;
+  const activeUsers = users.data?.active ?? 0;
   const seats = ent.data?.seat_count ?? 0;
   const tier = ent.data?.tier_label ?? "—";
   const roles = succession.data?.critical_roles.length ?? 0;

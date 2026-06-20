@@ -62,6 +62,13 @@ export interface AdminUser {
   mfa_enabled: boolean;
 }
 
+export interface AdminUserStats {
+  total: number;
+  active: number;
+  inactive: number;
+  active_by_role: Partial<Record<Role, number>>;
+}
+
 export interface TenantConfig {
   id: UUID;
   settings: Record<string, unknown>;

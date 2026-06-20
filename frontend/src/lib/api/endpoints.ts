@@ -1,6 +1,7 @@
 import { api } from "./client";
 import type {
   AdminUser,
+  AdminUserStats,
   ApprovalRoute,
   ApprovalWorkflow,
   AnonymizedPayload,
@@ -104,6 +105,7 @@ export const billingApi = {
 
 export const adminApi = {
   users: () => unwrap<AdminUser[]>(api.get("/admin/users")),
+  userStats: () => unwrap<AdminUserStats>(api.get("/admin/users/stats")),
   createUser: (body: {
     email: string;
     role: Role;

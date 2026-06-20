@@ -109,13 +109,11 @@ export function FeedbackSummariesTile() {
 
 // ── Admin: tenant health (users by role) ─────────────────────────────────────
 export function TenantHealthTile() {
-  const q = useQuery({ queryKey: ["admin", "users"], queryFn: adminApi.users });
-  const users = q.data ?? [];
-  const byRole = users.reduce<Record<string, number>>((acc, u) => {
-    if (u.is_active) acc[u.role] = (acc[u.role] ?? 0) + 1;
-    return acc;
-  }, {});
-  const inactive = users.filter((u) => !u.is_active).length;
+  // Counts come from the DB-aggregated stats endpoint, not a full user-list
+  // download — the tile stays O(1) regardless of tenant size.
+  const q = useQuery({ queryKey: ["admin", "users", "stats"], queryFn: adminApi.userStats });
+  const byRole = q.data?.active_by_role ?? {};
+  const inactive = q.data?.inactive ?? 0;
   return (
     <Panel title="Tenant health" icon={Users} to="/admin/users">
       {q.isLoading ? (

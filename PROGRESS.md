@@ -61,6 +61,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 
 (ordinal · build/phase · what · files · verification · commit)
 
+13 · BUILD_2/2.4a · AI job-status API (backend) · `apps/ai/views.py` (AIJobDetailView GET /api/ai/jobs/<id> own+tenant-scoped; AIJobListView GET /api/ai/jobs?target=<id>), `apps/ai/urls.py`, `apps/ai/tests/test_jobs_api.py` (5: own 200, cross-user 404, cross-tenant 404, ?target filter own-only, unauth 401) · **[test]** full suite 1090 passed, 2 deselected · commit `BUILD_2 2.4a`
+
 12 · BUILD_2/2.3e · career enrich async · `apps/career/views.py` (RoadmapEnrichView: scope-load roadmap + resolve target → enqueue career_roadmap with target_ref in params → 202; dropped unused task import), `apps/career/tests/test_api.py` · **[test]** advisory-only invariant preserved (worker); 202+job DEGRADED, deterministic roadmap INTACT, no AI roadmap; career+ai 108 pass · commit `BUILD_2 2.3e`. ALL 5 seams now async.
 
 11 · BUILD_2/2.3d · jd generate async · `apps/jd/views.py` (JDGenerateView: sync 404-scope + validate_generation_inputs 422, then enqueue jd_generator → 202; dropped unused task import), `apps/ai/tasks.py` (run_agent_job: defensive try/except around dispatch → uncaught seam exception lands FAILED, never stuck RUNNING), `apps/jd/tests/test_api.py` · **[test]** no-inputs→422 preserved (sync), no-provider→202+job DEGRADED, JD untouched; jd+ai 112 pass · commit `BUILD_2 2.3d`

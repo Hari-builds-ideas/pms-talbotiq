@@ -8,12 +8,15 @@ is enforced by the gateway (over budget → 429).
 """
 from __future__ import annotations
 
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.ai.agents.chat import chat_answer
 from apps.ai.agents.kpi import team_nudges
+from apps.ai.models import AIJob
+from apps.ai.serializers import AIJobSerializer
 from apps.billing.gate import requires_entitlement
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -68,3 +71,34 @@ class NudgesView(RBACMixin, APIView):
 
     def get(self, request):
         return Response(team_nudges(request.user))
+
+
+# ── async AI job status (BUILD_2) — the poll surface ──────────────────────────
+
+
+class AIJobDetailView(APIView):
+    """``GET /api/ai/jobs/<id>`` — the requester polls THEIR OWN AI job.
+
+    Own- and tenant-scoped: ``AIJob.objects`` auto-filters the tenant (a
+    cross-tenant id is invisible → 404) and we further scope to
+    ``requested_by=request.user`` (another user's job → 404). No new capability —
+    a user may only ever read a job they themselves enqueued. Authentication is
+    the default ``IsAuthenticated``."""
+
+    def get(self, request, pk):
+        job = get_object_or_404(AIJob.objects.filter(requested_by=request.user), pk=pk)
+        return Response(AIJobSerializer(job).data)
+
+
+class AIJobListView(APIView):
+    """``GET /api/ai/jobs?target=<id>`` — the caller's own recent AI jobs, newest
+    first, optionally filtered to one artifact. Lets a screen find the live job
+    for an artifact on load (so a refresh re-attaches to an in-flight run)."""
+
+    def get(self, request):
+        jobs = AIJob.objects.filter(requested_by=request.user)
+        target = request.query_params.get("target")
+        if target:
+            jobs = jobs.filter(target_id=target)
+        jobs = jobs.order_by("-created_at")[:20]
+        return Response(AIJobSerializer(jobs, many=True).data)

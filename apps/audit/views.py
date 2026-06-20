@@ -49,9 +49,9 @@ class AuditLogConsoleView(RBACMixin, ListAPIView):
     READ-ONLY, tenant-scoped search over the audit log.
 
     Optional query-param filters (absent/blank are ignored): ``actor`` (UUID),
-    ``action`` (exact), ``target_type``, ``target_id``, ``date_from`` / ``date_to``
-    (ISO date/datetime → ``created_at`` range). Ordered newest-first (the model
-    default).
+    ``action`` (case-insensitive substring), ``target_type``, ``target_id``,
+    ``date_from`` / ``date_to`` (ISO date/datetime → ``created_at`` range).
+    Ordered newest-first (the model default).
     """
 
     required_capability = Capability.VIEW_AUDIT_CONSOLE
@@ -69,7 +69,9 @@ class AuditLogConsoleView(RBACMixin, ListAPIView):
 
         action = params.get("action")
         if action:
-            qs = qs.filter(action=action)
+            # Substring match: the console offers an "Action contains" box, so a
+            # partial term like "approved" finds "review.approved".
+            qs = qs.filter(action__icontains=action)
 
         target_type = params.get("target_type")
         if target_type:

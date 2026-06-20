@@ -75,6 +75,16 @@ def test_filter_by_action(org):
     assert all(r["action"] == "x.did" for r in rows)
 
 
+def test_filter_by_action_is_case_insensitive_substring(org):
+    """The console's "Action contains" box is a substring search: a partial,
+    differently-cased term finds the full dotted action and excludes the rest."""
+    _seed(org)  # actions: "x.did", "y.happened"
+    resp = _client_for(org.admin).get(LOGS, {"action": "DID"})
+    assert resp.status_code == 200, resp.content
+    actions = {r["action"] for r in resp.json()["results"]}
+    assert actions == {"x.did"}  # matched the substring, excluded "y.happened"
+
+
 def test_filter_by_actor(org):
     _seed(org)
     resp = _client_for(org.admin).get(LOGS, {"actor": str(org.admin.id)})
@@ -89,6 +99,28 @@ def test_future_date_from_returns_empty(org):
     resp = _client_for(org.admin).get(LOGS, {"date_from": "2999-01-01T00:00:00+00:00"})
     assert resp.status_code == 200, resp.content
     assert resp.json()["results"] == []
+
+
+def test_past_date_to_returns_empty(org):
+    """The ``date_to`` upper bound excludes rows created after it — an instant in
+    the distant past matches nothing seeded just now."""
+    _seed(org)
+    resp = _client_for(org.admin).get(LOGS, {"date_to": "2000-01-01T00:00:00+00:00"})
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["results"] == []
+
+
+def test_date_range_bracketing_now_returns_rows(org):
+    """A [past, future] window around the seed instant returns the rows — the
+    range filter is inclusive of what falls inside it."""
+    _seed(org)
+    resp = _client_for(org.admin).get(
+        LOGS,
+        {"date_from": "2000-01-01T00:00:00+00:00", "date_to": "2999-01-01T00:00:00+00:00"},
+    )
+    assert resp.status_code == 200, resp.content
+    actions = {r["action"] for r in resp.json()["results"]}
+    assert {"x.did", "y.happened"} <= actions
 
 
 @pytest.mark.parametrize("role", ["EMPLOYEE", "MANAGER"])

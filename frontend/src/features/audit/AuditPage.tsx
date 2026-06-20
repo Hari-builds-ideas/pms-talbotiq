@@ -28,12 +28,24 @@ import type { AuditLog } from "@/lib/types";
 const PAGE = 50;
 const TARGET_TYPES = ["review", "succession_plan", "job_description", "user", "entitlement", "approval_route"];
 
+// A bare "YYYY-MM-DD" from a date input means the whole local day. Send the
+// inclusive boundaries as tz-aware instants so "To = today" includes today's
+// rows (a midnight cutoff would silently drop them).
+function dayStartISO(d: string): string | undefined {
+  return d ? new Date(`${d}T00:00:00`).toISOString() : undefined;
+}
+function dayEndISO(d: string): string | undefined {
+  return d ? new Date(`${d}T23:59:59.999`).toISOString() : undefined;
+}
+
 export function AuditPage() {
   const { nodes } = useDirectory();
   const [page, setPage] = React.useState(1);
   const [actor, setActor] = React.useState("all");
   const [targetType, setTargetType] = React.useState("all");
   const [action, setAction] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
 
   const filters: AuditFilters = {
     page,
@@ -41,6 +53,8 @@ export function AuditPage() {
     ...(actor !== "all" ? { actor } : {}),
     ...(targetType !== "all" ? { target_type: targetType } : {}),
     ...(action.trim() ? { action: action.trim() } : {}),
+    ...(dateFrom ? { date_from: dayStartISO(dateFrom) } : {}),
+    ...(dateTo ? { date_to: dayEndISO(dateTo) } : {}),
   };
 
   const q = useQuery({
@@ -48,12 +62,15 @@ export function AuditPage() {
     queryFn: () => auditApi.logs(filters),
   });
 
-  const hasFilters = actor !== "all" || targetType !== "all" || action.trim() !== "";
+  const hasFilters =
+    actor !== "all" || targetType !== "all" || action.trim() !== "" || dateFrom !== "" || dateTo !== "";
 
   function clearFilters() {
     setActor("all");
     setTargetType("all");
     setAction("");
+    setDateFrom("");
+    setDateTo("");
     setPage(1);
   }
 
@@ -126,6 +143,26 @@ export function AuditPage() {
         <div className="space-y-1.5">
           <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Action contains</label>
           <Input value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} placeholder="e.g. approved" className="w-48" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">From</label>
+          <Input
+            type="date"
+            value={dateFrom}
+            max={dateTo || undefined}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+            className="w-40"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">To</label>
+          <Input
+            type="date"
+            value={dateTo}
+            min={dateFrom || undefined}
+            onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+            className="w-40"
+          />
         </div>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>

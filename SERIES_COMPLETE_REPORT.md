@@ -42,15 +42,17 @@ per-dependency incl. `DatabaseReplica`; `docs/OBSERVABILITY.md` with SLIs. Optim
 `version` on Goal/TenantConfig (409 on stale) + `SELECT … FOR UPDATE` on the KPI
 weight-sum. `IGNORE_EXCEPTIONS` so a cache outage degrades to the DB; `docs/CACHING.md`.
 
-**BUILD_5 — Web UX completion** (`7fa43a4…e5a85dc`) — see "Honest status"
+**BUILD_5 — Web UX completion** (`7fa43a4…a73d74f`) — see "Honest status"
 Actionable command-center needs-you cards (5.1); goal-creation wizard + live
 weight bar + attainment viz (5.2); career adopt-an-AI-roadmap accept→ACTIVE
-endpoint (5.4a); frontend tests for the AI-job state machine (5.6); the mobile
-readiness gate (5.7, GO).
+endpoint (5.4a); succession coverage heatmap (5.4b); audit date-range filter +
+the action-contains substring fix (5.5); ⌘K palette person deep-link (5.5b);
+frontend tests for the AI-job state machine (5.6); the mobile readiness gate
+(5.7, GO).
 
 ## Verification
 
-- **[test]** Backend **1125 passed, 2 deselected** (the gated large-tenant tests);
+- **[test]** Backend **1128 passed, 2 deselected** (the gated large-tenant tests);
   grew from a 1065 baseline. Frontend **30 passed**. Zero Groq in tests.
 - **[build]** Prod image builds; frontend tsc + lint + production build clean.
 - **[live]** Against the running stack: async review draft fire→202→worker→
@@ -61,14 +63,25 @@ readiness gate (5.7, GO).
 
 Delivered + green: **5.1** (actionable command center), **5.2** (goal wizard +
 live weight bar + attainment gauges), **5.4a** (career adopt→ACTIVE endpoint +
-button), **5.6** (AI-job UI tests), **5.7** (mobile readiness gate). **NOT done —
-the recommended next UX pass:** 5.3 review draft-vs-final DiffView + comments;
-5.4b succession interactive 9-box/coverage-heatmap/plan-detail + 5.4c analytics
-recharts depth (the <5 min-cohort suppression is ALREADY visually explicit); 5.5
-cross-cutting polish (⌘K actions, audit date-range, breadcrumbs, error boundary,
-login/shell polish). These are backend-ready (builds 1–4 supply the data/async/
-locking/caching) and are predominantly SUBJECTIVE UI work best done WITH the
-design skills (unavailable this run) + Hari's review. Details in `BUILD_5_REPORT.md`.
+button), **5.4b** (succession coverage heatmap), **5.5** (audit date-range filter +
+the action-contains substring fix), **5.5b** (⌘K palette person deep-link), **5.6**
+(AI-job UI tests), **5.7** (mobile readiness gate). The concrete, functionally-
+verifiable UX work that does NOT require new backend scope or the design skills is
+now complete.
+
+**What remains splits in two** (detail in `BUILD_5_REPORT.md`):
+1. **Subjective VISUAL redesign — needs the design skills (unavailable this run) +
+   Hari's eye:** analytics recharts depth (5.4c; the <5 min-cohort suppression is
+   ALREADY visually explicit), login + app-shell polish, and the breadcrumb-trail
+   question (the only 2-level routes already carry a "← Back" link + category
+   eyebrow, so a full trail would be largely redundant). The global ErrorBoundary
+   and tenant-config optimistic-lock wiring already landed.
+2. **New FEATURES needing new backend scope (Tier 3 — a product go/no-go for Hari):**
+   review section comments (5.3 — needs a `Comment` model; "draft-vs-final" has no
+   diff because finalize copies draft→final verbatim) and nine-box DRAG-reposition
+   (5.4b — needs a persisted human-override endpoint; re-assessing *potential* is
+   already possible via the Assess dialog today). Deliberately not built here: the
+   brief is "elevation on solid bones," and both are new product surface.
 
 ## What remains OUTSIDE this series
 
@@ -79,8 +92,10 @@ design skills (unavailable this run) + Hari's review. Details in `BUILD_5_REPORT
 2. **The LLM key (Hari):** plug the Gemini/Groq key into the prod env; the gateway,
    async seams, budgets, ceiling, and degradation are all built and tested with
    FakeLLMProvider — production just needs the key.
-3. **BUILD_5 deep-UX pass (recommended next):** phases 5.3 + 5.4b/c + 5.5 above,
-   with the design skills + Hari's eye.
+3. **BUILD_5 visual pass (recommended next):** analytics recharts depth (5.4c) +
+   login/app-shell polish, with the design skills + Hari's eye. SEPARATELY, a
+   product go/no-go on the two Tier-3 features (review comments, nine-box
+   drag-reposition) that need new backend scope.
 4. **Mobile series (separate, after Hari reviews the web):** GO per
    `MOBILE_READINESS.md`; one thin backend add (device-token register for push).
 
@@ -91,11 +106,13 @@ design skills (unavailable this run) + Hari's review. Details in `BUILD_5_REPORT
 - `PROGRESS.md` — the full append-only log (ordinals 1–23) + per-build headlines.
 
 ## NEEDS HARI'S EYE (subjective calls — not assumed settled)
-- The remaining BUILD_5 visual redesign (5.3 review diff-view, 5.4b succession
-  9-box/heatmap, 5.5 cross-cutting polish) — look, density, the command-center
-  feel, the data-viz choices. Run the design skills against the result (they were
-  NOT available this run). The delivered 5.1/5.2/5.4a surfaces also welcome a
-  visual once-over.
+- The remaining BUILD_5 visual redesign — analytics recharts depth (5.4c),
+  login + app-shell polish, the breadcrumb-trail-vs-back-link question, and a
+  once-over of every delivered surface (5.1/5.2/5.4a/5.4b/5.5) for look, density,
+  and data-viz choices. Run the design skills against the result (they were NOT
+  available this run).
+- Go/no-go on the two Tier-3 features that need new backend scope: review section
+  comments (5.3) and nine-box drag-reposition (5.4b).
 - Whether the additional contended entities (JD body, succession plan, review
   content) should also get optimistic `version` (BUILD_4 D12 deferred them).
 - Confirm the BUILD_1 Q1 deferrals (admin-table pagination, team-scores lookup,

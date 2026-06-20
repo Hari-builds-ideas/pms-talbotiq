@@ -3,10 +3,14 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_5 — WEB_UX_COMPLETION · continuing 5.3/5.4b/5.5 (ux-spec as design authority; design skills unavailable)
+## Current: BUILD_5 — WEB_UX_COMPLETION · concrete UX work COMPLETE (ux-spec as design authority; design skills unavailable)
 
-BUILDs 1–4 COMPLETE/pushed/green. BUILD_5 done so far: 5.1, 5.2, 5.4a, 5.6, 5.7.
-Now: 5.3 (review draft-vs-final), 5.4b (succession heatmap/9-box), 5.5 (polish).
+BUILDs 1–4 COMPLETE/pushed/green. BUILD_5 delivered: 5.1, 5.2, 5.4a, 5.4b, 5.5
+(+5.5b), 5.6, 5.7. The concrete, functionally-verifiable UX that needs neither
+new backend scope nor the design skills is now done. Remaining = (A) subjective
+VISUAL pass — analytics recharts depth/login+shell polish — needs design skills +
+Hari's eye; (B) two Tier-3 features needing new backend (review comments,
+nine-box drag-reposition) — a product go/no-go for Hari. See SERIES_COMPLETE_REPORT.md.
 
 BUILDs 1–4 complete/pushed/green (backend 1123 passed, 2 deselected). BUILD_5:
 delivered 5.1 (actionable command center), 5.6 (AI-job UI tests, frontend 30

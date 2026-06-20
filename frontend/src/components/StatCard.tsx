@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +14,9 @@ interface StatCardProps {
   tone?: "default" | "success" | "warning" | "danger" | "info" | "ai" | "premium";
   loading?: boolean;
   className?: string;
+  /** When set, the whole card becomes a link to the action (the "needs-you"
+   *  command-center pattern — each metric navigates straight to where you act). */
+  to?: string;
 }
 
 const TONE: Record<NonNullable<StatCardProps["tone"]>, { icon: string; value: string }> = {
@@ -33,10 +37,17 @@ export function StatCard({
   tone = "default",
   loading,
   className,
+  to,
 }: StatCardProps) {
   const t = TONE[tone];
-  return (
-    <Card className={cn("p-4", className)}>
+  const card = (
+    <Card
+      className={cn(
+        "p-4",
+        to && "transition-shadow hover:border-ring/40 hover:shadow-md",
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -56,5 +67,15 @@ export function StatCard({
         )}
       </div>
     </Card>
+  );
+  if (!to) return card;
+  return (
+    <Link
+      to={to}
+      aria-label={`${label} — open`}
+      className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {card}
+    </Link>
   );
 }

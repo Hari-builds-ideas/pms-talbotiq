@@ -115,10 +115,10 @@ function ManagerCockpit() {
   return (
     <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Pending approvals" value={pending} icon={ClipboardCheck} tone={pending > 0 ? "warning" : "default"} loading={inbox.isLoading} hint={pending > 0 ? "Awaiting your decision" : "Inbox zero"} />
+        <StatCard label="Pending approvals" value={pending} icon={ClipboardCheck} tone={pending > 0 ? "warning" : "default"} loading={inbox.isLoading} hint={pending > 0 ? "Awaiting your decision" : "Inbox zero"} to="/approvals" />
         <StatCard label="At-risk reports" value={hasFeature("agent2") ? critical : "—"} icon={TrendingUp} tone={critical > 0 ? "danger" : "default"} loading={hasFeature("agent2") && nudges.isLoading} hint={hasFeature("agent2") ? "Flagged by KPI Intelligence" : "Upgrade to surface"} />
-        <StatCard label="Reviews to action" value={toAction} icon={FileText} tone={toAction > 0 ? "info" : "default"} loading={reviews.isLoading} hint="Drafting or approval" />
-        <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" />
+        <StatCard label="Reviews to action" value={toAction} icon={FileText} tone={toAction > 0 ? "info" : "default"} loading={reviews.isLoading} hint="Drafting or approval" to="/reviews" />
+        <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" to="/succession" />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
@@ -151,9 +151,9 @@ function HrbpCockpit() {
   return (
     <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Summaries to release" value={toRelease} icon={MessageSquareText} tone={toRelease > 0 ? "warning" : "default"} loading={summaries.isLoading} hint="360 feedback (HITL)" />
-        <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" />
-        <StatCard label="Pending approvals" value={pending} icon={ClipboardCheck} tone={pending > 0 ? "warning" : "default"} loading={inbox.isLoading} hint="Awaiting your decision" />
+        <StatCard label="Summaries to release" value={toRelease} icon={MessageSquareText} tone={toRelease > 0 ? "warning" : "default"} loading={summaries.isLoading} hint="360 feedback (HITL)" to="/feedback" />
+        <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" to="/succession" />
+        <StatCard label="Pending approvals" value={pending} icon={ClipboardCheck} tone={pending > 0 ? "warning" : "default"} loading={inbox.isLoading} hint="Awaiting your decision" to="/approvals" />
         <StatCard label="At-risk people" value={hasFeature("agent2") ? atRisk : "—"} icon={TrendingUp} tone={atRisk > 0 ? "danger" : "default"} loading={hasFeature("agent2") && nudges.isLoading} hint="Across your scope" />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">

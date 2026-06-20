@@ -3,7 +3,12 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: BUILD_4 — PROD_OPS_CONCURRENCY_CACHE · 4.4 done → BUILD_4_REPORT, then BUILD_5
+## Current: BUILD_5 — WEB_UX_COMPLETION · Phase 5.1 (command-center dashboards)
+
+BUILD_4 COMPLETE: 4.1–4.4 + report committed/pushed/green (`e007c19`); backend
+1123 passed, 2 deselected; prod posture + metrics + concurrency + caching live.
+Live cache hit/miss confirmed (org tree 57ms→14ms). Consulting design skills
+(frontend-design / web-design-guidelines / theme-factory) for the UX work.
 
 BUILD_3 COMPLETE: 3.1–3.4 + report committed/pushed/green (`784a69f`); backend
 1107 passed, 2 deselected; atomic limits + DB router (replica-ready) live.
@@ -67,6 +72,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+23 · BUILD_5/5.1 · command-center: actionable needs-you cards · `frontend/src/components/StatCard.tsx` (optional `to` → whole card navigates, hover affordance, a11y label), `features/dashboard/DashboardPage.tsx` (Manager+HRBP needs-you StatCards link straight to the action: approvals→/approvals, reviews→/reviews, coverage→/succession, summaries→/feedback) · note: dashboards were ALREADY insight-first (real-count StatCards + tiles + recharts SuccessionRiskTile); §8.3's gap was "link straight to the action" → done · **[build]** tsc+lint+build clean · commit `BUILD_5 5.1`
 
 22 · BUILD_4/4.4 · hot-read caching: degrade-not-error + verify/document · `config/settings/base.py` (default cache IGNORE_EXCEPTIONS=True + DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS — cache outage → recompute, never 500), `apps/billing/tests/test_caching.py` (4), `docs/CACHING.md` (new — every cached read + TTL + invalidation triggers + rules) · audit: entitlement/rate-limits/feature-flags (300s), org tree (600s), analytics dept aggregate — all already tenant-keyed + invalidated; the gap was degradation posture · **[test]** cache-hit 0 queries; upgrade invalidates; tenant-isolated keys; dead-Redis degrades to DB (no error); 4 pass · DECISIONS D13 · commit `BUILD_4 4.4`
 

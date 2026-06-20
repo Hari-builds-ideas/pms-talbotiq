@@ -164,7 +164,8 @@ def search_jds(actor, *, q="", status=None):
         )
     if status:
         qs = qs.filter(status=status)
-    return qs
+    # created_by_name derefs the author FK per row — resolve it in one JOIN.
+    return qs.select_related("created_by")
 
 
 # ── JD requests (Manager asks HRBP to author/generate a JD) ──────────────────

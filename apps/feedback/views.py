@@ -89,6 +89,9 @@ class FeedbackCycleListCreateView(RBACMixin, APIView):
             visible = reporting_subtree_ids(request.user) | {request.user.id}
             cycles = cycles.filter(subject_id__in=visible)
         # Scope.TENANT → all in tenant (scoped manager already isolates).
+        # subject_name derefs the subject FK — select_related to stay bounded.
+        # (Givers are never resolved on this serializer; anonymity is unaffected.)
+        cycles = cycles.select_related("subject")
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(cycles, request, view=self)
         return paginator.get_paginated_response(

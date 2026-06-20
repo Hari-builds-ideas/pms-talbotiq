@@ -231,11 +231,18 @@ def skill_gap_for(actor, employee) -> dict:
 def list_roadmaps(actor, *, employee=None) -> list[DevelopmentRoadmap]:
     """Roadmaps within the actor's scope. With ``employee`` given, that employee's
     roadmaps (scoped → 404); otherwise every visible employee's roadmaps."""
+    # select_related the FKs the serializer resolves for employee_name /
+    # target_jd_title / target_position_title (else N+1 per roadmap).
+    related = ("employee", "target_jd", "target_position")
     if employee is not None:
         require_in_scope(actor, employee)
-        return list(DevelopmentRoadmap.objects.filter(employee=employee))
+        return list(
+            DevelopmentRoadmap.objects.select_related(*related).filter(employee=employee)
+        )
     return list(
-        DevelopmentRoadmap.objects.filter(employee_id__in=visible_employee_ids(actor))
+        DevelopmentRoadmap.objects.select_related(*related).filter(
+            employee_id__in=visible_employee_ids(actor)
+        )
     )
 
 

@@ -77,6 +77,11 @@ class GoalListCreateView(RBACMixin, APIView):
         cycle_id = request.query_params.get("cycle")
         if cycle_id:
             goals = goals.filter(cycle_id=cycle_id)
+        # FKs for the *_name fields (one JOIN each) + prefetch kpis so
+        # kpi_weight_total's sum doesn't fire a query per goal.
+        goals = goals.select_related(
+            "employee", "created_by", "approved_by"
+        ).prefetch_related("kpis")
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(goals, request, view=self)
         return paginator.get_paginated_response(GoalSerializer(page, many=True).data)

@@ -33,10 +33,9 @@ pytestmark = pytest.mark.django_db
 
 SMALL, LARGE = 5, 25
 
-# Flipped to True in Phase 1.2 once the views carry their select/prefetch fixes.
-# In 1.1 the module only RECORDS the baseline (a failing assert would block the
-# green baseline commit the contract requires).
-ENFORCE_BOUNDED = False
+# Phase 1.2 added the select_related/prefetch_related to each list view/service,
+# so the bound is now ENFORCED — a future N+1 regression fails the suite.
+ENFORCE_BOUNDED = True
 
 
 def _client(user):

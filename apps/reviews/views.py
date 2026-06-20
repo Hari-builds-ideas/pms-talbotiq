@@ -78,6 +78,11 @@ class ReviewListCreateView(RBACMixin, APIView):
         state = request.query_params.get("state")
         if state:
             reviews = reviews.filter(state=state)
+        # Resolve the FKs the serializer's *_name/cycle_name fields deref, in one
+        # JOIN each — without this the list is N+1 (one query per row per name).
+        reviews = reviews.select_related(
+            "employee", "reviewer", "human_reviewer", "cycle"
+        )
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(reviews, request, view=self)
         return paginator.get_paginated_response(ReviewSerializer(page, many=True).data)
@@ -322,6 +327,8 @@ class ReviewCalibrationView(RBACMixin, APIView):
         state = request.query_params.get("state")
         if state:
             reviews = reviews.filter(state=state)
+        # Same name-field derefs as the main list — select_related to stay bounded.
+        reviews = reviews.select_related("employee", "reviewer", "human_reviewer")
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(reviews, request, view=self)
         return paginator.get_paginated_response(

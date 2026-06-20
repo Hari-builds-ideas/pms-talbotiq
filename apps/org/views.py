@@ -134,8 +134,13 @@ class PositionListCreateView(RBACMixin, APIView):
         return super().get_permissions()
 
     def get(self, request):
+        # select_related the FKs the serializer resolves for filled_by_name /
+        # reports_to_name / published_jd_title (else N+1 per position).
+        positions_qs = Position.objects.select_related(
+            "filled_by", "reports_to", "published_jd"
+        )
         paginator = StandardResultsSetPagination()
-        page = paginator.paginate_queryset(Position.objects.all(), request, view=self)
+        page = paginator.paginate_queryset(positions_qs, request, view=self)
         return paginator.get_paginated_response(
             PositionSerializer(page, many=True).data
         )

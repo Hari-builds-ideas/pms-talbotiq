@@ -67,6 +67,7 @@ EXPECTED = {
     Capability.MANAGE_CRITICAL_ROLES: {Role.HRBP, Role.ADMIN},
     Capability.MANAGE_BENCH: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.ASSESS_NINE_BOX: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.OVERRIDE_NINE_BOX: {Role.HRBP, Role.ADMIN},
     Capability.VIEW_SUCCESSION: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.GENERATE_SUCCESSION_ANALYSIS: {Role.HRBP, Role.ADMIN},
     Capability.PUBLISH_SUCCESSION_PLAN: {Role.HRBP, Role.ADMIN},

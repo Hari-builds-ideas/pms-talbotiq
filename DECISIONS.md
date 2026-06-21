@@ -469,3 +469,31 @@ check (another user's comment → 403). Delete is the standard soft-delete.
 the reviews app's 422 convention: HITLApprovalRequired, RejectionReasonRequired),
 not a 400. A foreign/cross-tenant parent or review id → 404 (the scoped manager
 hides it). This resolves the BUILD_7 Feature A go-ahead.
+
+---
+
+### D19 (BUILD_7 Feature B) — Nine-box override: display-only, HRBP/Admin-only, computed box preserved
+
+**Override feeds readiness, or display-only?** DISPLAY-ONLY. The persisted human
+override repositions a person's cell on the 9-box grid (a calibration judgement),
+but does NOT alter the deterministic readiness/bench math, which stays grounded in
+the computed performance/potential. Options: (a) feed readiness — rejected: it
+would let a subjective drag silently change succession outcomes, eroding the
+deterministic, auditable basis; (b) display-only (chosen) — safest + most
+transparent; the grid shows the human cell, the math stays principled.
+
+**Storage.** Override fields live ON `NineBoxPlacement` (`override_box`,
+`override_by`, `override_at`, `override_rationale`) ALONGSIDE the computed `box`,
+which is NEVER rewritten. The serializer exposes both plus `effective_box`
+(override ?? computed) and `is_overridden`. Clearing (DELETE) nulls the override →
+back to computed. Fully transparent + reversible. (A separate override table was
+considered but rejected — one row per (emp,cycle) already exists and an extra
+table adds join/consistency overhead for no gain.)
+
+**Capability.** New `OVERRIDE_NINE_BOX` = HRBP/Admin only — tighter than the
+Manager+ `ASSESS_NINE_BOX`. Rationale: overriding the COMPUTED placement is a
+stronger, calibration-owner action than assigning potential, so it's restricted to
+the succession owners (HRBP/Admin). A Manager (has VIEW/ASSESS) → 403; an employee
+→ 404 at the succession participant gate (the employee-invisible invariant is
+untouched). Cross-tenant placement → 404. This resolves the BUILD_7 Feature B
+go-ahead.

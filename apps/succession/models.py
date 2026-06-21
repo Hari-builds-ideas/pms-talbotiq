@@ -147,6 +147,21 @@ class NineBoxPlacement(TenantScopedModel):
     )
     assessed_at = models.DateTimeField()
 
+    #: A persisted HUMAN OVERRIDE of the computed ``box`` (HRBP/Admin only). The
+    #: computed ``box`` is never rewritten — ``override_box`` (null = no override)
+    #: sits alongside it, so the override is transparent and fully reversible.
+    #: Display-only: it does NOT alter the deterministic readiness/bench math.
+    override_box = models.PositiveSmallIntegerField(null=True, blank=True)
+    override_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="ninebox_overrides",
+    )
+    override_at = models.DateTimeField(null=True, blank=True)
+    override_rationale = models.TextField(blank=True)
+
     class Meta:
         db_table = "succession_ninebox"
         ordering = ["-assessed_at"]

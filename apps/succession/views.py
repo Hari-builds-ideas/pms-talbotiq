@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -50,7 +51,7 @@ from apps.org.models import Position
 from apps.rbac.matrix import Capability
 
 from . import plans, services
-from .models import BenchCandidate, CriticalRole, SuccessionPlan
+from .models import BenchCandidate, CriticalRole, NineBoxPlacement, SuccessionPlan
 from .permissions import SuccessionMixin
 from .serializers import (
     ActionItemSerializer,
@@ -293,6 +294,33 @@ class NineBoxListCreateView(SuccessionMixin, APIView):
         return Response(
             NineBoxSerializer(placement).data, status=status.HTTP_201_CREATED
         )
+
+
+class NineBoxOverrideView(SuccessionMixin, APIView):
+    """``PUT, DELETE /api/succession/nine-box/<placement_id>/override`` — set or
+    clear a HUMAN OVERRIDE of a placement's computed box (OVERRIDE_NINE_BOX —
+    HRBP/Admin only; a Manager has VIEW/ASSESS but not this → 403, an employee
+    404s at the participant gate). The placement is loaded through the tenant
+    -scoped manager (cross-tenant id → 404). The computed ``box`` is never
+    rewritten — the override is display-only and reversible (DELETE)."""
+
+    required_capability = Capability.OVERRIDE_NINE_BOX
+
+    def put(self, request, placement_id):
+        placement = get_object_or_404(NineBoxPlacement.objects.all(), pk=placement_id)
+        try:
+            box = int(request.data.get("box"))
+        except (TypeError, ValueError):
+            raise ValidationError({"box": "box must be an integer 1–9."})
+        placement = services.set_nine_box_override(
+            request.user, placement, box=box, rationale=request.data.get("rationale", "")
+        )
+        return Response(NineBoxSerializer(placement).data)
+
+    def delete(self, request, placement_id):
+        placement = get_object_or_404(NineBoxPlacement.objects.all(), pk=placement_id)
+        placement = services.clear_nine_box_override(request.user, placement)
+        return Response(NineBoxSerializer(placement).data)
 
 
 # ── plan HITL ─────────────────────────────────────────────────────────────────

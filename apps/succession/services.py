@@ -243,6 +243,67 @@ def assess_nine_box(actor, employee, cycle, *, potential_band):
         return placement
 
 
+def set_nine_box_override(actor, placement, *, box, rationale=""):
+    """Persist a HUMAN OVERRIDE of ``placement``'s computed box (HRBP/Admin only;
+    the view gates the capability). The computed ``box`` is left untouched —
+    ``override_box`` sits alongside it — so the override is transparent and fully
+    reversible, and it does NOT alter the deterministic readiness/bench math
+    (display-only). Audited."""
+    from rest_framework.exceptions import ValidationError
+
+    if box not in range(1, 10):
+        raise ValidationError({"box": "box must be an integer 1–9."})
+    tid = placement.tenant_id
+    with tenant_context(tid):
+        record(
+            action="ninebox.override_set",
+            actor=actor,
+            target_type="ninebox",
+            target_id=str(placement.employee_id),
+            metadata={
+                "cycle": str(placement.cycle_id),
+                "computed_box": placement.box,
+                "override_box": box,
+            },
+            tenant=tid,
+        )
+        placement.override_box = box
+        placement.override_by = actor
+        placement.override_at = timezone.now()
+        placement.override_rationale = rationale or ""
+        placement.save(
+            update_fields=[
+                "override_box", "override_by", "override_at", "override_rationale", "updated_at"
+            ]
+        )
+        return placement
+
+
+def clear_nine_box_override(actor, placement):
+    """Remove the human override → the placement falls back to its computed box.
+    Audited."""
+    tid = placement.tenant_id
+    with tenant_context(tid):
+        record(
+            action="ninebox.override_cleared",
+            actor=actor,
+            target_type="ninebox",
+            target_id=str(placement.employee_id),
+            metadata={"cycle": str(placement.cycle_id), "computed_box": placement.box},
+            tenant=tid,
+        )
+        placement.override_box = None
+        placement.override_by = None
+        placement.override_at = None
+        placement.override_rationale = ""
+        placement.save(
+            update_fields=[
+                "override_box", "override_by", "override_at", "override_rationale", "updated_at"
+            ]
+        )
+        return placement
+
+
 def list_nine_box(actor, *, cycle=None):
     """9-box placements within the actor's scope (optionally filtered by cycle)."""
     qs = NineBoxPlacement.objects.all()

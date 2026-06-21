@@ -88,6 +88,7 @@ class Capability:
     MANAGE_CRITICAL_ROLES = "manage_critical_roles"  # HRBP, Admin — critical-role registry + risk
     MANAGE_BENCH = "manage_bench"                    # Manager+ (Manager own-tier) — bench + readiness
     ASSESS_NINE_BOX = "assess_nine_box"              # Manager+ (Manager own-tier) — assign potential / place
+    OVERRIDE_NINE_BOX = "override_nine_box"          # HRBP, Admin — persisted human override of the computed box
     VIEW_SUCCESSION = "view_succession"              # Manager+ (Manager own report tier ONLY) — NO employees
     GENERATE_SUCCESSION_ANALYSIS = "generate_succession_analysis"  # HRBP, Admin
     PUBLISH_SUCCESSION_PLAN = "publish_succession_plan"            # HRBP, Admin
@@ -203,6 +204,7 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.MANAGE_CRITICAL_ROLES: _HRBP_UP,
     Capability.MANAGE_BENCH: _MANAGER_UP,
     Capability.ASSESS_NINE_BOX: _MANAGER_UP,
+    Capability.OVERRIDE_NINE_BOX: _HRBP_UP,
     Capability.VIEW_SUCCESSION: _MANAGER_UP,
     Capability.GENERATE_SUCCESSION_ANALYSIS: _HRBP_UP,
     Capability.PUBLISH_SUCCESSION_PLAN: _HRBP_UP,

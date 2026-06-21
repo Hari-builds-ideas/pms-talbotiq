@@ -93,6 +93,9 @@ class NineBoxSerializer(serializers.ModelSerializer):
     ``services.assess_nine_box``)."""
 
     employee_name = serializers.SerializerMethodField()
+    #: The cell to DISPLAY: the human override when set, else the computed box.
+    effective_box = serializers.SerializerMethodField()
+    is_overridden = serializers.SerializerMethodField()
 
     class Meta:
         model = NineBoxPlacement
@@ -106,11 +109,24 @@ class NineBoxSerializer(serializers.ModelSerializer):
             "box",
             "assessed_by",
             "assessed_at",
+            # Human override of the computed box (HRBP/Admin); computed `box` kept.
+            "override_box",
+            "override_by",
+            "override_at",
+            "override_rationale",
+            "effective_box",
+            "is_overridden",
         ]
         read_only_fields = fields
 
     def get_employee_name(self, obj) -> str | None:
         return person_label(obj.employee) if obj.employee_id else None
+
+    def get_effective_box(self, obj) -> int:
+        return obj.override_box if obj.override_box is not None else obj.box
+
+    def get_is_overridden(self, obj) -> bool:
+        return obj.override_box is not None
 
 
 class SuccessionPlanSerializer(serializers.ModelSerializer):

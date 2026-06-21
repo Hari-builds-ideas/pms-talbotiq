@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_7 Tier-3 in progress (7.A done — comments; 7.B next — nine-box)
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_7 Tier-3 in progress (7.A done; 7.B.1 done — nine-box override backend; 7.B.2 next — drag UI)
 
 BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1144 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
@@ -90,6 +90,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+36 · BUILD_7/7.B.1 · nine-box override endpoint (backend-first) · `apps/succession/models.py` (NineBoxPlacement += override_box/override_by/override_at/override_rationale — the computed `box` is NEVER rewritten; override sits alongside, display-only), migration `0002_nineboxplacement_override_*` (apply+reverse clean), `apps/rbac/matrix.py` (+OVERRIDE_NINE_BOX capability = HRBP/Admin, tighter than Manager+ ASSESS) + `apps/rbac/tests/test_matrix.py` (EXPECTED table entry), `apps/succession/services.py` (set_nine_box_override [validates box 1–9] / clear_nine_box_override — audited), `apps/succession/serializers.py` (NineBoxSerializer += override_* + effective_box + is_overridden), `apps/succession/views.py` (NineBoxOverrideView PUT set / DELETE clear; OVERRIDE_NINE_BOX-gated; placement via tenant-scoped manager → cross-tenant 404), `apps/succession/urls.py` (/nine-box/<id>/override). DECISION D19 (display-only — does NOT alter deterministic readiness; HRBP/Admin-only; computed box preserved + reversible). Invariants: employee→404 (participant gate) untouched; Manager→403; cross-tenant→404. · **[test]** `test_ninebox_override.py` 6 pass (set+clear / computed-box-preserved / manager-403 / employee-404 / cross-tenant-404 / invalid-box-400 / audit rows); rbac 297; FULL backend 1171 passed/2 deselected (+10, no regression) · commit `BUILD_7 7.B.1`
 
 35 · BUILD_7/7.A.2 · review comments UI · frontend `lib/types.ts` (+ReviewComment + ReviewCommentSection), `lib/api/endpoints.ts` (reviewsApi.comments/createComment/editComment/deleteComment), `features/reviews/useReviews.ts` (useReviewComments + useReviewCommentMutations), `lib/reviewComments.ts` (new pure `threadComments` — one-level grouping, orphan-safe) + `lib/reviewComments.test.ts` (3), new `features/reviews/CommentsPanel.tsx` (threaded list, section tag, new-comment form w/ section select, inline reply, author-only edit/delete, all states, kind-aware errors via notifyError), wired into `ReviewDetailPage.tsx` sidebar after Assessments; `mocks/handlers.ts` (+mutable comment store + GET/POST/PATCH/DELETE so dev exercises it). · **[test]** frontend tsc+lint clean, 40 vitest (+3), build clean · **[live]** restarted web (load 7.A.1) + redeployed frontend; e2e on the running stack: create(SUMMARY)→reply(201,one-level)→list(count 2, author_name "Ada Lovelace", parent set)→edit(edited_at set)→out-of-scope employee 403→author delete 204→only the reply remains · commit `BUILD_7 7.A.2`
 

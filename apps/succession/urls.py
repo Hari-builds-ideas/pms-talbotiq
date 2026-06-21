@@ -23,6 +23,7 @@ from .views import (
     GenerateAnalysisView,
     KnowledgeRiskView,
     NineBoxListCreateView,
+    NineBoxOverrideView,
     PlanActionItemView,
     PlanDetailView,
     PlanEnrichView,
@@ -73,6 +74,11 @@ urlpatterns = [
     ),
     # 9-box.
     path("nine-box", NineBoxListCreateView.as_view(), name="nine-box"),
+    path(
+        "nine-box/<uuid:placement_id>/override",
+        NineBoxOverrideView.as_view(),
+        name="nine-box-override",
+    ),
     # Plans.
     path("plans/<uuid:pk>", PlanDetailView.as_view(), name="plan-detail"),
     path(

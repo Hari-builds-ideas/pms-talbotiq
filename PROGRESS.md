@@ -3,7 +3,14 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: WEB_COE build (unattended) · W1 SSO ✓ · W2 WCAG 2.1 AA ✓ · W3 functional matrix ✓ — ALL THREE DONE, WEB_COE_REPORT.md NEXT · (mobile mock-adaptation PAUSED)
+## Current: PRODUCT-VALIDATION BUGFIX SWEEP (web only) — 4 blocking bugs, root-cause + test + live, commit/push each · BUG1 Goals-approve-stale ✓ · BUG2/3/4 NEXT
+
+Hands-on validation found 4 HIGH bugs: (1) Goals Approve toast but row stays
+"awaiting approval"; (2) Request-AI-Draft unreachable; (3) employee roadmap tile →
+"no access"; (4) AI assistant routes every query to a perf summary. Fixing 1→4,
+root-cause not patch, each tested + live-verified + committed. BUG1 done (ordinal 44).
+
+## (prior) WEB_COE build · W1 SSO ✓ · W2 WCAG 2.1 AA ✓ · W3 functional matrix ✓ — ALL THREE DONE + WEB_COE_REPORT.md · (mobile mock-adaptation PAUSED)
 
 W3 done: mapped the brief's testing row (review transitions, KPI=100, escalations,
 notifications) to the existing suite, filled the genuine gaps (+8 tests): review
@@ -133,6 +140,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+44 · BUGFIX/BUG1 · Goals Approve success-toast but row stays "Awaiting approval" · ROOT CAUSE (frontend, not backend): `useGoals.ts` cached the list under `["goals","list", cycle ?? "all"]` but `refresh()` invalidated `["goals","list", cycle]` — with no cycle selected (the default view) the cached key is `…"all"` while the invalidation key is `…undefined`, which React Query never matches → the list never refetched after approve (and after create/recordActual/recompute — same latent staleness, the "did anything happen?" symptom). Backend was already correct (GoalApproveView stamps approved_by+approved_at and returns the updated goal; `test_manager_can_approve_report_goal_and_audit` already proves persistence). FIX: invalidate by the stable PREFIX `["goals","list"]` + `["cycles","scores"]` (prefix-matches every cached variant). · **[test]** new `frontend/src/features/goals/useGoals.test.tsx` (2): the default no-cycle list AND a cycle-specific list are both marked invalidated after approve (fails pre-fix); frontend 74 vitest · **[live]** running stack: created a goal (approved_by None) → POST approve → 200 with approved_by+approved_at set → GET list refetch shows approved_by populated (the row the UI now flips to "Approved") → cleaned up · commit `BUGFIX BUG1 — goals approve now refetches (invalidation key)`
 
 43 · WEB_COE/W3 · functional test matrix (web) — map the brief's testing row + fill gaps · Inventoried existing coverage (review state machine, KPI weight validators, escalation engine/sweep, notification signals) via a sub-agent, then added the GENUINELY-missing tests: `apps/reviews/tests/test_state_machine.py` (+2: route_rejected APPROVED→EDITING + illegal-unless-APPROVED), `apps/approvals/tests/test_escalation.py` (+1: PARALLEL step escalates independently of its active sibling), `apps/approvals/tests/test_signals.py` (+2: route-start → receiver invokes notify_approval_assignment; escalation → notify_approval_escalation — notification GENERATION end-to-end, not just signal-fired), `apps/feedback/tests/test_services.py` (+1: send_feedback_request → notify_feedback_request), `apps/goals/tests/test_api.py` (+2: PATCH KPI weight breaking 100 → 400 rolled back; non-weight PATCH → 200). KPI=100 boundaries (99.99/100.01/exactly-100) were ALREADY covered by test_weights.py + test_api.py boundary tests (confirmed, cited in the matrix). · **[test]** the 5 touched suites 80 pass; FULL backend **1193 passed**/2 deselected (+8, no regression) · **[live]** running stack: `POST /api/goals` KPI 99.99→400 / 100.01→400 / 100.00→201 (cleaned up); seeded a real overdue route + ran the actual `escalate_overdue_routes()` task → `{scanned:1,escalated:1,errors:0}`, step reassigned MANAGER→HRBP, route IN_PROGRESS; the integrations receiver fired the notifier path live (Slack no-op, graceful) · **[doc]** docs/FUNCTIONAL_TEST_MATRIX.md (every brief behaviour → test(s) → status, honest notes) · commit `WEB_COE W3 — functional test matrix (web)`
 

@@ -19,9 +19,14 @@ export function useCycleScores(cycle: string | undefined) {
 
 export function useGoalMutations(cycle: string | undefined) {
   const qc = useQueryClient();
+  // Invalidate by the stable PREFIX, not a cycle-specific key. The list query key
+  // normalizes the cycle to "all" when none is selected (`cycle ?? "all"`), so a
+  // `["goals","list", cycle]` key with cycle===undefined never matched the cached
+  // `["goals","list","all"]` query — approve/create/recompute showed a success
+  // toast but the row never refetched. A prefix match covers every cached variant.
   const refresh = () => {
-    void qc.invalidateQueries({ queryKey: ["goals", "list", cycle] });
-    void qc.invalidateQueries({ queryKey: ["cycles", "scores", cycle] });
+    void qc.invalidateQueries({ queryKey: ["goals", "list"] });
+    void qc.invalidateQueries({ queryKey: ["cycles", "scores"] });
   };
   return {
     create: useMutation({

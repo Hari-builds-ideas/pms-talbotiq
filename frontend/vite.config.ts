@@ -9,6 +9,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@shared": path.resolve(__dirname, "../shared/src"),
+      // shared/ lives outside the frontend root, so its bare `axios` import must
+      // be pinned to the frontend's copy (one instance; web only — mobile/Metro
+      // resolves shared's deps from mobile/node_modules).
+      axios: path.resolve(__dirname, "./node_modules/axios"),
     },
   },
   test: {
@@ -18,6 +23,8 @@ export default defineConfig({
     css: false,
   },
   server: {
+    // Allow the dev server to read the sibling shared/ source (outside frontend root).
+    fs: { allow: [".."] },
     port: 5173,
     host: true,
   },

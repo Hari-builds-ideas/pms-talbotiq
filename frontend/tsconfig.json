@@ -23,8 +23,10 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/src/*"],
+      "axios": ["./node_modules/axios"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../shared/src"]
 }

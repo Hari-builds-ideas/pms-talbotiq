@@ -1,11 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { configureWebApiClient } from "@/lib/api/configure";
 import { queryClient } from "@/lib/queryClient";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { AppRouter } from "@/app/router";
 import { Toaster } from "@/components/ui/sonner";
 import "@/styles/globals.css";
+
+// Wire the shared API client (token store + base URL) before anything uses it.
+configureWebApiClient();
 
 const USING_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
 

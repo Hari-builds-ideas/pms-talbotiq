@@ -1,0 +1,19 @@
+{
+  "//": "Reference tsconfig for the shared layer. It is typechecked in practice AS PART of each consumer (the frontend tsc includes ../shared/src and resolves axios; the mobile app does the same via its own tsconfig). axios/react/react-query are peer-resolved from the consumer, so a standalone `tsc -p` here needs the consumer's node_modules on the path.",
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2021", "DOM"],
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "axios": ["../frontend/node_modules/axios"]
+    }
+  },
+  "include": ["src"]
+}

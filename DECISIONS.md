@@ -548,3 +548,35 @@ together (exactly as Phase 0 frames it).
 the end of BUILD_7 (frontend 43 vitest, backend 1171). The platform-agnostic layer
 + every endpoint mobile needs are already in place and verified (`MOBILE_READINESS.md`
 + the 47/47 smoke). This is the blocker rule applied honestly, not abandoned work.
+
+---
+
+### D22 (BUILD_8 8.1) — Monorepo layout: `shared/` source via path-alias, re-export shims for web
+
+**Decision.** Create `shared/src/` holding the platform-agnostic modules, consumed
+by BOTH apps via a `@shared/*` path alias (web: vite + tsconfig; mobile: metro
+`watchFolders` + tsconfig) — NOT an npm workspace. The web's existing `@/lib/...`
+imports are preserved by turning the old files into one-line re-export SHIMS
+(`export * from "@shared/..."`), so no web feature code changes.
+
+**Options considered.** (a) npm workspaces (`@pms/shared` package) — REJECTED for
+this step: it re-hoists/reinstalls the frontend's node_modules and adds Metro
+workspace config, risking the green, verified web app (the hard constraint). (b)
+Re-point all 122 web imports from `@/lib/*` to `@pms/shared` — REJECTED: a large,
+risky find-replace across the app. (c) the chosen path-alias + shims — the frontend
+install is untouched; only an alias + 5 shim files change on the web side; the
+shared code is plain TS source each bundler compiles (Vite/esbuild for web, Metro
+for mobile), resolving `react`/`axios`/`react-query` from each consumer's
+node_modules (single instance per app).
+
+**Token store + base URL injection.** `shared/api/client.ts` exposes
+`configureApiClient({ baseURL, tokenStore, onForcedLogout })` + a `TokenStore`
+interface; the refresh-interceptor logic is shared verbatim. Web wires its
+localStorage/memory store (`lib/auth/tokenStore`) + `import.meta.env` base URL at
+bootstrap (`main.tsx`); mobile wires an `expo-secure-store` store + the Expo env
+base URL. This is the one behaviour-bearing change — gated by the web staying green
+(tsc + lint + build + 43 vitest + a live login) before 8.1 is committed.
+
+Modules moved: `enums.ts` (incl. `ROLE_RANK`), `types.ts`, `errors.ts`,
+`api/client.ts`, `api/endpoints.ts`, and the async-AI hooks `useAIJob`/`useAIAction`.
+UI (shadcn/Tailwind) does NOT move — mobile uses NativeWind/RN.

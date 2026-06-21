@@ -1,0 +1,11 @@
+{
+  "name": "@pms/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Platform-agnostic layer shared by the web (frontend/) and mobile (mobile/) apps: the typed API client (injected token store), types, enums, error mapper. Consumed via the @shared path alias — no build step; each app's bundler compiles the TS source and resolves react/axios from its own node_modules.",
+  "type": "module",
+  "main": "src/index.ts",
+  "peerDependencies": {
+    "axios": "*"
+  }
+}

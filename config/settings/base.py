@@ -281,7 +281,9 @@ REST_FRAMEWORK = {
         # tenant/user/ai rates come from rate_limits_for(tenant).
         "anon": env("THROTTLE_ANON", default="100/min"),
     },
-    "EXCEPTION_HANDLER": "rest_framework.views.exception_handler",
+    # Maps DRF-unhandled Django ValidationError (e.g. a malformed UUID query param
+    # filtering a UUIDField) to a 400 instead of a 500; see apps.core.exception_handler.
+    "EXCEPTION_HANDLER": "apps.core.exception_handler.exception_handler",
 }
 
 # ─── simplejwt ─────────────────────────────────────────────────────────

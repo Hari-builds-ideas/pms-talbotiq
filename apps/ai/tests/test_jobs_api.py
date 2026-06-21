@@ -76,6 +76,16 @@ def test_list_filters_to_target_and_own_jobs(org):
     assert ids == [str(mine.id)]  # only my job for that target
 
 
+def test_list_malformed_target_is_empty_not_500(org):
+    """A non-uuid ``target`` (target_id is a UUIDField) must not crash the ORM with
+    a django ValidationError → 500; it can't match any artifact, so it's an empty
+    list. (Found by the 6.5 stabilization sweep.)"""
+    _job(org.tenant, org.manager, target_id=None)
+    resp = _client(org.manager).get(f"{JOBS}?target=review")  # not a uuid
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_unauthenticated_is_401(org):
     job = _job(org.tenant, org.manager)
     assert APIClient().get(f"{JOBS}/{job.id}").status_code == 401

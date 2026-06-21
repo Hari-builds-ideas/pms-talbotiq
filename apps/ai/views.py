@@ -8,6 +8,8 @@ is enforced by the gateway (over budget → 429).
 """
 from __future__ import annotations
 
+import uuid
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -102,6 +104,13 @@ class AIJobListView(APIView):
         jobs = AIJob.objects.filter(requested_by=request.user)
         target = request.query_params.get("target")
         if target:
+            # target_id is a UUIDField — a malformed (non-uuid) value would make
+            # the ORM raise django ValidationError (a 500). It can't match any
+            # artifact, so return an empty list instead of crashing.
+            try:
+                uuid.UUID(str(target))
+            except (ValueError, TypeError, AttributeError):
+                return Response([])
             jobs = jobs.filter(target_id=target)
         jobs = jobs.order_by("-created_at")[:20]
         return Response(AIJobSerializer(jobs, many=True).data)

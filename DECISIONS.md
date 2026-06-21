@@ -412,3 +412,34 @@ returned the normalized map shape, so `normalizeOrgTree` (added in 6.1) would
 iterate a non-array and crash the org chart in dev/mock mode (the live stack was
 unaffected — the real backend already returns the raw array). The mock now returns
 the RAW wire shape, and the handler honors `?root`/`?depth`.
+
+---
+
+### D17 (BUILD_6/6.5) — Malformed input → 400 via a custom DRF exception handler
+
+**Decision.** Add `apps/core/exception_handler.py` and set it as the DRF
+`EXCEPTION_HANDLER`. It defers to the default handler; only when DRF returns
+nothing AND the exception is a Django (`django.core.exceptions`) `ValidationError`
+does it return a 400 (`INVALID_INPUT`). Plus a targeted empty-list guard on the
+AI-jobs poll for a non-uuid `target`.
+
+**Why.** The 6.5 sweep found that a malformed UUID in a query param filtering a
+`UUIDField` (e.g. `?cycle=notauuid`, `?actor=notauuid`) makes the ORM raise Django
+`ValidationError` during queryset evaluation — which the default DRF handler
+doesn't recognise, so it surfaced as a 500 on six endpoints (reviews, goals, audit,
+analytics calibration + department, succession nine-box, ai jobs).
+
+**Options considered.** (a) Validate the UUID per-view before filtering (~6+ edits,
+each deciding empty-vs-400) — rejected: repetitive, easy to miss a future endpoint.
+(b) The chosen single handler — fixes the whole class (and future cases) in one
+place. (c) Broadly catch all exceptions → 400 — rejected: would mask genuine
+server bugs.
+
+**Why safe (no masking).** A Django `ValidationError` is BY DEFINITION an
+input/validation failure → a client error (400); genuine server bugs raise other
+exception types (AttributeError, KeyError, …) and still surface as 500. Domain
+validators (cycles end_date, goals weight, feedback) already convert to a DRF error
+upstream in serializers/services, so they never reach this fallback. The full suite
+(1149→1150, all green incl. existing status-code assertions) confirms no domain
+status changed. The AI-jobs poll keeps an empty-list guard (semantically better
+than 400 for "find the job for this artifact").

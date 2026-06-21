@@ -3,15 +3,16 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1–6.4 done; 6.5 next)
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE COMPLETE (6.1–6.5 + report) → BUILD_7 next
 
 BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1144 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
 3 Q1 large-tenant items) → BUILD_7 (Tier-3: review comments + nine-box reposition,
-backend-first) → BUILD_8 (mobile foundation) → BUILD_9 (mobile screens). Done: 6.1
-(org crash), 6.2 (admin users pagination+search), 6.3 (scoped single-employee
-score lookup), 6.4 (org-chart lazy-load). Next: 6.5 (stabilization sweep) +
-BUILD_6_REPORT.md. BUILD_5 recap below.
+backend-first) → BUILD_8 (mobile foundation) → BUILD_9 (mobile screens). BUILD_6 COMPLETE: 6.1 (org crash), 6.2 (admin pagination+search), 6.3 (scoped
+single score), 6.4 (org lazy-load), 6.5 (stabilization sweep — found+fixed a
+malformed-UUID-param 500 class via a custom exception handler). BUILD_6_REPORT.md
+written. Next: BUILD_7 (Tier-3: review comments + nine-box reposition). BUILD_5
+recap below.
 
 ### BUILD_5 recap
 BUILD_5 delivered: 5.1, 5.2, 5.4a, 5.4b, 5.5 (+5.5b), 5.6, 5.7. The concrete,
@@ -89,6 +90,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+33 · BUILD_6/6.5 · stabilization sweep · ran `scripts/smoke.py` (47/47 — every surface × every role; RBAC boundaries hold: admin/audit DENIED for manager, succession 404 for employee, analytics-dept DENIED for employee; AI alive; no 500s) + an extended sweep of complex/detail endpoints. FOUND a bug class: a malformed UUID in a query param filtering a `UUIDField` → ORM raises Django `ValidationError` → 500 (default DRF handler doesn't catch it). 6 endpoints affected: `/api/ai/jobs?target=`, `/api/reviews?cycle=`, `/api/goals?cycle=`, `/api/audit/logs?actor=`, `/api/analytics/{calibration,department}?cycle=`, `/api/succession/nine-box?cycle=`. FIX: `apps/core/exception_handler.py` (new — maps DRF-UNHANDLED Django ValidationError → 400 `INVALID_INPUT`; genuine server bugs raise other types and still 500, so no masking; domain validators that convert upstream never reach it), wired via `config/settings/base.py` REST_FRAMEWORK.EXCEPTION_HANDLER; plus a targeted empty-list guard on `apps/ai/views.py` AIJobListView (a non-uuid target can't match an artifact → `[]`, better UX for the poll-reattach). Tests: `apps/core/tests/test_exception_handler.py` (4 endpoints → 400 + a well-formed-uuid-still-200 control), `apps/ai/tests/test_jobs_api.py` (+malformed-target→[]). DECISION D17. Frontend: 6.1 already swept the iteration-crash class; no nested-array iterations exist → no frontend change. · **[test]** handler 5 + ai-jobs 6; FULL backend 1150 passed/2 deselected (+6, no regression — the global handler changed no domain status) · **[live]** the 6 endpoints now 400 not 500; smoke 47/47 · commit `BUILD_6 6.5` + BUILD_6_REPORT.md
 
 32 · BUILD_6/6.4 · org-chart expand-on-demand / lazy-load (Q1 item 3) · backend `apps/org/services.py` (build_org_tree gains `root`/`depth`; new `_bounded_subtree` — BFS from a visible root, or the actor's visible roots, down `depth` levels, all intersected with the visible set so scope/tenant isolation is identical; out-of-scope/cross-tenant root → 404 NotFound, mirrors person_card's no-leak rule; default path byte-identical), `apps/org/views.py` (OrgTreeView parses `?root`/`?depth`; bad depth ignored), `apps/org/tests/test_api.py` (+5: depth=1 top-levels-only-with-direct_report_ids-preserved; root=subtree-only; root-out-of-scope-404; root-cross-tenant-404; lazy-params-don't-widen-employee-scope) · frontend `lib/types.ts` (OrgNode += direct_report_ids — the has-children signal), `lib/org.ts` (+childrenOf/allChildrenLoaded pure helpers), `lib/org.test.ts` (+2), `lib/api/endpoints.ts` (orgApi.tree(params)), new `features/org/LazyOrgTreeView.tsx` (initial `?depth=1`, expand fetches `?root=<id>&depth=1`, per-node spinner, merge), `features/org/OrgPage.tsx` (TreeTab → LazyOrgTreeView for HRBP/Admin, existing whole-tree FullTree for Manager/Employee). ALSO fixed a 6.1-introduced MOCK regression: `mocks/data.ts orgTree()` still returned the normalized map shape → normalizeOrgTree would iterate a non-array and crash in dev/mock mode (live was fine, real backend = raw); now returns RawOrgTree (array nodes + direct_report_ids + {from,to}); `mocks/handlers.ts` honors `?root`/`?depth`. DECISION D16. · **[test]** org 50 pass (+5); FULL backend 1144 passed/2 deselected (no regression); frontend tsc+lint clean, 37 vitest (+2), build clean · **[live]** restarted web + recreated frontend; default tree 31 nodes (display + direct_report_ids present); `?depth=1`→5 nodes (roots+children, ≪ full); `?root=<root>&depth=1`→4 (root+3 children, roots=[root]); `?root=<bogus>`→404 · commit `BUILD_6 6.4`
 

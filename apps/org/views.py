@@ -56,12 +56,25 @@ from .serializers import (
 class OrgTreeView(RBACMixin, APIView):
     """``GET /api/org/tree`` (VIEW_ORG_CHART) — the actor-scoped org tree
     (``{nodes, edges, roots}`` with headcount + vacancy rollups). The service
-    applies the §2 scope tier, so an employee sees only their line."""
+    applies the §2 scope tier, so an employee sees only their line.
+
+    Optional lazy params (the default with neither is the full scoped tree):
+      * ``?root=<id>`` → the subtree under a visible node (out-of-scope → 404);
+      * ``?depth=<n>`` → only ``n`` levels below the root(s), for expand-on-demand.
+    """
 
     required_capability = Capability.VIEW_ORG_CHART
 
     def get(self, request):
-        return Response(services.build_org_tree(request.user))
+        root = request.query_params.get("root") or None
+        depth = None
+        depth_raw = request.query_params.get("depth")
+        if depth_raw not in (None, ""):
+            try:
+                depth = max(0, int(depth_raw))
+            except (TypeError, ValueError):
+                depth = None  # a non-integer depth is ignored → behave as unbounded
+        return Response(services.build_org_tree(request.user, root=root, depth=depth))
 
 
 class PersonCardView(RBACMixin, APIView):

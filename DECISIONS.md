@@ -378,3 +378,37 @@ counts already use the `/users/stats` aggregate (D from 1.4), so this path is on
 the table itself. Frontend consumers that relied on the full array (the manager
 column + the manager dropdowns) now read the tenant-wide `useDirectory` instead.
 Resolves QUESTIONS Q1 item 1.
+
+---
+
+### D16 (BUILD_6/6.4) — Org-chart lazy-load: additive `?root`/`?depth`, scope-identical
+
+**Decision.** The org tree endpoint gains optional `?root=<id>` (subtree under a
+visible node) and `?depth=<n>` (only n levels below the root[s]) params for
+expand-on-demand. The default (neither param) is byte-for-byte the full scoped
+tree — unchanged. The frontend uses lazy mode ONLY for broad-scope roles
+(HRBP/Admin) via `LazyOrgTreeView`; Manager/Employee keep the whole-tree
+`OrgTreeView` (their line is small). Each node carries its full
+`direct_report_ids`, which doubles as the "has children to expand" signal even
+before the children are fetched.
+
+**Options considered.** (a) Change the DEFAULT `/api/org/tree` to return only top
+levels — REJECTED: `useDirectory` (app-wide name resolution) and the full-tree
+render depend on the complete node set; truncating the default would break name
+resolution everywhere. (b) `?parent=<id>` returning exactly one level — fine, but
+`?root` + `?depth` is a strict superset (depth=1 == one level) and also supports
+fetching a whole branch in one call. (c) Pure client-side virtualization with no
+backend change — REJECTED: doesn't reduce the payload for a 2k-node tenant.
+
+**Why safe.** `_bounded_subtree` BFS stays intersected with the SAME `_visible_ids`
+set as the full tree, so scope/tenant isolation is identical — an Employee with
+`?depth=` or `?root=` still only ever sees their own line; a cross-tenant/out-of-
+scope `root` is a 404 (NotFound), never a 403 leak (mirrors `person_card`). Tests
+assert all of this. The lazy frontend is gated to HRBP/Admin (no dead UI for
+others). Resolves QUESTIONS Q1 item 3.
+
+**Also fixed here (regression introduced in 6.1):** the MSW mock `orgTree()` still
+returned the normalized map shape, so `normalizeOrgTree` (added in 6.1) would
+iterate a non-array and crash the org chart in dev/mock mode (the live stack was
+unaffected — the real backend already returns the raw array). The mock now returns
+the RAW wire shape, and the handler honors `?root`/`?depth`.

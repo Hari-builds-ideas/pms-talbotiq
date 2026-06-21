@@ -657,7 +657,34 @@ export const handlers = [
   http.get(`${API}/org/tree`, async ({ request }) => {
     await delay(GET_DELAY);
     if (!currentUser(request)) return unauthorized();
-    return HttpResponse.json(orgTree());
+    const url = new URL(request.url);
+    const root = url.searchParams.get("root");
+    const depthRaw = url.searchParams.get("depth");
+    const depth = depthRaw ? Math.max(0, parseInt(depthRaw, 10)) : null;
+    const full = orgTree();
+    if (!root && depth === null) return HttpResponse.json(full); // full tree
+
+    // Bounded subtree (mirrors the backend BFS) so dev exercises real lazy-load.
+    const byId = Object.fromEntries(full.nodes.map((n) => [n.id, n]));
+    if (root && !byId[root]) return HttpResponse.json({ detail: "Not found" }, { status: 404 });
+    const start = root ? [root] : full.roots;
+    const included = new Set<string>();
+    const frontier: Array<[string, number]> = start.map((s) => [s, 0]);
+    while (frontier.length) {
+      const next = frontier.pop();
+      if (!next) break;
+      const [id, d] = next;
+      if (included.has(id) || !byId[id]) continue;
+      included.add(id);
+      if (depth === null || d < depth) {
+        for (const c of byId[id].direct_report_ids) frontier.push([c, d + 1]);
+      }
+    }
+    return HttpResponse.json({
+      roots: start,
+      nodes: full.nodes.filter((n) => included.has(n.id)),
+      edges: full.edges.filter((e) => e.from != null && included.has(e.from) && included.has(e.to)),
+    });
   }),
   http.get(`${API}/org/search`, async ({ request }) => {
     await delay(GET_DELAY);

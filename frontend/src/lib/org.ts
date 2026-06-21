@@ -1,4 +1,4 @@
-import type { OrgTree, RawOrgTree } from "@/lib/types";
+import type { OrgNode, OrgTree, RawOrgTree } from "@/lib/types";
 
 /**
  * Normalize the raw `GET /api/org/tree` payload into the shape the tree
@@ -28,4 +28,19 @@ export function normalizeOrgTree(raw: RawOrgTree | null | undefined): OrgTree {
   const roots = (raw?.roots ?? []).filter(Boolean);
 
   return { nodes, edges, roots };
+}
+
+/** The loaded children of a node (its `direct_report_ids` that are present in the
+ *  node map). Used by the lazy org tree to render a node's expanded children. */
+export function childrenOf(id: string, nodes: Record<string, OrgNode>): OrgNode[] {
+  return (nodes[id]?.direct_report_ids ?? [])
+    .map((cid) => nodes[cid])
+    .filter((n): n is OrgNode => Boolean(n));
+}
+
+/** True when every one of a node's `direct_report_ids` is already in the map —
+ *  i.e. expanding it needs no further fetch. A node with no children is trivially
+ *  "loaded". */
+export function allChildrenLoaded(id: string, nodes: Record<string, OrgNode>): boolean {
+  return (nodes[id]?.direct_report_ids ?? []).every((cid) => cid in nodes);
 }

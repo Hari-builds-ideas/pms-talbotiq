@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOrgTree } from "./org";
+import { allChildrenLoaded, childrenOf, normalizeOrgTree } from "./org";
 import type { OrgNode, RawOrgTree } from "@/lib/types";
 
 const node = (id: string, extra: Partial<OrgNode> = {}): OrgNode => ({
@@ -9,6 +9,7 @@ const node = (id: string, extra: Partial<OrgNode> = {}): OrgNode => ({
   role: "EMPLOYEE",
   headcount: 1,
   vacancies: 0,
+  direct_report_ids: [],
   ...extra,
 });
 
@@ -60,5 +61,26 @@ describe("normalizeOrgTree", () => {
     expect(Object.keys(t.nodes)).toEqual(["a"]); // null + id-less dropped
     expect(t.edges).toEqual([["a", "a"]]); // only the fully-populated edge survives
     expect(t.roots).toEqual([]);
+  });
+});
+
+describe("lazy org tree helpers", () => {
+  const nodes = {
+    a: node("a", { direct_report_ids: ["b", "c"] }),
+    b: node("b"), // b's children not loaded
+    // c is referenced by a but NOT in the map (unfetched)
+  };
+
+  it("childrenOf returns only the loaded children", () => {
+    expect(childrenOf("a", nodes).map((n) => n.id)).toEqual(["b"]); // c unfetched → skipped
+    expect(childrenOf("b", nodes)).toEqual([]); // leaf
+    expect(childrenOf("missing", nodes)).toEqual([]); // unknown id
+  });
+
+  it("allChildrenLoaded is false while a child is unfetched, true once present", () => {
+    expect(allChildrenLoaded("a", nodes)).toBe(false); // c missing
+    expect(allChildrenLoaded("b", nodes)).toBe(true); // no children → trivially loaded
+    const full = { ...nodes, c: node("c") };
+    expect(allChildrenLoaded("a", full)).toBe(true); // both b and c present
   });
 });

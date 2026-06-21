@@ -98,6 +98,51 @@ def test_manager_tree_is_subtree_plus_ancestors(org):
     assert "peer@acme.test" not in _emails(nodes)
 
 
+# ── lazy load: ?root=<id> subtree + ?depth=<n> (expand-on-demand) ─────────────
+
+
+def test_tree_depth_one_returns_top_levels_only(org):
+    """``?depth=1`` (HRBP) returns roots + their DIRECT children, not deeper
+    nodes — but a boundary node keeps its full ``direct_report_ids`` so the client
+    still shows an expand affordance and can fetch the next level."""
+    body = _client_for(org.hrbp).get(f"{ORG}tree", {"depth": 1}).json()
+    ids = {n["id"] for n in body["nodes"]}
+    assert {str(org.hrbp.id), str(org.manager.id), str(org.peer.id)} <= ids  # roots + L1
+    assert str(org.report.id) not in ids  # depth 2 → omitted
+    mgr_node = next(n for n in body["nodes"] if n["id"] == str(org.manager.id))
+    assert str(org.report.id) in mgr_node["direct_report_ids"]  # expand affordance survives
+
+
+def test_tree_root_returns_only_that_subtree(org):
+    """``?root=<manager>`` returns the subtree under the manager, not the tenant."""
+    body = _client_for(org.hrbp).get(f"{ORG}tree", {"root": str(org.manager.id)}).json()
+    ids = {n["id"] for n in body["nodes"]}
+    assert ids == {str(org.manager.id), str(org.report.id)}
+    assert body["roots"] == [str(org.manager.id)]
+    assert str(org.peer.id) not in ids and str(org.hrbp.id) not in ids
+
+
+def test_tree_root_out_of_scope_is_404(org):
+    """An Employee asking for a node off their own line → 404 (no existence leak)."""
+    resp = _client_for(org.report).get(f"{ORG}tree", {"root": str(org.peer.id)})
+    assert resp.status_code == 404
+
+
+def test_tree_root_cross_tenant_is_404(org, other_tenant):
+    outsider = UserFactory(tenant=other_tenant, role="EMPLOYEE")
+    resp = _client_for(org.hrbp).get(f"{ORG}tree", {"root": str(outsider.id)})
+    assert resp.status_code == 404
+
+
+def test_lazy_params_do_not_widen_employee_scope(org):
+    """Lazy params never widen scope: an Employee (OWN) never sees the peer line,
+    whether via ``?depth=`` or ``?root=`` (even rooted at a visible ancestor)."""
+    emp = _client_for(org.report)
+    for params in ({"depth": 1}, {"root": str(org.hrbp.id)}):
+        ids = {n["id"] for n in emp.get(f"{ORG}tree", params).json()["nodes"]}
+        assert str(org.peer.id) not in ids
+
+
 # ── person-card scoping + cross-tenant ──────────────────────────────────────────
 
 

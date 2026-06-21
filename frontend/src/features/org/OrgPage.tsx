@@ -39,6 +39,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { OrgTreeView } from "./OrgTreeView";
+import { LazyOrgTreeView } from "./LazyOrgTreeView";
 import { PersonSheet } from "./PersonSheet";
 import { useOrgMutations, useOrgTree, usePositions, useVacancies } from "./useOrg";
 import { useDirectory } from "@/lib/hooks/useDirectory";
@@ -106,19 +107,35 @@ function TreeTab({
   onSelect: (id: string) => void;
   selectedId: string | null;
 }) {
-  const tree = useOrgTree();
+  const { atLeast } = useAuth();
   return (
     <Panel title="Reporting tree" icon={Network}>
-      {tree.isLoading ? (
-        <LinesSkeleton lines={8} />
-      ) : tree.isError ? (
-        <ErrorState error={tree.error} onRetry={() => tree.refetch()} compact />
-      ) : tree.data && tree.data.roots.length > 0 ? (
-        <OrgTreeView tree={tree.data} selectedId={selectedId} onSelect={onSelect} />
+      {atLeast("HRBP") ? (
+        // Broad scope (HRBP/Admin) can have a large tenant tree → expand-on-demand.
+        <LazyOrgTreeView selectedId={selectedId} onSelect={onSelect} />
       ) : (
-        <EmptyState compact icon={Network} title="No org data" description="No reporting structure in your scope yet." />
+        // Narrow scope (Manager/Employee) sees only their small line → load it whole.
+        <FullTree onSelect={onSelect} selectedId={selectedId} />
       )}
     </Panel>
+  );
+}
+
+function FullTree({
+  onSelect,
+  selectedId,
+}: {
+  onSelect: (id: string) => void;
+  selectedId: string | null;
+}) {
+  const tree = useOrgTree();
+  if (tree.isLoading) return <LinesSkeleton lines={8} />;
+  if (tree.isError) return <ErrorState error={tree.error} onRetry={() => tree.refetch()} compact />;
+  if (tree.data && tree.data.roots.length > 0) {
+    return <OrgTreeView tree={tree.data} selectedId={selectedId} onSelect={onSelect} />;
+  }
+  return (
+    <EmptyState compact icon={Network} title="No org data" description="No reporting structure in your scope yet." />
   );
 }
 

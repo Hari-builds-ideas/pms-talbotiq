@@ -235,7 +235,9 @@ export const jdApi = {
 
 export const orgApi = {
   // Returns the raw wire shape; callers normalize via normalizeOrgTree (see useOrgTree).
-  tree: () => unwrap<RawOrgTree>(api.get("/org/tree")),
+  // Optional lazy params: { root } = subtree under a node, { depth } = N levels.
+  tree: (params: { root?: string; depth?: number } = {}) =>
+    unwrap<RawOrgTree>(api.get("/org/tree", { params })),
   person: (id: string) => unwrap<PersonCard>(api.get(`/org/people/${id}`)),
   search: (q: string, params: PageParams = {}) =>
     unwrap<Paginated<PersonRef>>(api.get("/org/search", { params: { q, ...params } })),

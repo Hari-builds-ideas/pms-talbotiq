@@ -22,7 +22,8 @@ import type {
   Me,
   NineBoxPlacement,
   Nudge,
-  OrgTree,
+  OrgNode,
+  RawOrgTree,
   Position,
   Review,
   ReviewAssessment,
@@ -410,33 +411,44 @@ export const jdRequests: JdRequest[] = [
 
 // ---- Org -------------------------------------------------------------------
 
-export function orgTree(): OrgTree {
-  const nodes: OrgTree["nodes"] = {};
+// Returns the RAW wire shape (array nodes + {from,to} edges) the real API emits,
+// so the client's normalizeOrgTree path is exercised identically in dev/mock mode.
+export function orgTree(): RawOrgTree {
+  const byId: Record<string, OrgNode> = {};
   for (const u of USERS) {
     if (!u.is_active) continue;
-    nodes[u.id] = {
+    byId[u.id] = {
       id: u.id, email: u.email, display: u.display, role: u.role,
-      headcount: 0, vacancies: 0,
+      headcount: 0, vacancies: 0, direct_report_ids: [],
     };
   }
-  const edges: Array<[string, string]> = [];
+  const edges: Array<{ from: string; to: string }> = [];
   for (const u of USERS) {
-    if (!u.is_active) continue;
-    if (u.manager && nodes[u.manager]) edges.push([u.manager, u.id]);
+    if (!u.is_active || !u.manager || !byId[u.manager]) continue;
+    edges.push({ from: u.manager, to: u.id });
+    byId[u.manager].direct_report_ids.push(u.id);
   }
+  for (const n of Object.values(byId)) n.direct_report_ids.sort();
   // headcount = subtree size (inclusive); vacancies = OPEN positions in subtree
   function subtree(id: string): string[] {
-    const kids = edges.filter(([p]) => p === id).map(([, c]) => c);
-    return [id, ...kids.flatMap(subtree)];
+    return [id, ...(byId[id]?.direct_report_ids ?? []).flatMap(subtree)];
   }
-  for (const id of Object.keys(nodes)) {
-    const sub = subtree(id);
-    nodes[id].headcount = sub.length;
-    nodes[id].vacancies = positions.filter(
+  for (const n of Object.values(byId)) {
+    const sub = subtree(n.id);
+    n.headcount = sub.length;
+    n.vacancies = positions.filter(
       (p) => p.status === "OPEN" && p.reports_to && sub.includes(p.reports_to),
     ).length;
   }
-  return { roots: ["u-admin-001"], nodes, edges };
+  // roots = active users with no active manager
+  const roots = Object.values(byId)
+    .filter((n) => {
+      const u = USERS.find((x) => x.id === n.id);
+      return !u?.manager || !byId[u.manager];
+    })
+    .map((n) => n.id)
+    .sort();
+  return { roots, nodes: Object.values(byId), edges };
 }
 
 export const positions: Position[] = [

@@ -299,6 +299,10 @@ export interface OrgNode {
   role: Role;
   headcount: number;
   vacancies: number;
+  /** All direct-report ids (from the full tree) — present even when the children
+   *  themselves aren't in the payload (lazy mode), so the client knows a node has
+   *  children to expand. */
+  direct_report_ids: UUID[];
 }
 
 /**

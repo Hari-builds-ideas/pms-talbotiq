@@ -3,14 +3,15 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1, 6.2, 6.3 done)
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1–6.4 done; 6.5 next)
 
-BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1133 passing).
+BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1144 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
 3 Q1 large-tenant items) → BUILD_7 (Tier-3: review comments + nine-box reposition,
 backend-first) → BUILD_8 (mobile foundation) → BUILD_9 (mobile screens). Done: 6.1
 (org crash), 6.2 (admin users pagination+search), 6.3 (scoped single-employee
-score lookup). BUILD_5 recap below.
+score lookup), 6.4 (org-chart lazy-load). Next: 6.5 (stabilization sweep) +
+BUILD_6_REPORT.md. BUILD_5 recap below.
 
 ### BUILD_5 recap
 BUILD_5 delivered: 5.1, 5.2, 5.4a, 5.4b, 5.5 (+5.5b), 5.6, 5.7. The concrete,
@@ -88,6 +89,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+32 · BUILD_6/6.4 · org-chart expand-on-demand / lazy-load (Q1 item 3) · backend `apps/org/services.py` (build_org_tree gains `root`/`depth`; new `_bounded_subtree` — BFS from a visible root, or the actor's visible roots, down `depth` levels, all intersected with the visible set so scope/tenant isolation is identical; out-of-scope/cross-tenant root → 404 NotFound, mirrors person_card's no-leak rule; default path byte-identical), `apps/org/views.py` (OrgTreeView parses `?root`/`?depth`; bad depth ignored), `apps/org/tests/test_api.py` (+5: depth=1 top-levels-only-with-direct_report_ids-preserved; root=subtree-only; root-out-of-scope-404; root-cross-tenant-404; lazy-params-don't-widen-employee-scope) · frontend `lib/types.ts` (OrgNode += direct_report_ids — the has-children signal), `lib/org.ts` (+childrenOf/allChildrenLoaded pure helpers), `lib/org.test.ts` (+2), `lib/api/endpoints.ts` (orgApi.tree(params)), new `features/org/LazyOrgTreeView.tsx` (initial `?depth=1`, expand fetches `?root=<id>&depth=1`, per-node spinner, merge), `features/org/OrgPage.tsx` (TreeTab → LazyOrgTreeView for HRBP/Admin, existing whole-tree FullTree for Manager/Employee). ALSO fixed a 6.1-introduced MOCK regression: `mocks/data.ts orgTree()` still returned the normalized map shape → normalizeOrgTree would iterate a non-array and crash in dev/mock mode (live was fine, real backend = raw); now returns RawOrgTree (array nodes + direct_report_ids + {from,to}); `mocks/handlers.ts` honors `?root`/`?depth`. DECISION D16. · **[test]** org 50 pass (+5); FULL backend 1144 passed/2 deselected (no regression); frontend tsc+lint clean, 37 vitest (+2), build clean · **[live]** restarted web + recreated frontend; default tree 31 nodes (display + direct_report_ids present); `?depth=1`→5 nodes (roots+children, ≪ full); `?root=<root>&depth=1`→4 (root+3 children, roots=[root]); `?root=<bogus>`→404 · commit `BUILD_6 6.4`
 
 31 · BUILD_6/6.3 · scoped single-employee score lookup (Q1 item 2) · backend `apps/cycles/views.py` (new `EmployeeCycleScoreView`: `GET /api/cycles/<cid>/scores/<employee_id>` — one CycleScore, scope-bound OWN-self/TEAM-subtree+self/TENANT-anyone; out-of-scope or cross-tenant → 404 (no existence leak); no-score-yet → 404; mirrors MyCycleScoreView + the cohort scope branch), `apps/cycles/urls.py` (route declared AFTER `scores/me` so the literal wins — "me" is not a uuid; before the cohort `scores`), `apps/cycles/tests/test_api.py` (+6: own-200, peer-denied-404-with-score-present, manager-subtree-200-vs-peer-404, hrbp-any-200, cross-tenant-404, no-score-404) · frontend `lib/api/endpoints.ts` (+`cyclesApi.score(cid,eid)`), `features/reviews/ReviewEvidence.tsx` (EvidencePanel fetched the WHOLE cohort just to `.find` one employee → now the scoped single lookup with `retry:false`; a 404 leaves the score block hidden, exactly as the old `.find`→undefined did). KEPT the cohort `cyclesApi.scores` for the genuine multi-row consumers: the GoalsPage per-employee grid + calibration (both Manager+ in nav, so no 403). · **[test]** cycles 22 pass (+6); FULL backend 1139 passed/2 deselected (no regression); frontend tsc+lint clean, 35 vitest, build clean · **[live]** restarted web + recreated frontend; `/scores/<emp>` in-scope→200 (employee matches, has t_score), bogus uuid→404, `scores/me` still resolves (literal wins over the uuid route) · commit `BUILD_6 6.3`
 

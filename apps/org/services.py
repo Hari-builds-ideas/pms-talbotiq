@@ -203,16 +203,29 @@ def _visible_ids(actor, tree) -> set[str]:
 # ── public reads ──────────────────────────────────────────────────────────────
 
 
-def build_org_tree(actor) -> dict:
+def build_org_tree(actor, root=None, depth=None) -> dict:
     """The scoped org tree for ``actor``: ``{nodes, edges, roots}``.
 
     ``roots`` are the topmost VISIBLE nodes (a node whose manager is not itself
     visible is a root of the returned subgraph). Edges connect a visible manager
     to a visible report.
+
+    Lazy modes (ADDITIVE — the default below is byte-for-byte unchanged):
+      * ``root=<id>`` → the subtree under that node (the node + its visible
+        descendants). An out-of-scope / cross-tenant root is a 404 (``NotFound``),
+        never a 403 that would leak existence — and an Employee can still only
+        ever reach a node on their own line (the visible set is unchanged).
+      * ``depth=<n>`` → include only ``n`` levels below the root(s); deeper nodes
+        are omitted, but every returned node keeps its full ``direct_report_ids``
+        so the client knows which boundary nodes still have (unfetched) children
+        and renders an expand affordance for them (expand → fetch ``?root=<id>``).
     """
     tree = get_full_tree(actor.tenant_id)
     all_nodes = tree["nodes"]
     visible = _visible_ids(actor, tree) & set(all_nodes)
+
+    if root is not None or depth is not None:
+        return _bounded_subtree(all_nodes, visible, root, depth)
 
     nodes = [all_nodes[i] for i in sorted(visible)]
     edges = [
@@ -222,6 +235,41 @@ def build_org_tree(actor) -> dict:
     ]
     roots = sorted(n["id"] for n in nodes if n["manager_id"] not in visible)
     return {"nodes": nodes, "edges": edges, "roots": roots}
+
+
+def _bounded_subtree(all_nodes, visible, root, depth) -> dict:
+    """A scoped subtree of the full (cached) tree: BFS from ``root`` — or, when
+    ``root`` is None, from the actor's visible roots — down ``depth`` levels
+    (``depth`` None → the whole subtree). Everything stays intersected with
+    ``visible`` so scope/tenant isolation is identical to the full tree."""
+    if root is not None:
+        root = str(root)
+        if root not in visible:
+            # Out of scope / cross-tenant / unknown → 404, never a leak.
+            raise NotFound("No such node in your org view.")
+        start = [root]
+    else:
+        start = sorted(i for i in visible if all_nodes[i]["manager_id"] not in visible)
+
+    included: set[str] = set()
+    frontier = [(nid, 0) for nid in start]
+    while frontier:
+        nid, d = frontier.pop()
+        if nid in included or nid not in visible:
+            continue
+        included.add(nid)
+        if depth is None or d < depth:
+            for child in all_nodes[nid]["direct_report_ids"]:
+                if child in visible:
+                    frontier.append((child, d + 1))
+
+    nodes = [all_nodes[i] for i in sorted(included)]
+    edges = [
+        {"from": n["manager_id"], "to": n["id"]}
+        for n in nodes
+        if n["manager_id"] in included
+    ]
+    return {"nodes": nodes, "edges": edges, "roots": sorted(start)}
 
 
 def person_card(actor, user_id) -> dict:

@@ -3,7 +3,18 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH · BUILD_6+7 COMPLETE · BUILD_8 mobile IN PROGRESS (8.1 shared extraction ✓ web green; 8.2 Expo scaffold ✓ bundles — AWAITING Hari's device run)
+## Current: WEB_COE build (unattended) · W1 SSO SAML+OAuth COMPLETE ✓ ([test] 1185 green + [live] proven) — W2 WCAG, W3 functional matrix NEXT · (mobile mock-adaptation PAUSED, not cancelled)
+
+COE web/back-end gap-closing per WEB_BUILD_COE.md (read in full w/ COE_REQUIREMENTS_MAP.md
++ BUILD_0). W1 done: OIDC verified end-to-end + a real SAML 2.0 SP added (python3-saml,
+per-tenant config, signed-assertion validation, tenant isolation, attribute→role JIT
+sync+audit, replay/expiry guards) — proven by 12 mock-IdP tests + a live signed
+round-trip, full suite 1185 green. docs/SSO.md written, DECISIONS D25. See ordinal 41.
+NEXT: W2 (WCAG 2.1 AA axe pass + fixes + a11y guard), W3 (functional test matrix), then
+WEB_COE_REPORT.md. 🔑 honestly flagged as NOT code: a real prod IdP (Okta/Azure), TLS/
+AES-at-rest, pen-test, the prod LLM key, user manuals.
+
+## (prior) FINAL PUSH · BUILD_6+7 COMPLETE · BUILD_8 mobile IN PROGRESS (8.1 shared extraction ✓ web green; 8.2 Expo scaffold ✓ bundles — AWAITING Hari's device run)
 
 BUILD_6 + BUILD_7 complete/pushed/green. The earlier BUILD_8/9 block is LIFTED —
 Hari confirmed an Expo runtime (Expo Go iPhone + iOS simulator). Now executing the
@@ -103,6 +114,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+41 · WEB_COE/W1 · SSO — SAML 2.0 SP + OAuth/OIDC proven against a mock IdP · DECISION D25: `python3-saml` (OneLogin SP toolkit, not djangosaml2 — it validates the assertion + hands back attributes while SSO terminates in OUR `issue_tokens_for_user`; djangosaml2 would drive Django login + fight the JWT model). NEW MODEL `SamlIdpConfig` (TenantScoped, 1/tenant) — public IdP entity-id/SSO-url/signing-cert + email/role attr names + `role_map` + `sp_private_key_secret_ref` (env-var NAME, key never in DB/git); migration `0003_samlidpconfig*`. NEW `apps/identity/saml/`: `settings.py` (per-request OneLogin settings from the live host; `strict`+`wantAssertionsSigned` forced on; SHA-256; `allowSingleLabelDomains` for dev hosts; secret_ref resolution), `service.py` (process_response → signature/expiry/audience/destination validation; Redis SET-NX replay guard per assertion-id; tenant-scoped user binding NO-JIT; attribute→role mapping that **JIT-syncs the DB role** [RBAC enforces DB role, not the token claim] + writes `identity.saml.role_synced` audit), `views.py` (SP metadata / SP-initiated login-redirect / ACS → mint JWT). `tokens.py` `issue_tokens_for_user(user, *, role=None)` (backward-compat role override). URLs `saml/<slug>/{metadata,login,acs}`. Dockerfile += libxml2/libxmlsec1/xmlsec1 (probed to install on slim first); requirements += python3-saml==1.16.0. OIDC: existing adapter+complete already minted JWT; added 2 tests (session-hint tenant resolution + role-claim==DB-role). · **[test]** `test_saml.py` 12 (real xmlsec-signed round-trip: happy/tamper/unsigned/expiry/replay/cross-tenant-isolation/role-sync+audit/fallback/metadata/login-302/not-configured-404) + `test_oidc.py` 9; FULL backend **1185 passed**/2 deselected (+14, no regression) · **[live]** on running gunicorn: metadata 200; signed ACS round-trip 200 (mapped role=ADMIN, correct tenant); `/me` w/ SSO JWT 200; replay → 401 saml_replay; throwaway tenant cleaned up · **[doc]** docs/SSO.md (per-tenant setup, the 3 isolation locks, proof, 🔑 real-IdP needs) · commit `WEB_COE W1 — SSO SAML + OAuth proven`
 
 40 · BUILD_8/8.2 · Expo scaffold + shell + secure storage · `create-expo-app mobile/` (Expo SDK 56, RN 0.85, React 19, Expo Router) + React Query + RHF + zod + NativeWind v4 (web indigo tokens) + expo-secure-store + @hookform/resolvers + babel-plugin-module-resolver. Built: `src/lib/secureTokenStore.ts` (SecureStore-backed TokenStore — sync in-memory cache hydrated from Keychain at boot, write-through), `src/lib/api.ts` (configureMobileApi → shared configureApiClient; base URL derived from Expo hostUri → the Mac's LAN IP:8080 so the phone reaches the backend; EXPO_PUBLIC_API_BASE_URL override; forced-logout handler), `src/lib/auth.tsx` (AuthProvider mirroring the web state machine on the secure store), `src/lib/query.ts`; routing `src/app/_layout.tsx` (providers + auth-gated Stack + global.css), `index.tsx` (auth redirect), `login.tsx` (RHF+zod, password + MFA-challenge, shared authApi + mapApiError, all states), `(tabs)/_layout.tsx` (bottom tabs + auth guard, emoji icons since @expo/vector-icons absent) + 5 tab screens (Dashboard welcome, Goals/Feedback/Career placeholders, More = identity + features + sign-out). Config: babel (nativewind + @shared→pmsshared), metro (watchFolders=repoRoot + nodeModulesPaths + symlink), tailwind tokens, global.css, declarations.d.ts, tsconfig @shared/axios paths; removed the template demo files. DECISION D23 (Metro shared-resolution via node_modules symlink + babel alias + postinstall; device base URL). · **[build]** `expo export -p ios` bundles clean; mobile tsc CLEAN · **[live]** ⏳ AWAITING Hari's device run · commit `BUILD_8 8.2`
 

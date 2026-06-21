@@ -12,13 +12,19 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Build deps for mysqlclient (compiled C extension) + runtime mysql client.
+# Build deps for mysqlclient (compiled C extension) + runtime mysql client, plus
+# the XML security libs that python3-saml's xmlsec/lxml bindings compile + link
+# against (SAML 2.0 SP signature validation — see DECISIONS D25).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         default-libmysqlclient-dev \
         default-mysql-client \
         pkg-config \
+        libxml2-dev \
+        libxmlsec1-dev \
+        libxmlsec1-openssl \
+        xmlsec1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps first for layer caching. INSTALL_DEV=true pulls the

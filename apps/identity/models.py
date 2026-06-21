@@ -118,3 +118,45 @@ class User(AbstractBaseUser, PermissionsMixin, TenantScopedModel):
     @property
     def is_employee(self):
         return self.role == self.Role.EMPLOYEE
+
+
+class SamlIdpConfig(TenantScopedModel):
+    """Per-tenant SAML 2.0 IdP configuration for our Service Provider. One row per
+    tenant (a tenant either has SSO/SAML configured or it doesn't).
+
+    Stores only **public** IdP metadata — entity id, SSO URL, and the IdP's signing
+    certificate (a public cert is not a secret) — plus the attribute names and the
+    role map. Any SP-side *secret* (the SP private key, needed only when a tenant's
+    IdP demands signed AuthnRequests / encrypted assertions) is referenced by env-var
+    NAME via ``sp_private_key_secret_ref`` and resolved at runtime — never stored
+    here and never committed (see DECISIONS D25, docs/SSO.md).
+    """
+
+    enabled = models.BooleanField(default=False)
+    # ─ IdP (public) ─
+    idp_entity_id = models.CharField(max_length=255)
+    idp_sso_url = models.URLField(max_length=512)
+    idp_x509_cert = models.TextField(
+        help_text="IdP signing certificate (PEM body / base64). Public — used to "
+        "verify assertion signatures."
+    )
+    # ─ Attribute → user/role mapping ─
+    #: Assertion attribute carrying the user's email. Empty → fall back to NameID.
+    email_attribute = models.CharField(max_length=128, blank=True, default="email")
+    #: Assertion attribute carrying the IdP role/group.
+    role_attribute = models.CharField(max_length=128, blank=True, default="role")
+    #: Maps an IdP-asserted role/group value → our ``User.Role`` value. Tenant-owned
+    #: policy; an unmapped/absent value falls back to the provisioned DB role.
+    role_map = models.JSONField(default=dict, blank=True)
+    # ─ Optional SP secret (referenced, never stored) ─
+    #: Name of the env var holding the SP private-key PEM. NEVER the key itself.
+    sp_private_key_secret_ref = models.CharField(max_length=128, blank=True, default="")
+
+    class Meta:
+        db_table = "identity_saml_idp_config"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], name="uq_saml_config_tenant"),
+        ]
+
+    def __str__(self):
+        return f"SAML config for tenant {self.tenant_id} ({'on' if self.enabled else 'off'})"

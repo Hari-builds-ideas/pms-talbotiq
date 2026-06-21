@@ -122,3 +122,30 @@ def test_oidc_complete_mints_tenant_scoped_jwt():
 def test_oidc_complete_without_session_is_401():
     resp = APIClient().get("/api/auth/oidc/complete")
     assert resp.status_code == 401
+
+
+def test_adapter_resolves_tenant_from_session_hint():
+    # The other resolve_tenant branch: no ?tenant= query, the slug is read from the
+    # session (set by the login handoff). Proves the handoff→callback tenant binding.
+    t = TenantFactory(slug="acme")
+    existing = UserFactory(tenant=t, email="person@acme.test")
+    adapter = TenantSocialAccountAdapter()
+    rf = RequestFactory()
+    req = rf.get("/accounts/oidc/login/callback/")  # no ?tenant= hint
+    req.session = {"oidc_tenant_slug": "acme"}
+    sl = _sociallogin("person@acme.test")
+    adapter.pre_social_login(req, sl)
+    assert sl.user.pk == existing.pk
+    assert sl.user.tenant_id == t.id
+
+
+def test_oidc_complete_role_claim_matches_user_role():
+    # OIDC keeps the provisioned DB role (no IdP role override on this path) — the
+    # minted JWT's role claim equals the user's role.
+    t = TenantFactory(slug="acme")
+    user = UserFactory(tenant=t, email="hrbp@acme.test", role=User.Role.HRBP)
+    client = APIClient()
+    client.force_login(user)
+    data = client.get("/api/auth/oidc/complete").json()
+    assert AccessToken(data["access"])["role"] == User.Role.HRBP
+    assert data["role"] == User.Role.HRBP

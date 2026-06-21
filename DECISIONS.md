@@ -645,3 +645,53 @@ stays in memory either way). Hari tests on iOS (native path).
 
 Verified [build]: expo-doctor 18/18, mobile tsc clean, `expo export -p ios` bundles
 (1616 modules). Web app untouched. Device run pending Hari's re-scan.
+
+---
+
+### D25 (WEB_COE W1) — SAML SP via python3-saml (toolkit), not djangosaml2
+
+**Library: `python3-saml` (OneLogin), pinned 1.16.0.** The brief allows either
+python3-saml or djangosaml2. Chosen python3-saml because it is an SP *toolkit* —
+it parses and cryptographically validates a SAML Response and hands back the
+attributes, and nothing more. That fits our model exactly: SSO must authenticate
+and then issue **our** tenant-scoped JWT through the existing `issue_tokens_for_user`
+path, with tenant resolution + user binding done by our code (mirroring the OIDC
+adapter). djangosaml2 (pysaml2) is an opinionated Django *auth framework* that wants
+to drive `django.contrib.auth` login and its own user/session handling — it would
+fight our JWT model and our no-JIT tenant-binding rule. Native deps (`libxmlsec1`,
+`libxml2`, `xmlsec1`) added to the Dockerfile; probed to install + import cleanly on
+`python:3.11-slim` before committing to the choice.
+
+**Per-tenant, config-driven, no committed secrets.** New `SamlIdpConfig`
+(TenantScopedModel, one per tenant) stores the tenant's IdP entity-id, SSO URL, and
+**public** signing cert (a public cert is not a secret), plus the attribute names
+and the role-map. Any SP-side *secret* (the SP private key, used only if a tenant's
+IdP requires signed AuthnRequests / encrypted assertions) is referenced by
+`sp_private_key_secret_ref` — the **name of an env var**, resolved at runtime —
+never the key bytes in the DB or git. Endpoints are tenant-scoped by URL
+(`/api/auth/saml/<tenant_slug>/{metadata,login,acs}`); the config is read inside
+`tenant_context(tenant)`, exactly like the OIDC adapter, so the unauthenticated ACS
+never escapes its tenant.
+
+**Tenant isolation (the hard guarantee).** Three independent locks: (1) the ACS URL
+is per-tenant, (2) the assertion signature is verified against *that tenant's*
+configured IdP cert, so tenant A's IdP cannot produce an assertion that validates at
+tenant B's ACS, and (3) the user is bound only within `tenant_context(tenant)` — no
+JIT provisioning; an unknown identity is denied (mirrors OIDC). Tested:
+tenant-A-signed assertion replayed at tenant B's ACS → rejected.
+
+**Attribute → role mapping, fail-safe.** The configured role attribute is mapped
+through the tenant-owned `role_map` to one of our Roles and stamped on the JWT (the
+IdP is the tenant's federation trust root, so a tenant-administered role-map is
+authoritative for the session — downstream server-side RBAC is unchanged). If the
+attribute is absent or unmapped, we fall back to the **provisioned DB role** (never
+escalate on missing data). `wantAssertionsSigned` + `strict` are forced on, so
+unsigned/expired/wrong-audience assertions are rejected; a Redis-backed
+consumed-assertion-id guard rejects replays within the validity window.
+
+**JWT/MFA unchanged.** SAML and OIDC both terminate in `issue_tokens_for_user`; the
+tenant_id+role claims, refresh model, and RBAC layer downstream are untouched.
+
+**🔑 Not ours to deliver:** a *real* production IdP (Okta/Azure AD/etc.) is the
+customer's — proven here against a self-signed mock IdP (real xmlsec-signed
+round-trip in tests + a documented dev config). docs/SSO.md has the per-tenant setup.

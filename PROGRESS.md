@@ -3,13 +3,13 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1 done)
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1, 6.2 done)
 
-BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1128→growing).
+BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1133 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
 3 Q1 large-tenant items) → BUILD_7 (Tier-3: review comments + nine-box reposition,
-backend-first) → BUILD_8 (mobile foundation) → BUILD_9 (mobile screens). 6.1 (org
-crash) done. BUILD_5 recap below.
+backend-first) → BUILD_8 (mobile foundation) → BUILD_9 (mobile screens). Done: 6.1
+(org crash), 6.2 (admin users pagination+search). BUILD_5 recap below.
 
 ### BUILD_5 recap
 BUILD_5 delivered: 5.1, 5.2, 5.4a, 5.4b, 5.5 (+5.5b), 5.6, 5.7. The concrete,
@@ -87,6 +87,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+30 · BUILD_6/6.2 · admin users pagination + search (Q1 item 1) · backend `apps/administration/services.py` (list_users gains an optional `search` → server-side `Q(email|display_name|role icontains)`, still tenant-scoped + materialized in-context so the non-request test caller keeps working), `apps/administration/views.py` (UserListCreateView.get paginates via StandardResultsSetPagination + reads `?search=`), `apps/administration/tests/test_api.py` (updated the list test to the paginated shape; +test_users_list_is_paginated, +test_users_search_filters_server_side, +test_users_search_does_not_leak_other_tenants) · frontend `lib/api/endpoints.ts` (`adminApi.users(params)`→`Paginated<AdminUser>` + `AdminUserParams`), `features/admin/useAdmin.ts` (useUsers(params)), `lib/hooks/useDebouncedValue.ts` (new), `features/admin/UsersPage.tsx` (debounced search box + page controls + distinct no-users vs no-matches empty states; the manager column + manager dropdowns now read the tenant-wide `useDirectory` instead of the full user array — the two consumers that relied on the un-paginated list), `mocks/handlers.ts` (users mock → paginate + search). DECISION D15: paginate a materialized scoped list (sanctioned by pagination.py) rather than a lazy queryset, to preserve list_users' self-contained tenant-scoping that a non-request test relies on. · **[test]** admin 36 pass (+3); FULL backend 1133 passed/2 deselected (no regression); frontend tsc+lint clean, 35 vitest, build clean · **[live]** restarted web + recreated frontend; `/api/admin/users?page_size=2`→{count:31,next,2 rows}; `?search=ada@acme`→1; `?search=HRBP`(caps)→2 HRBP; `?search=zzzznope`→count 0 empty (no error) · commit `BUILD_6 6.2`
 
 29 · BUILD_6/6.1 · org-chart crash (".for is not iterable") root-cause + not-iterable sweep · ROOT CAUSE: a type-lie — `OrgTree` type/`OrgTreeView` assumed `nodes: Record<id,node>` + `edges: [id,id][]`, but `GET /api/org/tree` returns `nodes` as a LIST and `edges` as `{from,to}` objects, so `for (const [parent,child] of tree.edges)` array-destructured objects → "not iterable" (and `tree.nodes[id]` on an array → undefined). The node also lacked the `display` field the client type requires. FIX: backend `apps/org/services.py` (_compute_full_tree adds `display`=display_name||email to each node; +`display_name` in the values()); frontend `lib/org.ts` (new pure `normalizeOrgTree`: list→id-map, {from,to}→[from,to] tuples, defensive on null/missing/id-less/null-endpoint) wired at the boundary in `features/org/useOrg.ts` AND `lib/hooks/useDirectory.ts` (the latter ALSO consumed the raw tree + indexed an array by uuid → silently always "Unknown"; now normalized + `nodes` annotated `Record<string,OrgNode>` so the `{}` default doesn't poison the type — that was the SuccessionPage `unknown` tsc errors), `OrgTreeView.tsx` render tolerant (`display||email`), `lib/types.ts` (+`RawOrgTree`). SWEEP: audited every `for...of`/destructure + `.data.map` + all 16 bare-array endpoints (live-probed → all real arrays); the OrgTree type-lie was the ONLY crash (errors.ts uses Object.entries=tuples; CONFIG_FIELDS[kind] TS-guaranteed; NineBoxGrid/CoverageHeatmap call-site-guarded; mocks dev-only). Tests: backend `apps/org/tests/test_services.py` (+test_tree_nodes_carry_display, +test_tree_wire_shape_list_nodes_and_from_to_edges — locks the wire contract); frontend `lib/org.test.ts` (5 normalizer tests incl. the crash-repro destructure + defensive nulls). · **[test]** org 45 pass; FULL backend 1130 passed/2 deselected (+2, no regression); frontend tsc+lint clean, 35 vitest (+5), build clean · **[live]** busted org cache (22 tenants) + restarted web + rebuilt frontend; per-role `/api/org/tree` normalized + walked the exact frontend tree-logic: ADMIN/HRBP 31 nodes (full), MANAGER 8, EMPLOYEE 4 — 0 missing display, WALK_OK all roles (no crash, scope correct); `?person=<id>`: in-scope→200, missing/garbage/non-uuid→404 (PersonSheet error state) · commit `BUILD_6 6.1`
 

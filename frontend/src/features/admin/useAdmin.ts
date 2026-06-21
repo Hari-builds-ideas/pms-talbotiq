@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { adminApi, billingApi } from "@/lib/api/endpoints";
+import { adminApi, billingApi, type AdminUserParams } from "@/lib/api/endpoints";
 import type { Role } from "@/lib/enums";
 
 const USERS_KEY = ["admin", "users"];
@@ -8,8 +8,11 @@ const ENTITLEMENT_KEY = ["billing", "entitlement"];
 const FLAGS_KEY = ["billing", "feature-flags"];
 const UPGRADE_KEY = ["billing", "upgrade-prompt"];
 
-export function useUsers() {
-  return useQuery({ queryKey: USERS_KEY, queryFn: adminApi.users });
+export function useUsers(params: AdminUserParams = {}) {
+  return useQuery({
+    queryKey: [...USERS_KEY, params],
+    queryFn: () => adminApi.users(params),
+  });
 }
 
 export function useUserMutations() {

@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.concurrency import check_version
+from apps.core.pagination import StandardResultsSetPagination
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -45,9 +46,12 @@ from .serializers import (
 class UserListCreateView(RBACMixin, APIView):
     """``GET, POST /api/admin/users`` (MANAGE_USERS_ROLES — Admin).
 
-    GET: every user in the actor's tenant. POST: create a user; the optional
-    ``manager`` UUID is resolved through the tenant-scoped manager (cross-tenant
-    id → 404). A duplicate email or unknown role → 422.
+    GET: the actor's tenant users, PAGINATED (``{count,next,previous,results}``,
+    50/page) with an optional ``?search=`` filter (email / display name / role,
+    server-side) — so a large tenant never ships its whole user list. POST:
+    create a user; the optional ``manager`` UUID is resolved through the
+    tenant-scoped manager (cross-tenant id → 404). A duplicate email or unknown
+    role → 422.
     """
 
     _caps = {"GET": Capability.MANAGE_USERS_ROLES, "POST": Capability.MANAGE_USERS_ROLES}
@@ -57,8 +61,13 @@ class UserListCreateView(RBACMixin, APIView):
         return super().get_permissions()
 
     def get(self, request):
-        users = services.list_users(request.user)
-        return Response(UserAdminSerializer(users, many=True).data)
+        search = (request.query_params.get("search") or "").strip()
+        users = services.list_users(request.user, search=search or None)
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(users, request, view=self)
+        return paginator.get_paginated_response(
+            UserAdminSerializer(page, many=True).data
+        )
 
     def post(self, request):
         serializer = CreateUserSerializer(data=request.data)

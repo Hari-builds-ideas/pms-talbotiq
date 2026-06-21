@@ -50,8 +50,48 @@ def test_create_user_then_list(org):
 
     listed = admin.get(USERS)
     assert listed.status_code == 200, listed.content
-    emails = {u["email"] for u in listed.json()}
+    body = listed.json()
+    assert {"count", "next", "previous", "results"} <= set(body)  # paginated shape
+    emails = {u["email"] for u in body["results"]}
     assert "newhire@acme.test" in emails
+
+
+def test_users_list_is_paginated(org):
+    """The list ships a page, not the whole tenant: ``page_size=2`` returns ≤2 rows
+    with a real ``count`` and a ``next`` link; page 2 advances and is disjoint."""
+    admin = _client_for(org.admin)
+    body = admin.get(USERS, {"page_size": 2}).json()
+    assert body["count"] >= 3  # seeded org has admin/hrbp/manager/report/peer
+    assert len(body["results"]) == 2
+    assert body["next"] is not None
+    page2 = admin.get(USERS, {"page_size": 2, "page": 2}).json()
+    assert page2["previous"] is not None
+    assert {u["id"] for u in body["results"]}.isdisjoint({u["id"] for u in page2["results"]})
+
+
+def test_users_search_filters_server_side(org):
+    """``?search=`` narrows by email / display name / role, case-insensitively."""
+    admin = _client_for(org.admin)
+    by_email = admin.get(USERS, {"search": "manager@acme"}).json()
+    assert by_email["count"] == 1
+    assert by_email["results"][0]["email"] == "manager@acme.test"
+    # role term (case-insensitive) returns managers only
+    by_role = admin.get(USERS, {"search": "MANAGER"}).json()
+    assert by_role["count"] >= 1
+    assert all(
+        u["role"] == "MANAGER" or "manager" in u["email"].lower() for u in by_role["results"]
+    )
+    none = admin.get(USERS, {"search": "zzz-no-such-user"}).json()
+    assert none["count"] == 0 and none["results"] == []
+
+
+def test_users_search_does_not_leak_other_tenants(org, other_tenant):
+    """Search stays tenant-scoped: another tenant's matching user never appears."""
+    UserFactory(tenant=other_tenant, role="EMPLOYEE", email="ghost@other.test")
+    admin = _client_for(org.admin)
+    body = admin.get(USERS, {"search": "ghost"}).json()
+    assert body["count"] == 0
+    assert all(not u["email"].endswith("@other.test") for u in body["results"])
 
 
 def test_set_role_deactivate_reactivate(org):

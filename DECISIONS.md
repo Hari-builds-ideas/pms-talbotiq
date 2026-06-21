@@ -349,3 +349,32 @@ adoptable (else 422 NOT_ADOPTABLE); audited; scoped (out-of-scope → 404 via
 `get_roadmap_in_scope`). Frontend: an "Adopt as active" button on the AI-draft
 card (manager scope). Tested: adopt promotes the AI draft + supersedes the
 deterministic; a non-AI-draft → 422.
+
+---
+
+### D15 (BUILD_6/6.2) — Paginate a materialized scoped list, not a lazy queryset
+
+**Decision.** `GET /api/admin/users` now paginates (`StandardResultsSetPagination`)
+with an optional server-side `?search=` (email / display_name / role, icontains).
+The service `list_users(actor, search=None)` keeps its self-contained shape — it
+opens its own `tenant_context`, applies the search filter in the DB, and returns a
+**materialized list**; the view wraps that list with the paginator.
+
+**Options considered.** (a) Return a LAZY queryset and let the paginator slice it
+(DB-side LIMIT/OFFSET) — rejected: `list_users` is also called outside a request
+(`test_list_users_is_tenant_scoped` calls it with no ambient tenant context and
+iterates the result), so a lazy queryset evaluated after the service's
+`tenant_context` exits would fail-closed to empty. (b) Move the context into the
+view — rejected: spreads tenant-scoping responsibility out of the service (the
+SOLE-scoping contract) into the view. (c) the chosen materialized-list + paginate,
+which `apps/core/pagination.py` explicitly supports ("works on a QuerySet OR a
+plain Python list").
+
+**Why safe.** Scoping is unchanged (same `User.objects` manager, same
+`tenant_context`); search is a pure additive `Q(...icontains)` filter; the response
+is now a page (≤50 rows) so a large tenant never ships its whole user list (the Q1
+item). The materialized fetch is one query of lightweight rows; the dashboard
+counts already use the `/users/stats` aggregate (D from 1.4), so this path is only
+the table itself. Frontend consumers that relied on the full array (the manager
+column + the manager dropdowns) now read the tenant-wide `useDirectory` instead.
+Resolves QUESTIONS Q1 item 1.

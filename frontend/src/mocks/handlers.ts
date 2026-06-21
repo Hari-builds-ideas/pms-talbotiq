@@ -211,7 +211,17 @@ export const handlers = [
     const u = currentUser(request);
     if (!u) return unauthorized();
     if (u.role !== "ADMIN") return forbidden();
-    return HttpResponse.json(USERS);
+    const search = (new URL(request.url).searchParams.get("search") ?? "").trim().toLowerCase();
+    let items = USERS;
+    if (search) {
+      items = items.filter(
+        (x) =>
+          x.email.toLowerCase().includes(search) ||
+          (x.display_name ?? "").toLowerCase().includes(search) ||
+          x.role.toLowerCase().includes(search),
+      );
+    }
+    return HttpResponse.json(paginate(request, items));
   }),
   http.post(`${API}/admin/users`, async ({ request }) => {
     await delay(ACTION_DELAY);

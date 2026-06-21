@@ -72,6 +72,11 @@ export interface PageParams {
   page_size?: number;
 }
 
+export interface AdminUserParams extends PageParams {
+  /** Server-side filter: email / display name / role (case-insensitive substring). */
+  search?: string;
+}
+
 // ---- Auth ------------------------------------------------------------------
 
 export const authApi = {
@@ -103,7 +108,8 @@ export const billingApi = {
 // ---- Admin -----------------------------------------------------------------
 
 export const adminApi = {
-  users: () => unwrap<AdminUser[]>(api.get("/admin/users")),
+  users: (params: AdminUserParams = {}) =>
+    unwrap<Paginated<AdminUser>>(api.get("/admin/users", { params })),
   userStats: () => unwrap<AdminUserStats>(api.get("/admin/users/stats")),
   createUser: (body: {
     email: string;

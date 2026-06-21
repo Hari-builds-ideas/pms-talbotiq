@@ -124,10 +124,22 @@ def set_reporting_line(actor, user, new_manager) -> User:
     return _org_reassign(actor, user, new_manager)
 
 
-def list_users(actor) -> list[User]:
-    """Every user in the actor's tenant (Admin-only). Tenant-scoped by the manager."""
+def list_users(actor, search: str | None = None) -> list[User]:
+    """Every user in the actor's tenant (Admin-only), tenant-scoped by the manager,
+    ordered by email. Optional ``search`` filters server-side by email / display
+    name / role (case-insensitive substring) so the admin table can find a user
+    without paging through the whole tenant."""
+    from django.db.models import Q
+
     with tenant_context(actor.tenant_id):
-        return list(User.objects.all().order_by("email"))
+        qs = User.objects.all().order_by("email")
+        if search:
+            qs = qs.filter(
+                Q(email__icontains=search)
+                | Q(display_name__icontains=search)
+                | Q(role__icontains=search)
+            )
+        return list(qs)
 
 
 def user_stats(actor) -> dict:

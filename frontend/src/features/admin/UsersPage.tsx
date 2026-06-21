@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, ShieldCheck, UserPlus } from "lucide-react";
+import { MoreHorizontal, Search, ShieldCheck, UserPlus, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { TableSkeleton } from "@/components/Skeletons";
@@ -36,22 +36,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUserMutations, useUsers } from "./useAdmin";
+import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { ROLES, ROLE_LABEL, type Role } from "@/lib/enums";
 import { mapApiError } from "@/lib/errors";
 import { notifySuccess } from "@/lib/toast";
 import { initials } from "@/lib/format";
 import type { AdminUser } from "@/lib/types";
 
+/** Minimal person option for the manager dropdowns (sourced from the directory). */
+interface PersonOption {
+  id: string;
+  display: string;
+}
+
+const PAGE = 50;
+
 export function UsersPage() {
-  const { data: users, isLoading, isError, error, refetch } = useUsers();
+  const [page, setPage] = React.useState(1);
+  const [search, setSearch] = React.useState("");
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  // A new search starts at page 1 (otherwise you can land on an out-of-range page).
+  React.useEffect(() => setPage(1), [debouncedSearch]);
+
+  const { data, isLoading, isError, error, refetch } = useUsers({
+    page,
+    page_size: PAGE,
+    ...(debouncedSearch ? { search: debouncedSearch } : {}),
+  });
+  const rows = data?.results ?? [];
+
+  // Manager names + manager dropdowns come from the (tenant-wide, active-only)
+  // directory, not the paginated page — so they resolve regardless of which page
+  // a row's manager happens to fall on.
+  const { nameOf, nodes } = useDirectory();
+  const people: PersonOption[] = Object.values(nodes);
+
   const [createOpen, setCreateOpen] = React.useState(false);
   const [roleTarget, setRoleTarget] = React.useState<AdminUser | null>(null);
   const [lineTarget, setLineTarget] = React.useState<AdminUser | null>(null);
   const [nameTarget, setNameTarget] = React.useState<AdminUser | null>(null);
   const [activeTarget, setActiveTarget] = React.useState<AdminUser | null>(null);
   const m = useUserMutations();
-
-  const activeUsers = users?.filter((u) => u.is_active) ?? [];
 
   const columns = React.useMemo<ColumnDef<AdminUser, unknown>[]>(
     () => [
@@ -81,10 +107,11 @@ export function UsersPage() {
       {
         accessorKey: "manager",
         header: "Manager",
-        cell: ({ row }) => {
-          const mgr = users?.find((x) => x.id === row.original.manager);
-          return <span className="text-muted-foreground">{mgr?.display ?? "—"}</span>;
-        },
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">
+            {row.original.manager ? nameOf(row.original.manager) : "—"}
+          </span>
+        ),
       },
       {
         accessorKey: "is_active",
@@ -140,7 +167,7 @@ export function UsersPage() {
         },
       },
     ],
-    [users],
+    [nameOf],
   );
 
   return (
@@ -156,25 +183,62 @@ export function UsersPage() {
         }
       />
 
+      <div className="mb-4 max-w-sm">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, email or role…"
+            className="pl-9 pr-9"
+            aria-label="Search users"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {isLoading ? (
         <TableSkeleton rows={6} cols={6} />
       ) : isError ? (
         <ErrorState error={error} onRetry={() => refetch()} />
-      ) : !users || users.length === 0 ? (
-        <EmptyState
-          icon={UserPlus}
-          title="No users yet"
-          description="Create your first user to start building the org."
-          action={<Button onClick={() => setCreateOpen(true)}>Create user</Button>}
-        />
+      ) : rows.length === 0 ? (
+        debouncedSearch ? (
+          <EmptyState
+            icon={Search}
+            title="No matching users"
+            description="Try a different name, email or role."
+            action={<Button variant="outline" onClick={() => setSearch("")}>Clear search</Button>}
+          />
+        ) : (
+          <EmptyState
+            icon={UserPlus}
+            title="No users yet"
+            description="Create your first user to start building the org."
+            action={<Button onClick={() => setCreateOpen(true)}>Create user</Button>}
+          />
+        )
       ) : (
-        <DataTable columns={columns} data={users} getRowId={(u) => u.id} />
+        <DataTable
+          columns={columns}
+          data={rows}
+          getRowId={(u) => u.id}
+          pagination={{ page, pageSize: PAGE, total: data?.count ?? 0, onPageChange: setPage }}
+        />
       )}
 
       <CreateUserDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        managers={activeUsers}
+        managers={people}
         mutation={m.create}
       />
       {roleTarget && (
@@ -187,7 +251,7 @@ export function UsersPage() {
       {lineTarget && (
         <ReportingLineDialog
           user={lineTarget}
-          users={activeUsers}
+          users={people}
           onClose={() => setLineTarget(null)}
           mutation={m.setReportingLine}
         />
@@ -233,7 +297,7 @@ function CreateUserDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  managers: AdminUser[];
+  managers: PersonOption[];
   mutation: ReturnType<typeof useUserMutations>["create"];
 }) {
   const [email, setEmail] = React.useState("");
@@ -381,7 +445,7 @@ function ReportingLineDialog({
   mutation,
 }: {
   user: AdminUser;
-  users: AdminUser[];
+  users: PersonOption[];
   onClose: () => void;
   mutation: ReturnType<typeof useUserMutations>["setReportingLine"];
 }) {

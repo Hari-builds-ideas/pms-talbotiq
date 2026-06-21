@@ -288,6 +288,46 @@ class Command(BaseCommand):
                               "submitted_at": timezone.now()},
                 )
 
+        # BUG 2 fix — guarantee the primary demo MANAGER (managers[0] = Ada) can
+        # reach "Request AI draft": one of HER direct reports always has a DRAFT
+        # review. The spectrum specs above can land their DRAFT under a different
+        # manager, and `_ensure` never RESETS state, so a prior session that clicked
+        # "Start editing" (DRAFT -> EDITING) would make the action unreachable
+        # forever. Here we pick an Ada report NOT used by the specs and FORCE the
+        # review back to DRAFT on every seed, so the action is reliably available.
+        ada = managers[0] if (managers := people["managers"]) else None
+        if ada is not None:
+            spec_emps = {emps[i] for i, _ in specs if i < len(emps)}
+            ada_report = next(
+                (e for e in emps if e.manager_id == ada.id and e not in spec_emps), None
+            )
+            if ada_report is not None:
+                review, _ = self._ensure(
+                    Review,
+                    tenant_id=tenant.id, employee=ada_report, cycle=cycle,
+                    defaults={"reviewer": ada, "state": "DRAFT", "source": "MANUAL",
+                              "draft_body": "Strong, consistent delivery this cycle with clear growth areas."},
+                )
+                # Idempotent RESET to DRAFT (clears any drift from a prior session)
+                # so the Request-AI-Draft action is always reachable for the demo.
+                if review.state != "DRAFT":
+                    review.state = "DRAFT"
+                    review.human_reviewer = None
+                    review.approved_at = None
+                    review.approval_route = None
+                    review.final_body = ""
+                    review.save(update_fields=[
+                        "state", "human_reviewer", "approved_at",
+                        "approval_route", "final_body", "updated_at",
+                    ])
+                self._ensure(
+                    ReviewAssessment,
+                    tenant_id=tenant.id, review=review, assessment_type="SELF",
+                    defaults={"assessor": ada_report,
+                              "body": "Proud of my delivery; want to grow in communication.",
+                              "submitted_at": timezone.now()},
+                )
+
     # ── 360 feedback ──────────────────────────────────────────────────────────
     def _feedback(self, tenant, people):
         emps = people["employees"]

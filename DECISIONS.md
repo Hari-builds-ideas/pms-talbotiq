@@ -514,3 +514,37 @@ component serves both the interactive succession grid (HRBP/Admin, full placemen
 and the read-only analytics calibration grid (a reduced shape) without breaking
 the latter. Repositioning is gated to HRBP/Admin (canOverride); for everyone else
 the grid stays read-only (no dead UI) — and employees never reach succession at all.
+
+---
+
+### D21 (BUILD_8) — Mobile series blocked on the Expo runtime; no speculative web-infra refactor
+
+**Decision.** Do NOT execute Phase 8.1's `shared/` extraction (or scaffold the
+Expo app) in this headless run. Write a decision-complete BLOCKER + handoff
+instead, leaving the green web app untouched.
+
+**Why.** The mobile series' defining acceptance — per `MOBILE_BUILD_PLAN.md` §5 and
+the BUILD_8 spec — is *"runs in the Expo simulator / on a device via Expo Go
+against the live backend"* ("the real bar is runs in Expo, not compiles"). This
+environment is a headless terminal: no iOS simulator, no Android emulator, no
+device/Expo Go, no browser (so no `expo start --web` either), and no Metro/Expo
+consumer to cross-platform-validate a shared-package extraction.
+
+**Options considered.** (a) Do the web-verifiable slice of 8.1 anyway (refactor the
+API client + auth into `shared/`, web stays green) — REJECTED for an unattended
+run: it refactors the app's MOST critical infrastructure with no mobile consumer to
+confirm the cross-platform seam (Metro resolution, SecureStore token store), i.e.
+real regression risk to the green/verified web app for a benefit that can't be
+validated here. (b) Write the React Native screens blind — REJECTED: no compile
+against RN/Expo types, no run → "written, not verified", which the contract ranks
+below "verified over written". (c) The chosen path: a decision-complete
+`BLOCKER_8_mobile_runtime.md` (shared-extraction design incl. the injectable-client
+diff, `create-expo-app` steps, screen list, demo creds, what's already mobile-ready)
+so an Expo-capable session executes the whole foundation fast — and the extraction
+lands in the SAME session that scaffolds + runs Expo, so both sides validate
+together (exactly as Phase 0 frames it).
+
+**Why safe.** No code changed → the web app + backend stay exactly as verified at
+the end of BUILD_7 (frontend 43 vitest, backend 1171). The platform-agnostic layer
++ every endpoint mobile needs are already in place and verified (`MOBILE_READINESS.md`
++ the 47/47 smoke). This is the blocker rule applied honestly, not abandoned work.

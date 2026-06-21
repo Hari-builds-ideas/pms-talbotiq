@@ -3,7 +3,15 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_7 COMPLETE (7.A comments + 7.B nine-box override) → BUILD_8 next
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_6+7 COMPLETE/green · BUILD_8/9 (mobile) BLOCKED on Expo runtime (handed off)
+
+BUILD_6 (stabilize) + BUILD_7 (Tier-3) fully delivered, pushed, green (backend
+1171, frontend 43 vitest). BUILD_8/9 are the mobile (Expo) series — every phase's
+acceptance is a device/simulator run, which this headless terminal can't provide
+(no simulator/emulator/device/Expo Go/browser). Per the blocker rule: did NOT
+risk the green web app on an unvalidatable core-infra refactor; wrote
+BLOCKER_8_mobile_runtime.md (a decision-complete, ready-to-execute plan) + BUILD_8_REPORT.md
++ FINAL_PUSH_COMPLETE_REPORT.md. See ordinal 38.
 
 BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1144 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
@@ -90,6 +98,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+38 · BUILD_8/9 · mobile series — BLOCKED on Expo runtime (environment) · The mobile app (React Native + Expo) is accepted, per MOBILE_BUILD_PLAN.md §5 + the BUILD_8 spec, by RUNNING in the Expo simulator / Expo Go against the live backend ("the real bar is runs in Expo, not compiles"). This headless terminal has no iOS simulator / Android emulator / device / Expo Go / browser, and no Metro/Expo consumer to cross-platform-validate a shared extraction. DECISION D21: did NOT speculatively refactor the web's core api-client/auth infra for Phase 8.1 (web-verifiable in isolation, but its mobile correctness — Metro resolution, SecureStore token store, NativeWind — is unvalidatable here; risking the green verified web app for unconfirmable benefit is the wrong unattended trade; the extraction belongs in the session that also scaffolds+runs Expo, per Phase 0's own framing). Per BUILD_0's blocker rule: prior work left green/pushed; wrote BLOCKER_8_mobile_runtime.md (decision-complete, ready-to-execute plan: 8.1 shared extraction + injectable-client diff, 8.2 create-expo-app scaffold, 8.3 auth+MFA, 8.4 dashboard, BUILD_9 screens; demo creds; what's already mobile-ready) + BUILD_8_REPORT.md. No code changed → web + backend remain green (frontend 43 vitest, backend 1171). · **[doc]** blocker + reports · commit `BUILD_8 — mobile blocked on Expo runtime + handoff`
 
 37 · BUILD_7/7.B.2 · nine-box drag-reposition UI · DECISION D20: native HTML5 drag-and-drop (NOT react-dnd — the spec assumed it but it's not installed; for a 3×3 grid drop, native DnD needs no new dependency). `lib/types.ts` (NineBoxPlacement += override_box/override_by/override_at/override_rationale/effective_box/is_overridden), `lib/api/endpoints.ts` (successionApi.setNineBoxOverride/clearNineBoxOverride), `features/succession/useSuccession.ts` (set/clear override mutations), `lib/nineBox.ts` (new generic `bucketByEffectiveBox` — buckets by override-or-computed cell) + `lib/nineBox.test.ts` (3), `components/NineBoxGrid.tsx` (reworked to a loose `NineBoxCell` contract + id-based callbacks so it serves BOTH the interactive succession grid AND the read-only analytics calibration grid; draggable chips + cell drop targets when `canOverride`; override marker ● + reset button; per-chip pending state), `features/succession/SuccessionPage.tsx` (NineBoxTab: canOverride=atLeast HRBP; wired reposition/clear + pendingId; non-HRBP read-only), `mocks/{data,handlers}.ts` (nineBox data + PUT/DELETE override mock, HRBP-gated). · **[test]** frontend tsc+lint clean, 43 vitest (+3 nineBox), build clean · **[live]** restarted web (load 7.B.1) + redeployed frontend; HRBP set box=1 → override_box=1, computed box=7 PRESERVED, effective_box=1, is_overridden=true; Manager→403; employee→404; clear→effective_box back to 7, is_overridden=false · commit `BUILD_7 7.B.2` + BUILD_7_REPORT.md
 

@@ -95,7 +95,7 @@ export function ReviewsListPage() {
       <div className="mb-4 flex items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Cycle</span>
         <Select value={cycle} onValueChange={(v) => { setCycle(v); setPage(1); }}>
-          <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-52" aria-label="Filter by cycle"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All cycles</SelectItem>
             {cycles.map((c) => (

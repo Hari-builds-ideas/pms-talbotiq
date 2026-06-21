@@ -31,7 +31,7 @@
     --secondary-foreground: 240 25% 10%;
 
     --muted: 240 22% 95%;
-    --muted-foreground: 240 10% 49%; /* #71718A */
+    --muted-foreground: 240 10% 47%; /* darkened for 4.5:1 on background (WCAG AA) */
 
     --accent: 240 60% 97%; /* light indigo tint (hover) */
     --accent-foreground: 240 60% 55%;
@@ -61,28 +61,30 @@
     --sidebar-accent: 240 60% 62%; /* indigo active */
     --sidebar-border: 240 18% 16%;
 
-    /* Domain semantic palette (names kept; retuned to the indigo system) */
-    --success: 160 95% 32%; /* emerald */
+    /* Domain semantic palette (names kept; retuned to the indigo system).
+       Tone L darkened so `text-<tone>` on `bg-<tone>-subtle` (the Badge pattern)
+       clears 4.5:1 AA; white-on-solid `bg-<tone>` usages only gain contrast. */
+    --success: 160 95% 25%; /* emerald (AA: 4.8:1 on success-subtle) */
     --success-foreground: 0 0% 100%;
     --success-subtle: 160 60% 94%;
 
-    --warning: 32 92% 48%; /* amber */
+    --warning: 32 92% 33%; /* amber (AA: 4.8:1 on warning-subtle) */
     --warning-foreground: 0 0% 100%;
     --warning-subtle: 38 92% 93%;
 
-    --danger: 0 84% 60%; /* red #EF4444 */
+    --danger: 0 84% 45%; /* red (AA: 4.8:1 on danger-subtle) */
     --danger-foreground: 0 0% 100%;
     --danger-subtle: 0 86% 96%;
 
-    --info: 189 80% 40%; /* cyan */
+    --info: 189 80% 30%; /* cyan (AA: 4.7:1 on info-subtle) */
     --info-foreground: 0 0% 100%;
     --info-subtle: 189 70% 94%;
 
-    --ai: 258 90% 66%; /* violet — AI states */
+    --ai: 258 90% 60%; /* violet — AI states (AA: 4.9:1 on ai-subtle) */
     --ai-foreground: 0 0% 100%;
     --ai-subtle: 258 90% 96%;
 
-    --premium: 38 92% 48%; /* gold/amber — premium-locked */
+    --premium: 38 92% 31%; /* gold/amber — premium-locked (AA: 4.7:1 on premium-subtle) */
     --premium-foreground: 0 0% 100%;
     --premium-subtle: 42 92% 93%;
   }
@@ -108,8 +110,13 @@
     font-feature-settings: "tnum";
   }
 
+  /* Visible keyboard-focus fallback (WCAG 2.4.7). shadcn controls set their own
+     ring + focus-visible:outline-none at the utility layer (which wins over this
+     base rule, so no double indicator); bare focusable elements — links, the
+     skip-link, [tabindex] regions — fall back to this outline. */
   :focus-visible {
-    @apply outline-none;
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
@@ -144,5 +151,19 @@
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+/* Respect the user's reduced-motion preference (WCAG 2.3.3 / 2.2.2): collapse
+   animations + transitions to near-instant so nothing autoplays or scrolls
+   smoothly against the user's wishes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

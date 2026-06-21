@@ -1,6 +1,13 @@
 import * as React from "react";
-import { GripVertical, RotateCcw } from "lucide-react";
+import { ArrowLeftRight, GripVertical, RotateCcw } from "lucide-react";
 import { PersonName } from "@/components/PersonName";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { bucketByEffectiveBox } from "@/lib/nineBox";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +54,45 @@ const ROWS = [
   [4, 5, 6],
   [1, 2, 3],
 ];
+
+/** Keyboard-accessible alternative to dragging a chip between cells: a menu of
+ *  the nine boxes. Keyboard users Tab to the trigger, Enter to open, arrow to a
+ *  target box, Enter to move — no pointer/drag required (WCAG 2.1 keyboard). */
+function MoveMenu({
+  name,
+  currentBox,
+  onMove,
+}: {
+  name: string;
+  currentBox: number;
+  onMove: (box: number) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Move ${name} to another box (keyboard alternative to drag)`}
+          className="rounded p-0.5 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <ArrowLeftRight className="h-3 w-3" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Move to box</DropdownMenuLabel>
+        {ROWS.flat().map((box) => (
+          <DropdownMenuItem
+            key={box}
+            disabled={box === currentBox}
+            onSelect={() => onMove(box)}
+          >
+            {box} · {BOX_LABEL[box]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 interface NineBoxGridProps {
   placements: NineBoxCell[];
@@ -131,24 +177,34 @@ export function NineBoxGrid({
                       <span className="truncate">
                         <PersonName id={p.employee} name={p.employee_name} />
                       </span>
-                      {p.is_overridden && (
-                        <span
-                          className="ml-auto flex shrink-0 items-center gap-0.5 text-2xs text-primary"
-                          title={`Computed box ${p.box}, moved to ${p.effective_box}`}
-                        >
-                          ●
-                          {canOverride && onClearOverride && p.id && (
-                            <button
-                              type="button"
-                              onClick={() => onClearOverride(p.id as string)}
-                              aria-label="Reset to computed placement"
-                              className="rounded p-0.5 hover:text-foreground"
-                            >
-                              <RotateCcw className="h-3 w-3" />
-                            </button>
-                          )}
-                        </span>
-                      )}
+                      <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                        {p.is_overridden && (
+                          <span
+                            className="text-2xs text-primary"
+                            title={`Computed box ${p.box}, moved to ${p.effective_box}`}
+                            aria-label={`Human override: computed box ${p.box}, moved to ${p.effective_box}`}
+                          >
+                            ●
+                          </span>
+                        )}
+                        {canOverride && onReposition && p.id && (
+                          <MoveMenu
+                            name={p.employee_name || "this person"}
+                            currentBox={p.effective_box ?? p.box}
+                            onMove={(box) => onReposition(p.id as string, box)}
+                          />
+                        )}
+                        {canOverride && onClearOverride && p.is_overridden && p.id && (
+                          <button
+                            type="button"
+                            onClick={() => onClearOverride(p.id as string)}
+                            aria-label="Reset to computed placement"
+                            className="rounded p-0.5 text-primary hover:text-foreground"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                          </button>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>

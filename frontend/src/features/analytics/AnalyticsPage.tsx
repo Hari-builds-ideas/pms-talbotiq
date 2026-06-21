@@ -70,7 +70,7 @@ function IndividualTab() {
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Employee</span>
         <Select value={employee} onValueChange={setEmployee}>
-          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-56" aria-label="Select employee"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="self">Myself</SelectItem>
             {Object.values(nodes).map((n) => (
@@ -144,7 +144,7 @@ function DepartmentTab() {
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Head</span>
           <Select value={head || effectiveHead || ""} onValueChange={setHead}>
-            <SelectTrigger className="w-52"><SelectValue placeholder="Select…" /></SelectTrigger>
+            <SelectTrigger className="w-52" aria-label="Select head of org"><SelectValue placeholder="Select…" /></SelectTrigger>
             <SelectContent>
               {Object.values(nodes).map((n) => (
                 <SelectItem key={n.id} value={n.id}>{n.display}</SelectItem>
@@ -155,7 +155,7 @@ function DepartmentTab() {
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted-foreground">Cycle</span>
           <Select value={cycle} onValueChange={setCycle}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Select…" /></SelectTrigger>
+            <SelectTrigger className="w-44" aria-label="Select cycle"><SelectValue placeholder="Select…" /></SelectTrigger>
             <SelectContent>
               {cycles.map((c) => (
                 <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -241,7 +241,7 @@ function CalibrationTab() {
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-muted-foreground">Cycle</span>
         <Select value={cycle} onValueChange={setCycle}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Select…" /></SelectTrigger>
+          <SelectTrigger className="w-44" aria-label="Select cycle"><SelectValue placeholder="Select…" /></SelectTrigger>
           <SelectContent>
             {cycles.map((c) => (
               <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>

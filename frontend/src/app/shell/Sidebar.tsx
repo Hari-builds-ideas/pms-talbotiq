@@ -19,7 +19,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto scrollbar-thin px-3 py-4">
+      <nav aria-label="Primary" className="flex-1 space-y-5 overflow-y-auto scrollbar-thin px-3 py-4">
         {NAV.map((section) => {
           const items = section.items.filter((i) => atLeast(i.minRole));
           if (items.length === 0) return null;

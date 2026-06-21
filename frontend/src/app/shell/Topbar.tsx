@@ -65,7 +65,7 @@ export function Topbar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1.5">
+                  <Button variant="outline" size="sm" className="gap-1.5" aria-label="Preview role (dev)">
                     <UserCog className="h-4 w-4" />
                     <span className="hidden md:inline">Preview role</span>
                   </Button>
@@ -92,6 +92,7 @@ export function Topbar() {
               size="sm"
               className="gap-1.5"
               onClick={chat.toggle}
+              aria-label="Open the AI assistant"
             >
               <Sparkles className="h-4 w-4 text-ai" />
               <span className="hidden md:inline">Ask AI</span>
@@ -102,7 +103,7 @@ export function Topbar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary">
+            <button aria-label="Open account menu" className="flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary">
               <Avatar>
                 <AvatarFallback>{initials(me?.display)}</AvatarFallback>
               </Avatar>

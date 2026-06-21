@@ -3,7 +3,17 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: WEB_COE build (unattended) · W1 SSO SAML+OAuth COMPLETE ✓ ([test] 1185 green + [live] proven) — W2 WCAG, W3 functional matrix NEXT · (mobile mock-adaptation PAUSED, not cancelled)
+## Current: WEB_COE build (unattended) · W1 SSO ✓ + W2 WCAG 2.1 AA ✓ — W3 functional matrix NEXT · (mobile mock-adaptation PAUSED, not cancelled)
+
+W2 done: axe-core guard renders 14 Admin-Hub screens + the ⌘K palette in the real
+shell w/ MSW data → 0 WCAG A/AA violations (was 7); a token-contrast guard parses
+globals.css → all 14 text pairs ≥4.5:1 (fixed 7 failing: 6 badge tones + muted-fg by
+darkening the tone tokens). Fixes: select/input aria-labels, skip-link + main target +
+nav label, Topbar icon-button labels, nine-box drag KEYBOARD ALT (move-to-box menu),
+command-palette dialog title, global visible focus outline, reduced-motion CSS. frontend
+72 vitest (43+15 a11y+14 contrast), tsc/lint/build clean. docs/ACCESSIBILITY.md (honest:
+automated-AA clean + listed manual/AT items, no full-conformance claim). DECISIONS D26.
+See ordinal 42.
 
 COE web/back-end gap-closing per WEB_BUILD_COE.md (read in full w/ COE_REQUIREMENTS_MAP.md
 + BUILD_0). W1 done: OIDC verified end-to-end + a real SAML 2.0 SP added (python3-saml,
@@ -114,6 +124,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+42 · WEB_COE/W2 · WCAG 2.1 AA pass + automated a11y guard · DECISION D26: axe-core in vitest/jsdom (not Playwright — fits the existing vitest+MSW stack) + a token-contrast test (jsdom has no layout → axe can't do contrast). NEW: `frontend/src/mocks/server.ts` (MSW node server, reuses the 90 handlers), `src/test/a11y/harness.tsx` (renderInShell/renderBare + axeViolations over wcag2a/2aa/21a/21aa), `src/test/a11y/a11y.test.tsx` (14 screens + ⌘K palette → 0 A/AA violations), `src/test/a11y/contrast.test.ts` (parses globals.css tokens, 14 text pairs ≥4.5:1). FIXES: audit/analytics/reviews `SelectTrigger`+input `aria-label`s; AppLayout skip-to-content link + `<main id tabindex=-1>`; Sidebar `<nav aria-label>`; Topbar icon-button `aria-label`s (Ask AI / Preview role / account menu); NineBoxGrid **keyboard alternative to drag** (per-chip "Move to box" DropdownMenu — WCAG 2.1.1) + override marker aria-label; `command.tsx` CommandDialog visually-hidden DialogTitle+Description (4.1.2); globals.css `:focus-visible` → visible 2px outline (2.4.7), `@media (prefers-reduced-motion)` (2.3.3), and darkened `--success/warning/danger/info/ai/premium` + `--muted-foreground` to clear 4.5:1 (1.4.3); test setup ResizeObserver/scrollIntoView shims. axe before→after: 7→0; contrast 7 failing→0. · **[test]** frontend 72 vitest (43 prior + 15 a11y + 14 contrast) · **[build]** tsc CLEAN, eslint CLEAN, production build clean · **[doc]** docs/ACCESSIBILITY.md (honest manual/AT caveats — no full-conformance claim from automation) · commit `WEB_COE W2 — WCAG 2.1 AA pass + a11y guard`
 
 41 · WEB_COE/W1 · SSO — SAML 2.0 SP + OAuth/OIDC proven against a mock IdP · DECISION D25: `python3-saml` (OneLogin SP toolkit, not djangosaml2 — it validates the assertion + hands back attributes while SSO terminates in OUR `issue_tokens_for_user`; djangosaml2 would drive Django login + fight the JWT model). NEW MODEL `SamlIdpConfig` (TenantScoped, 1/tenant) — public IdP entity-id/SSO-url/signing-cert + email/role attr names + `role_map` + `sp_private_key_secret_ref` (env-var NAME, key never in DB/git); migration `0003_samlidpconfig*`. NEW `apps/identity/saml/`: `settings.py` (per-request OneLogin settings from the live host; `strict`+`wantAssertionsSigned` forced on; SHA-256; `allowSingleLabelDomains` for dev hosts; secret_ref resolution), `service.py` (process_response → signature/expiry/audience/destination validation; Redis SET-NX replay guard per assertion-id; tenant-scoped user binding NO-JIT; attribute→role mapping that **JIT-syncs the DB role** [RBAC enforces DB role, not the token claim] + writes `identity.saml.role_synced` audit), `views.py` (SP metadata / SP-initiated login-redirect / ACS → mint JWT). `tokens.py` `issue_tokens_for_user(user, *, role=None)` (backward-compat role override). URLs `saml/<slug>/{metadata,login,acs}`. Dockerfile += libxml2/libxmlsec1/xmlsec1 (probed to install on slim first); requirements += python3-saml==1.16.0. OIDC: existing adapter+complete already minted JWT; added 2 tests (session-hint tenant resolution + role-claim==DB-role). · **[test]** `test_saml.py` 12 (real xmlsec-signed round-trip: happy/tamper/unsigned/expiry/replay/cross-tenant-isolation/role-sync+audit/fallback/metadata/login-302/not-configured-404) + `test_oidc.py` 9; FULL backend **1185 passed**/2 deselected (+14, no regression) · **[live]** on running gunicorn: metadata 200; signed ACS round-trip 200 (mapped role=ADMIN, correct tenant); `/me` w/ SSO JWT 200; replay → 401 saml_replay; throwaway tenant cleaned up · **[doc]** docs/SSO.md (per-tenant setup, the 3 isolation locks, proof, 🔑 real-IdP needs) · commit `WEB_COE W1 — SSO SAML + OAuth proven`
 

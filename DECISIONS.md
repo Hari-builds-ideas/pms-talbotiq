@@ -695,3 +695,38 @@ tenant_id+role claims, refresh model, and RBAC layer downstream are untouched.
 **🔑 Not ours to deliver:** a *real* production IdP (Okta/Azure AD/etc.) is the
 customer's — proven here against a self-signed mock IdP (real xmlsec-signed
 round-trip in tests + a documented dev config). docs/SSO.md has the per-tenant setup.
+
+---
+
+### D26 (WEB_COE W2) — WCAG 2.1 AA: axe-in-jsdom + a token-contrast check, not Playwright
+
+**Why axe-core in vitest/jsdom (not Playwright+axe).** The brief allows either. The
+existing test stack is vitest+jsdom+RTL+MSW with no browser; standing up Playwright +
+chromium in the headless build env is fragile, whereas axe-core runs directly over a
+jsdom container. So the durable CI guard renders each key screen in the REAL shell with
+MSW data and asserts zero `wcag2a/2aa/21a/21aa` axe violations (14 screens + the ⌘K
+palette opened). Honest tradeoff: **jsdom has no layout engine**, so axe can't compute
+color-contrast / focus-visible / reflow — those are handled out-of-band (below) and the
+remaining manual/AT items are documented, not faked (docs/ACCESSIBILITY.md). We do NOT
+claim certified full conformance from automated testing alone.
+
+**Contrast handled by a token-contrast test, and tones were darkened to pass.** Since
+axe can't do contrast in jsdom, `contrast.test.ts` parses the real tokens from
+globals.css and asserts each text pair ≥ 4.5:1. The computation surfaced REAL failures:
+the Badge `text-<tone>` on `bg-<tone>-subtle` pattern failed for success/warning/danger/
+info/ai/premium (2.1–3.7:1) and `muted-foreground` was 4.34:1. Fix: darkened the base
+tone tokens + `--muted-foreground` (keeping hue) so they clear AA — white-on-solid
+`bg-<tone>` usages only gained contrast. (No `.dark` token block exists in the web
+globals.css, so the web hub is light-only → only light tokens needed fixing.)
+
+**Focus indicator made global.** `:focus-visible { outline: none }` was stripping the
+indicator from any element not adding its own ring (AA 2.4.7 risk). Changed the base rule
+to a visible `2px` outline; shadcn controls keep their ring because their utility-layer
+`focus-visible:outline-none` overrides the base rule.
+
+**Nine-box drag got a keyboard alternative (2.1.1).** The HTML5 drag is pointer-only; a
+per-chip "Move to box" dropdown menu provides full keyboard operability without removing
+drag. Drag isn't a WCAG-conformant sole mechanism, so the menu is the conformant path.
+
+**Test-env shims.** jsdom lacks `ResizeObserver`/`scrollIntoView` (Radix/cmdk use them);
+stubbed in the global test setup so overlay widgets render in the suite. No runtime effect.

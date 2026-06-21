@@ -119,7 +119,7 @@ export function AuditPage() {
             <Filter className="h-3 w-3" /> Actor
           </label>
           <Select value={actor} onValueChange={(v) => { setActor(v); setPage(1); }}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-44" aria-label="Filter by actor"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All actors</SelectItem>
               {Object.values(nodes).map((n) => (
@@ -131,7 +131,7 @@ export function AuditPage() {
         <div className="space-y-1.5">
           <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Target type</label>
           <Select value={targetType} onValueChange={(v) => { setTargetType(v); setPage(1); }}>
-            <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-44" aria-label="Filter by target type"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All types</SelectItem>
               {TARGET_TYPES.map((t) => (
@@ -142,12 +142,13 @@ export function AuditPage() {
         </div>
         <div className="space-y-1.5">
           <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Action contains</label>
-          <Input value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} placeholder="e.g. approved" className="w-48" />
+          <Input aria-label="Filter by action text" value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }} placeholder="e.g. approved" className="w-48" />
         </div>
         <div className="space-y-1.5">
           <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">From</label>
           <Input
             type="date"
+            aria-label="Filter from date"
             value={dateFrom}
             max={dateTo || undefined}
             onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
@@ -158,6 +159,7 @@ export function AuditPage() {
           <label className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">To</label>
           <Input
             type="date"
+            aria-label="Filter to date"
             value={dateTo}
             min={dateFrom || undefined}
             onChange={(e) => { setDateTo(e.target.value); setPage(1); }}

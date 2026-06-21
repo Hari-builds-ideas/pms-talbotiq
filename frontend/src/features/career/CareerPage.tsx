@@ -53,20 +53,29 @@ import {
 const PROGRESS_OPTS: RoadmapProgressStatus[] = ["NOT_STARTED", "IN_PROGRESS", "DONE"];
 
 export function CareerPage() {
+  // Employees get a READ-ONLY view of their OWN roadmap (no team tab, no manage
+  // controls); managers/HRBP/Admin additionally manage their team. The server
+  // confines an employee to OWN scope regardless — this is presentation (BUG 3).
+  const { atLeast } = useAuth();
+  const canManage = atLeast("MANAGER");
   return (
     <div>
       <PageHeader
         title="Career Development"
         description="Advisory development roadmaps toward a target role — grounded in performance data, never auto-promotion. AI enrichment is human-reviewed; you decide what to act on."
       />
-      <Tabs defaultValue="mine">
-        <TabsList>
-          <TabsTrigger value="mine">My development</TabsTrigger>
-          <TabsTrigger value="team">My team</TabsTrigger>
-        </TabsList>
-        <TabsContent value="mine"><MyDevelopmentTab /></TabsContent>
-        <TabsContent value="team"><TeamTab /></TabsContent>
-      </Tabs>
+      {canManage ? (
+        <Tabs defaultValue="mine">
+          <TabsList>
+            <TabsTrigger value="mine">My development</TabsTrigger>
+            <TabsTrigger value="team">My team</TabsTrigger>
+          </TabsList>
+          <TabsContent value="mine"><MyDevelopmentTab canManage /></TabsContent>
+          <TabsContent value="team"><TeamTab /></TabsContent>
+        </Tabs>
+      ) : (
+        <MyDevelopmentTab canManage={false} />
+      )}
     </div>
   );
 }
@@ -98,7 +107,7 @@ function useRoleTargets() {
 }
 
 // ── My development ────────────────────────────────────────────────────────────
-function MyDevelopmentTab() {
+function MyDevelopmentTab({ canManage }: { canManage: boolean }) {
   const q = useMyRoadmaps();
   const targets = useRoleTargets();
   const [pickTarget, setPickTarget] = React.useState(false);
@@ -106,11 +115,13 @@ function MyDevelopmentTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={() => setPickTarget(true)}>
-          <Target className="h-4 w-4" /> {roadmaps.length ? "Change target role" : "Choose target role"}
-        </Button>
-      </div>
+      {canManage && (
+        <div className="flex justify-end">
+          <Button onClick={() => setPickTarget(true)}>
+            <Target className="h-4 w-4" /> {roadmaps.length ? "Change target role" : "Choose target role"}
+          </Button>
+        </div>
+      )}
       {q.isLoading ? (
         <LinesSkeleton lines={4} />
       ) : q.isError ? (
@@ -119,13 +130,21 @@ function MyDevelopmentTab() {
         <EmptyState
           icon={GraduationCap}
           title="No roadmap yet"
-          description="Choose a target role to generate your advisory development roadmap from your current performance data."
-          action={<Button onClick={() => setPickTarget(true)}><Target className="h-4 w-4" /> Choose target role</Button>}
+          description={
+            canManage
+              ? "Choose a target role to generate your advisory development roadmap from your current performance data."
+              : "Your manager can set up a development roadmap with you toward a target role."
+          }
+          action={
+            canManage ? (
+              <Button onClick={() => setPickTarget(true)}><Target className="h-4 w-4" /> Choose target role</Button>
+            ) : undefined
+          }
         />
       ) : (
-        roadmaps.map((r) => <RoadmapCard key={r.id} roadmap={r} targets={targets} canManage />)
+        roadmaps.map((r) => <RoadmapCard key={r.id} roadmap={r} targets={targets} canManage={canManage} />)
       )}
-      <TargetDialog open={pickTarget} onOpenChange={setPickTarget} targets={targets} />
+      {canManage && <TargetDialog open={pickTarget} onOpenChange={setPickTarget} targets={targets} />}
     </div>
   );
 }

@@ -50,7 +50,7 @@ export const NAV: NavSection[] = [
       { label: "360 Feedback", to: "/feedback", icon: MessageSquareText, minRole: "MANAGER" },
       { label: "Org Chart", to: "/org", icon: Network, minRole: "MANAGER" },
       { label: "JD Library", to: "/jd", icon: ScrollText, minRole: "MANAGER" },
-      { label: "Career", to: "/career", icon: GraduationCap, minRole: "MANAGER" },
+      { label: "Career", to: "/career", icon: GraduationCap, minRole: "EMPLOYEE" },
     ],
   },
   {

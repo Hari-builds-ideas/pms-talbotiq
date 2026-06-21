@@ -747,3 +747,28 @@ the current DB role is the ceiling for any later mapping — only an admin re-pr
 raises a role. Tests: `test_saml_role_mapping_cannot_escalate_above_provisioned` +
 `…_can_deescalate_and_audits` (replaced the prior "elevates" test). This refines D25 —
 the role-mapping mechanism is unchanged; only the escalation direction is now blocked.
+
+---
+
+### D28 (BUGFIX BUG 3) — Employees get a READ-ONLY view of their OWN career roadmap
+
+The employee dashboard advertises a "My career roadmap" tile (`to="/career"`), but
+`/career` was wrapped in `RoleGate min="MANAGER"`, so an employee clicking it got "You
+do not have access" — a dead link. Two coherent fixes were offered (hide the tile, or
+show employees their own roadmap). **Chosen: show employees their own roadmap, read-only**
+— the dashboard advertises it and the back-end already authorizes it (`VIEW_CAREER_ROADMAP`
+is granted to `_EVERYONE`, OWN scope), so hiding it would contradict the system's own
+access model and leave the advertised tile pointless.
+
+Implementation (frontend only — the server already scopes correctly): removed the
+`RoleGate` on the `career/*` route; lowered the sidebar "Career" entry to `minRole:
+EMPLOYEE`; and in `CareerPage`, gated the "My team" tab and ALL manage controls
+(choose/change target, refresh, AI-enrich, adopt, per-tier progress edit) behind
+`atLeast("MANAGER")`. An employee sees only "My development" with their own roadmap
+rendered read-only (tiers + progress badges + skill-gap + advisory/HITL context); the
+empty state tells them their manager sets up the roadmap.
+
+Note: the back-end's `MANAGE_CAREER_ROADMAP` is `_EVERYONE` (an employee *could* self-gen
+their own roadmap), so this read-only presentation is intentionally MORE conservative than
+the server allows — managers drive roadmaps, employees view. RBAC/scope are unchanged and
+still enforced server-side; this is purely which controls the employee UI surfaces.

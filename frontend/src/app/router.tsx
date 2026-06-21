@@ -86,14 +86,12 @@ export function AppRouter() {
               </RoleGate>
             }
           />
-          <Route
-            path="career/*"
-            element={
-              <RoleGate min="MANAGER">
-                <CareerPage />
-              </RoleGate>
-            }
-          />
+          {/* Career roadmap is open to everyone: employees get a read-only view
+              of their OWN roadmap (VIEW_CAREER_ROADMAP is granted to all roles,
+              OWN scope), managers/HRBP additionally see their team. No RoleGate —
+              the dashboard advertises this tile to employees, so it must not 403
+              the person who clicks it (BUG 3). Scope is enforced server-side. */}
+          <Route path="career/*" element={<CareerPage />} />
           <Route
             path="succession/*"
             element={

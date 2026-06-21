@@ -17,7 +17,7 @@ export function useCycleScores(cycle: string | undefined) {
   });
 }
 
-export function useGoalMutations(cycle: string | undefined) {
+export function useGoalMutations(_cycle?: string | undefined) {
   const qc = useQueryClient();
   // Invalidate by the stable PREFIX, not a cycle-specific key. The list query key
   // normalizes the cycle to "all" when none is selected (`cycle ?? "all"`), so a

@@ -3,7 +3,7 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 COMPLETE → BUILD_7 Tier-3 in progress (7.A.1 done)
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_7 Tier-3 in progress (7.A done — comments; 7.B next — nine-box)
 
 BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1144 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
@@ -90,6 +90,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+35 · BUILD_7/7.A.2 · review comments UI · frontend `lib/types.ts` (+ReviewComment + ReviewCommentSection), `lib/api/endpoints.ts` (reviewsApi.comments/createComment/editComment/deleteComment), `features/reviews/useReviews.ts` (useReviewComments + useReviewCommentMutations), `lib/reviewComments.ts` (new pure `threadComments` — one-level grouping, orphan-safe) + `lib/reviewComments.test.ts` (3), new `features/reviews/CommentsPanel.tsx` (threaded list, section tag, new-comment form w/ section select, inline reply, author-only edit/delete, all states, kind-aware errors via notifyError), wired into `ReviewDetailPage.tsx` sidebar after Assessments; `mocks/handlers.ts` (+mutable comment store + GET/POST/PATCH/DELETE so dev exercises it). · **[test]** frontend tsc+lint clean, 40 vitest (+3), build clean · **[live]** restarted web (load 7.A.1) + redeployed frontend; e2e on the running stack: create(SUMMARY)→reply(201,one-level)→list(count 2, author_name "Ada Lovelace", parent set)→edit(edited_at set)→out-of-scope employee 403→author delete 204→only the reply remains · commit `BUILD_7 7.A.2`
 
 34 · BUILD_7/7.A.1 · ReviewComment model + API (backend-first) · `apps/reviews/models.py` (new `ReviewComment(TenantScopedModel)`: review FK, author FK, self `parent` FK for one-level replies, nullable `section` choice [SUMMARY/STRENGTHS/DEVELOPMENT/GOALS/RECOMMENDATIONS; null=general], `body`, `edited_at`; `employee` property → review.employee for RBAC; ix on (tenant,review,created_at)), migration `0004_reviewcomment` (apply+reverse clean), `apps/reviews/services.py` (create_comment/edit_comment/delete_comment — audited via `record`; one-level threading enforced; delete = soft-delete), `apps/reviews/exceptions.py` (+CommentThreadingError 422), `apps/reviews/serializers.py` (ReviewCommentSerializer — body/section writable; author/parent/timestamps read-only; parent resolved scope-safely in the view), `apps/reviews/views.py` (ReviewCommentListCreateView + ReviewCommentDetailView — `VIEW_OWN_REVIEW` + `check_object_scope` so comments inherit the review's visibility EXACTLY; author-only edit/delete), `apps/reviews/urls.py` (/comments + /comments/<id>). DECISION D18 (one-level threading; reuse VIEW_OWN_REVIEW not a new capability; 422 for threading violation). Invariants: never broadens review visibility; cross-tenant→404; out-of-scope→403; author-only mutate. · **[test]** `apps/reviews/tests/test_comments.py` 11 pass (create/list, employee-own, edit/delete-soft, author-only-403, out-of-scope-403, cross-tenant-404, one-level-reply-422, foreign-parent-404, 401); FULL backend 1161 passed/2 deselected (+11, no regression) · commit `BUILD_7 7.A.1`
 

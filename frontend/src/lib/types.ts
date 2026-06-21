@@ -249,6 +249,24 @@ export interface ReviewAssessment {
   submitted_at: ISODate | null;
 }
 
+export type ReviewCommentSection =
+  | "SUMMARY"
+  | "STRENGTHS"
+  | "DEVELOPMENT"
+  | "GOALS"
+  | "RECOMMENDATIONS";
+
+export interface ReviewComment {
+  id: UUID;
+  author: UUID;
+  author_name?: string | null;
+  section: ReviewCommentSection | null; // null = a general comment
+  body: string;
+  parent: UUID | null; // a reply points at its top-level parent
+  created_at: ISODate;
+  edited_at: ISODate | null;
+}
+
 // ---- JD --------------------------------------------------------------------
 
 export interface JdBody {

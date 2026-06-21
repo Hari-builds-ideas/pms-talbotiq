@@ -42,6 +42,7 @@ import type {
   Position,
   Review,
   ReviewAssessment,
+  ReviewComment,
   ReviewTransition,
   SuccessionDashboard,
   SuccessionPlan,
@@ -185,6 +186,16 @@ export const reviewsApi = {
     unwrap<ReviewTransition[]>(api.get(`/reviews/${id}/timeline`)),
   assessments: (id: string) =>
     unwrap<ReviewAssessment[]>(api.get(`/reviews/${id}/assessments`)),
+  comments: (id: string) =>
+    unwrap<ReviewComment[]>(api.get(`/reviews/${id}/comments`)),
+  createComment: (
+    id: string,
+    body: { body: string; section?: string | null; parent?: string | null },
+  ) => unwrap<ReviewComment>(api.post(`/reviews/${id}/comments`, body)),
+  editComment: (reviewId: string, commentId: string, body: string) =>
+    unwrap<ReviewComment>(api.patch(`/reviews/${reviewId}/comments/${commentId}`, { body })),
+  deleteComment: (reviewId: string, commentId: string) =>
+    unwrap<void>(api.delete(`/reviews/${reviewId}/comments/${commentId}`)),
   startEdit: (id: string) =>
     unwrap<Review>(api.post(`/reviews/${id}/start-edit`, {})),
   submit: (id: string, draft_body: string) =>

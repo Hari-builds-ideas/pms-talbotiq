@@ -1,5 +1,5 @@
 import { http, HttpResponse, delay } from "msw";
-import type { Paginated } from "@/lib/types";
+import type { Paginated, ReviewComment } from "@/lib/types";
 import { localId } from "@/lib/utils";
 import {
   USERS,
@@ -37,6 +37,9 @@ import { FEATURE_META, type FeatureKey } from "@/lib/enums";
 const API = "/api";
 const GET_DELAY = 280;
 const ACTION_DELAY = 420;
+
+// Mutable in-memory review comments (dev only; the real backend enforces scope).
+const reviewCommentsStore: Record<string, ReviewComment[]> = {};
 
 function currentUserId(request: Request): string | null {
   const auth = request.headers.get("Authorization");
@@ -501,6 +504,51 @@ export const handlers = [
     await delay(GET_DELAY);
     if (!currentUser(request)) return unauthorized();
     return HttpResponse.json(reviewAssessments[params.id as string] ?? []);
+  }),
+  http.get(`${API}/reviews/:id/comments`, async ({ request, params }) => {
+    await delay(GET_DELAY);
+    if (!currentUser(request)) return unauthorized();
+    return HttpResponse.json(reviewCommentsStore[params.id as string] ?? []);
+  }),
+  http.post(`${API}/reviews/:id/comments`, async ({ request, params }) => {
+    await delay(ACTION_DELAY);
+    const u = currentUser(request);
+    if (!u) return unauthorized();
+    const b = (await request.json()) as {
+      body: string;
+      section?: ReviewComment["section"];
+      parent?: string | null;
+    };
+    const rid = params.id as string;
+    const comment: ReviewComment = {
+      id: localId(),
+      author: u.id,
+      author_name: u.display,
+      section: b.section ?? null,
+      body: b.body,
+      parent: b.parent ?? null,
+      created_at: new Date().toISOString(),
+      edited_at: null,
+    };
+    reviewCommentsStore[rid] = [...(reviewCommentsStore[rid] ?? []), comment];
+    return HttpResponse.json(comment, { status: 201 });
+  }),
+  http.patch(`${API}/reviews/:id/comments/:cid`, async ({ request, params }) => {
+    await delay(ACTION_DELAY);
+    if (!currentUser(request)) return unauthorized();
+    const b = (await request.json()) as { body: string };
+    const c = (reviewCommentsStore[params.id as string] ?? []).find((x) => x.id === params.cid);
+    if (!c) return HttpResponse.json({ detail: "Not found" }, { status: 404 });
+    c.body = b.body;
+    c.edited_at = new Date().toISOString();
+    return HttpResponse.json(c);
+  }),
+  http.delete(`${API}/reviews/:id/comments/:cid`, async ({ request, params }) => {
+    await delay(ACTION_DELAY);
+    if (!currentUser(request)) return unauthorized();
+    const rid = params.id as string;
+    reviewCommentsStore[rid] = (reviewCommentsStore[rid] ?? []).filter((x) => x.id !== params.cid);
+    return new HttpResponse(null, { status: 204 });
   }),
   ...reviewTransition("start-edit", (r) => {
     if (!["DRAFT", "PENDING_HUMAN_REVIEW", "REJECTED"].includes(r.state)) return conflict("Can't edit from the current state.", "ILLEGAL_TRANSITION");

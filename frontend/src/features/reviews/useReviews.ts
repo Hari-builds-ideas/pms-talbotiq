@@ -36,6 +36,37 @@ export function useReviewAssessments(id: string | undefined) {
   });
 }
 
+export function useReviewComments(id: string | undefined) {
+  return useQuery({
+    queryKey: ["reviews", "comments", id],
+    queryFn: () => reviewsApi.comments(id as string),
+    enabled: Boolean(id),
+  });
+}
+
+export function useReviewCommentMutations(reviewId: string) {
+  const qc = useQueryClient();
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["reviews", "comments", reviewId] });
+  };
+  return {
+    create: useMutation({
+      mutationFn: (v: { body: string; section?: string | null; parent?: string | null }) =>
+        reviewsApi.createComment(reviewId, v),
+      onSuccess: refresh,
+    }),
+    edit: useMutation({
+      mutationFn: (v: { id: string; body: string }) =>
+        reviewsApi.editComment(reviewId, v.id, v.body),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => reviewsApi.deleteComment(reviewId, id),
+      onSuccess: refresh,
+    }),
+  };
+}
+
 export function useReviewTransitions(id: string) {
   const qc = useQueryClient();
   const refresh = () => {

@@ -27,6 +27,7 @@ import { HitlBanner, SourceBadge, ConfidenceBadge } from "@/components/Hitl";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ReviewStepper } from "./ReviewStepper";
 import { AssessmentsPanel, EvidencePanel } from "./ReviewEvidence";
+import { CommentsPanel } from "./CommentsPanel";
 import {
   useReview,
   useReviewAssessments,
@@ -260,6 +261,8 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
               assessments={assessments.data}
               loading={assessments.isLoading}
             />
+
+            <CommentsPanel reviewId={r.id} />
 
             <Panel title="History">
               {timeline.isLoading ? (

@@ -1,0 +1,50 @@
+import * as React from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useAuth } from "@/lib/auth";
+import { apiBaseUrl } from "@/lib/api";
+
+/** More — the signed-in identity + sign out. Proves the full auth loop
+ *  (login → /auth/me → display → logout) end to end. */
+export default function More() {
+  const { me, features, logout } = useAuth();
+  const [busy, setBusy] = React.useState(false);
+
+  return (
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="p-5 gap-4">
+      <View className="rounded-xl border border-border bg-card p-4">
+        <Text className="text-lg font-semibold text-foreground">{me?.display}</Text>
+        <Text className="mt-0.5 text-sm text-muted-foreground">{me?.email}</Text>
+        <View className="mt-3 flex-row flex-wrap gap-2">
+          <Badge>{me?.role}</Badge>
+          <Badge>{me?.tenant_name ?? me?.tenant_slug}</Badge>
+          {me?.mfa_enabled ? <Badge>MFA on</Badge> : null}
+        </View>
+      </View>
+
+      <View className="rounded-xl border border-border bg-card p-4">
+        <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan features</Text>
+        <Text className="mt-1 text-sm text-foreground">
+          {features ? Object.entries(features).filter(([, on]) => on).map(([k]) => k).join(", ") || "Starter" : "—"}
+        </Text>
+      </View>
+
+      <Pressable
+        onPress={async () => { setBusy(true); await logout(); }}
+        disabled={busy}
+        className="items-center rounded-lg border border-danger/30 bg-danger-subtle py-3.5"
+      >
+        {busy ? <ActivityIndicator color="#EF4444" /> : <Text className="text-base font-semibold text-danger">Sign out</Text>}
+      </Pressable>
+
+      <Text className="text-center text-2xs text-muted-foreground">Backend: {apiBaseUrl}</Text>
+    </ScrollView>
+  );
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <View className="rounded-full bg-muted px-2.5 py-1">
+      <Text className="text-xs font-medium text-muted-foreground">{children}</Text>
+    </View>
+  );
+}

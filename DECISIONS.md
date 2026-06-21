@@ -580,3 +580,36 @@ base URL. This is the one behaviour-bearing change — gated by the web staying 
 Modules moved: `enums.ts` (incl. `ROLE_RANK`), `types.ts`, `errors.ts`,
 `api/client.ts`, `api/endpoints.ts`, and the async-AI hooks `useAIJob`/`useAIAction`.
 UI (shadcn/Tailwind) does NOT move — mobile uses NativeWind/RN.
+
+---
+
+### D23 (BUILD_8 8.2) — Mobile Expo scaffold + how it consumes the shared layer
+
+**Stack.** `create-expo-app` (Expo SDK 56, RN 0.85, React 19, Expo Router) +
+React Query + React Hook Form + zod + NativeWind v4 (on the SAME indigo tokens as
+web) + expo-secure-store. Bottom-tab shell (Dashboard/Goals/Feedback/Career/More)
++ an auth bootstrap that mirrors the web state machine, only swapping storage
+(SecureStore) and the forced-logout wiring (a callback, not a window event).
+
+**Consuming `shared/` from Metro (the hard part).** Metro would not resolve the
+out-of-root `shared/src` via `extraNodeModules` (an absolute or relative target),
+nor a babel-rewritten relative path — Expo/Metro resolves shared code through
+`node_modules`, not arbitrary watch-folder source. The working approach:
+- a `node_modules/pmsshared` SYMLINK → `../shared/src` (an in-`node_modules` entry
+  Metro resolves cleanly; its realpath is covered by `watchFolders=[repoRoot]`),
+- `babel-plugin-module-resolver` rewrites the source token `@shared` →
+  `pmsshared` (so mobile imports read `@shared/...` exactly like web),
+- `metro.config.js`: `watchFolders=[repoRoot]` + `nodeModulesPaths=[mobile/node_modules]`
+  so `shared/`'s only bare dep (`axios`) resolves from mobile's modules,
+- a `postinstall` (`npm run link-shared`) recreates the symlink after any install
+  (npm prunes it otherwise — that was the multi-attempt red herring).
+A scoped `@shared` symlink name was rejected (Metro parses `@scope/pkg` specially);
+`pmsshared` is unscoped. Web is unchanged (it resolves `@shared` via the Vite alias).
+
+**Device base URL.** Expo Go runs on the phone, so `localhost` ≠ the Mac: the API
+base URL is derived from Expo's `hostUri` (the Metro LAN IP) → `http://<ip>:8080/api`,
+overridable via `EXPO_PUBLIC_API_BASE_URL`.
+
+**Verified [build]:** `expo export -p ios` bundles cleanly (1767 modules); mobile
+`tsc` clean. **Live device run is Hari's** (the acceptance bar) — handed off at the
+8.2 stop.

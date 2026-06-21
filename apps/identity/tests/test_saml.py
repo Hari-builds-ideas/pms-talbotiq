@@ -330,29 +330,53 @@ def test_saml_unknown_identity_denied():
     assert resp.json()["code"] == "saml_unknown_user"
 
 
-def test_saml_attribute_role_mapping_syncs_role_and_audits():
+def test_saml_role_mapping_cannot_escalate_above_provisioned():
+    """Rank cap: an IdP that maps the user to a HIGHER role than admin-provisioned is
+    REFUSED — the session + DB role stay at the provisioned role, no escalation, no
+    role-sync audit (no IdP-driven privilege escalation)."""
     idp = MockIdp()
     tenant, user = _configure_tenant(
-        "acme", idp, email="boss@acme.test", role=User.Role.EMPLOYEE,
+        "acme", idp, email="grunt@acme.test", role=User.Role.EMPLOYEE,
         role_attribute="role", role_map={"pms-admins": "ADMIN"},
     )
     sp_entity, acs_url = _sp_urls("acme")
     b64 = idp.signed_response_b64(
-        acs_url=acs_url, sp_entity_id=sp_entity, email="boss@acme.test",
+        acs_url=acs_url, sp_entity_id=sp_entity, email="grunt@acme.test",
         attributes={"role": ["pms-admins"]},
     )
     resp = _post_acs("acme", b64)
     assert resp.status_code == 200, resp.content
-    assert resp.json()["role"] == "ADMIN"
-    assert AccessToken(resp.json()["access"])["role"] == "ADMIN"
-    # The mapping is REAL — the DB role (what RBAC enforces) is synced, and the
-    # change is recorded in the immutable audit log.
+    assert resp.json()["role"] == "EMPLOYEE"  # capped — NOT elevated to ADMIN
+    assert AccessToken(resp.json()["access"])["role"] == "EMPLOYEE"
     from apps.audit.models import AuditLog
     with tenant_context(tenant):
-        assert User.objects.get(pk=user.pk).role == User.Role.ADMIN
+        assert User.objects.get(pk=user.pk).role == User.Role.EMPLOYEE  # unchanged
+        assert not AuditLog.objects.filter(action="identity.saml.role_synced").exists()
+
+
+def test_saml_role_mapping_can_deescalate_and_audits():
+    """The cap is a ceiling, not a freeze: a mapped role AT OR BELOW the provisioned
+    role is applied — here an ADMIN mapped down to EMPLOYEE is synced + audited."""
+    idp = MockIdp()
+    tenant, user = _configure_tenant(
+        "acme", idp, email="boss@acme.test", role=User.Role.ADMIN,
+        role_attribute="role", role_map={"pms-grunts": "EMPLOYEE"},
+    )
+    sp_entity, acs_url = _sp_urls("acme")
+    b64 = idp.signed_response_b64(
+        acs_url=acs_url, sp_entity_id=sp_entity, email="boss@acme.test",
+        attributes={"role": ["pms-grunts"]},
+    )
+    resp = _post_acs("acme", b64)
+    assert resp.status_code == 200, resp.content
+    assert resp.json()["role"] == "EMPLOYEE"  # de-escalated (<= provisioned)
+    assert AccessToken(resp.json()["access"])["role"] == "EMPLOYEE"
+    from apps.audit.models import AuditLog
+    with tenant_context(tenant):
+        assert User.objects.get(pk=user.pk).role == User.Role.EMPLOYEE
         entry = AuditLog.objects.filter(action="identity.saml.role_synced").first()
         assert entry is not None
-        assert entry.metadata == {"from": "EMPLOYEE", "to": "ADMIN", "source": "saml"}
+        assert entry.metadata == {"from": "ADMIN", "to": "EMPLOYEE", "source": "saml"}
 
 
 def test_saml_role_mapping_falls_back_to_db_role_when_attribute_absent():

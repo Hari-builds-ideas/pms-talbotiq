@@ -730,3 +730,20 @@ drag. Drag isn't a WCAG-conformant sole mechanism, so the menu is the conformant
 
 **Test-env shims.** jsdom lacks `ResizeObserver`/`scrollIntoView` (Radix/cmdk use them);
 stubbed in the global test setup so overlay widgets render in the suite. No runtime effect.
+
+---
+
+### D27 (WEB_COE W1 follow-up) — SAML role sync is capped at the provisioned role (Hari's call on QUESTIONS Q2)
+
+Hari resolved QUESTIONS Q2: keep IdP role-sync **opt-in** (empty `role_map` = no sync —
+unchanged) AND add a **rank cap so a synced role can never EXCEED the admin-provisioned
+role** — no IdP-driven privilege escalation. Implemented in
+`apps/identity/saml/service.py::_resolve_and_sync_role`: a local `_ROLE_RANK`
+(EMPLOYEE<MANAGER<HRBP<ADMIN); if the mapped role outranks the user's current DB role it
+is refused and clamped to the current role (a warning is logged, nothing is written).
+A mapped role at or below the current role still applies (de-escalation) and audits via
+`identity.saml.role_synced`. Consequence (documented): because a de-escalation persists,
+the current DB role is the ceiling for any later mapping — only an admin re-provisioning
+raises a role. Tests: `test_saml_role_mapping_cannot_escalate_above_provisioned` +
+`…_can_deescalate_and_audits` (replaced the prior "elevates" test). This refines D25 —
+the role-mapping mechanism is unchanged; only the escalation direction is now blocked.

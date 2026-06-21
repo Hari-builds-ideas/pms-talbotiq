@@ -31,7 +31,9 @@ which tenant a session belongs to.
   by env-var name, never in DB/git). Endpoints `saml/<tenant>/{metadata,login,acs}`. Forced
   signature + strict conditions (expiry/audience/destination), SHA-256, Redis SET-NX replay
   guard. Attribute→role mapping JIT-syncs the DB role (RBAC enforces the DB role, not the
-  token claim) + writes an audit row; empty role_map ⇒ Hub stays authoritative.
+  token claim) + writes an audit row; empty role_map ⇒ Hub stays authoritative. A **rank
+  cap** (D27) means SSO can never raise a role above the admin-provisioned one — no
+  IdP-driven privilege escalation (de-escalation is allowed).
 
 **Proof.**
 - **[test]** `test_saml.py` (12): a real **xmlsec-signed** mock-IdP round-trip — happy path,

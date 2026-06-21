@@ -54,6 +54,16 @@ def _map_role(config, attributes, fallback_role):
     return fallback_role
 
 
+# Role ordering for the privilege-escalation cap (increasing breadth). Keyed by the
+# ``User.Role`` values (str-subclass members → plain-string lookups also match).
+_ROLE_RANK = {
+    User.Role.EMPLOYEE: 0,
+    User.Role.MANAGER: 1,
+    User.Role.HRBP: 2,
+    User.Role.ADMIN: 3,
+}
+
+
 def _resolve_and_sync_role(config, attributes, user):
     """Map the IdP attribute → a Role and JIT-sync it onto the pre-provisioned user.
 
@@ -63,8 +73,22 @@ def _resolve_and_sync_role(config, attributes, user):
     configured a ``role_map`` (an explicit opt-in to IdP-authoritative roles); with
     no map the resolved role equals the current role and nothing is written — i.e.
     the Hub stays authoritative, exactly like OIDC. Must run inside ``tenant_context``.
+
+    **Rank cap — no IdP-driven privilege escalation.** A mapped role that OUTRANKS the
+    admin-provisioned DB role is refused and clamped to the current role: SSO may keep
+    a role or move it DOWN, but can NEVER raise it above what an admin provisioned.
+    Re-provisioning by an admin is the only way to raise a role (a de-escalation does
+    persist, so the provisioned role is also the ceiling for any later mapping —
+    documented in docs/SSO.md / DECISIONS D27).
     """
     resolved = _map_role(config, attributes, user.role)
+    if _ROLE_RANK.get(resolved, 0) > _ROLE_RANK.get(user.role, 0):
+        logger.warning(
+            "SAML role mapping for user %s attempted to escalate %s -> %s; capped to "
+            "%s (no IdP-driven privilege escalation).",
+            user.id, user.role, resolved, user.role,
+        )
+        resolved = user.role
     if resolved != user.role:
         previous = user.role
         user.role = resolved

@@ -50,3 +50,7 @@ absent/unknown attribute never escalates. See DECISIONS.md D25; proven in
 **Choosing differently** (e.g. add a rank-cap so a mapped role can't exceed the
 provisioned one, or disable DB sync entirely and keep role mapping advisory) is a small,
 localised change in `apps/identity/saml/service.py::_resolve_and_sync_role`.
+
+**✅ RESOLVED (2026-06-22).** Hari: keep sync opt-in (empty role_map = no sync) **and add
+the rank-cap** so a synced role can NEVER exceed the admin-provisioned role — no
+IdP-driven privilege escalation. Implemented + tested; see DECISIONS.md D27.

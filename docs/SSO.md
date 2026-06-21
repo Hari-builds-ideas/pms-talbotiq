@@ -101,15 +101,19 @@ resolve_sp_private_key`). The default SP requires neither, so no key is needed.
   assertion that validates at tenant B's ACS; (3) the user is bound only inside
   `tenant_context(tenant)`, with no JIT. Proven by
   `test_saml_tenant_isolation_idp_a_cannot_mint_tenant_b_session`.
-- **Attribute → user/role mapping.** Email comes from `email_attribute` (or NameID) and
-  must match an **existing active** user in the tenant (no JIT — unknown identity → 401
-  `saml_unknown_user`). The role attribute is mapped through the tenant's `role_map`.
-  Because RBAC is enforced on the **DB** role, a configured mapping **JIT-syncs** the
-  user's role and writes an immutable `identity.saml.role_synced` audit row, so the
-  mapping actually takes effect (`…_role_mapping_syncs_role_and_audits`). With an
-  **empty `role_map` (the default)** nothing is synced — the Hub stays authoritative,
-  exactly like OIDC. An absent/unknown attribute never escalates
-  (`…_falls_back_to_db_role_when_attribute_absent`).
+- **Attribute → user/role mapping (capped — no privilege escalation).** Email comes
+  from `email_attribute` (or NameID) and must match an **existing active** user in the
+  tenant (no JIT — unknown identity → 401 `saml_unknown_user`). The role attribute is
+  mapped through the tenant's `role_map`. Because RBAC is enforced on the **DB** role, a
+  configured mapping **JIT-syncs** the user's role and writes an immutable
+  `identity.saml.role_synced` audit row, so the mapping actually takes effect — **but a
+  rank cap means SSO can never raise a role ABOVE the admin-provisioned one.** A mapped
+  role that outranks the current role is refused and clamped (logged, no change); a
+  mapped role at or below it is applied (de-escalation persists, so the provisioned role
+  is also the ceiling for any later mapping — only an admin re-provisioning raises a
+  role). With an **empty `role_map` (the default)** nothing is synced — the Hub stays
+  authoritative, exactly like OIDC. Tests: `test_saml_role_mapping_cannot_escalate_above_provisioned`,
+  `…_can_deescalate_and_audits`, `…_falls_back_to_db_role_when_attribute_absent`.
 
 ### Setting up a tenant (admin runbook)
 

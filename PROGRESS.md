@@ -3,7 +3,16 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: WEB_COE build (unattended) · W1 SSO ✓ + W2 WCAG 2.1 AA ✓ — W3 functional matrix NEXT · (mobile mock-adaptation PAUSED, not cancelled)
+## Current: WEB_COE build (unattended) · W1 SSO ✓ · W2 WCAG 2.1 AA ✓ · W3 functional matrix ✓ — ALL THREE DONE, WEB_COE_REPORT.md NEXT · (mobile mock-adaptation PAUSED)
+
+W3 done: mapped the brief's testing row (review transitions, KPI=100, escalations,
+notifications) to the existing suite, filled the genuine gaps (+8 tests): review
+route_rejected APPROVED→EDITING (+illegal guard), PARALLEL-step escalation, notification
+DELIVERY (signal→receiver→notifier for approval-assign/escalate + feedback-invite), KPI=100
+on PATCH. Full backend 1193 (was 1185). [live] on running stack: KPI 99.99/100.01→400,
+100.00→201; real escalate_overdue_routes sweep escalated MANAGER→HRBP (scanned1/escalated1/
+errors0), notifier path fired (Slack no-op). docs/FUNCTIONAL_TEST_MATRIX.md written. See
+ordinal 43. NEXT: WEB_COE_REPORT.md.
 
 W2 done: axe-core guard renders 14 Admin-Hub screens + the ⌘K palette in the real
 shell w/ MSW data → 0 WCAG A/AA violations (was 7); a token-contrast guard parses
@@ -124,6 +133,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+43 · WEB_COE/W3 · functional test matrix (web) — map the brief's testing row + fill gaps · Inventoried existing coverage (review state machine, KPI weight validators, escalation engine/sweep, notification signals) via a sub-agent, then added the GENUINELY-missing tests: `apps/reviews/tests/test_state_machine.py` (+2: route_rejected APPROVED→EDITING + illegal-unless-APPROVED), `apps/approvals/tests/test_escalation.py` (+1: PARALLEL step escalates independently of its active sibling), `apps/approvals/tests/test_signals.py` (+2: route-start → receiver invokes notify_approval_assignment; escalation → notify_approval_escalation — notification GENERATION end-to-end, not just signal-fired), `apps/feedback/tests/test_services.py` (+1: send_feedback_request → notify_feedback_request), `apps/goals/tests/test_api.py` (+2: PATCH KPI weight breaking 100 → 400 rolled back; non-weight PATCH → 200). KPI=100 boundaries (99.99/100.01/exactly-100) were ALREADY covered by test_weights.py + test_api.py boundary tests (confirmed, cited in the matrix). · **[test]** the 5 touched suites 80 pass; FULL backend **1193 passed**/2 deselected (+8, no regression) · **[live]** running stack: `POST /api/goals` KPI 99.99→400 / 100.01→400 / 100.00→201 (cleaned up); seeded a real overdue route + ran the actual `escalate_overdue_routes()` task → `{scanned:1,escalated:1,errors:0}`, step reassigned MANAGER→HRBP, route IN_PROGRESS; the integrations receiver fired the notifier path live (Slack no-op, graceful) · **[doc]** docs/FUNCTIONAL_TEST_MATRIX.md (every brief behaviour → test(s) → status, honest notes) · commit `WEB_COE W3 — functional test matrix (web)`
 
 42 · WEB_COE/W2 · WCAG 2.1 AA pass + automated a11y guard · DECISION D26: axe-core in vitest/jsdom (not Playwright — fits the existing vitest+MSW stack) + a token-contrast test (jsdom has no layout → axe can't do contrast). NEW: `frontend/src/mocks/server.ts` (MSW node server, reuses the 90 handlers), `src/test/a11y/harness.tsx` (renderInShell/renderBare + axeViolations over wcag2a/2aa/21a/21aa), `src/test/a11y/a11y.test.tsx` (14 screens + ⌘K palette → 0 A/AA violations), `src/test/a11y/contrast.test.ts` (parses globals.css tokens, 14 text pairs ≥4.5:1). FIXES: audit/analytics/reviews `SelectTrigger`+input `aria-label`s; AppLayout skip-to-content link + `<main id tabindex=-1>`; Sidebar `<nav aria-label>`; Topbar icon-button `aria-label`s (Ask AI / Preview role / account menu); NineBoxGrid **keyboard alternative to drag** (per-chip "Move to box" DropdownMenu — WCAG 2.1.1) + override marker aria-label; `command.tsx` CommandDialog visually-hidden DialogTitle+Description (4.1.2); globals.css `:focus-visible` → visible 2px outline (2.4.7), `@media (prefers-reduced-motion)` (2.3.3), and darkened `--success/warning/danger/info/ai/premium` + `--muted-foreground` to clear 4.5:1 (1.4.3); test setup ResizeObserver/scrollIntoView shims. axe before→after: 7→0; contrast 7 failing→0. · **[test]** frontend 72 vitest (43 prior + 15 a11y + 14 contrast) · **[build]** tsc CLEAN, eslint CLEAN, production build clean · **[doc]** docs/ACCESSIBILITY.md (honest manual/AT caveats — no full-conformance claim from automation) · commit `WEB_COE W2 — WCAG 2.1 AA pass + a11y guard`
 

@@ -186,6 +186,53 @@ def test_sweep_skips_already_decided_step(org, widget):
     assert escalated_audit is False  # the sweep never escalated it
 
 
+# ── parallel routing escalation ──────────────────────────────────────────────
+
+
+def _parallel_two_step(tenant, *, timeout_hours=24):
+    """A PARALLEL widget workflow: step-1 ROLE=MANAGER (esc HRBP) + step-2 ROLE=HRBP
+    (esc ADMIN), both with a timeout. In PARALLEL mode BOTH steps are active from
+    route start (unlike SEQUENTIAL, where only step-1 is active)."""
+    wf = ApprovalWorkflowFactory(tenant=tenant, artifact_type="widget", mode="PARALLEL")
+    ApprovalStepFactory(
+        workflow=wf, order=1, approver_kind="ROLE", approver_role="MANAGER",
+        timeout_hours=timeout_hours, escalation_role="HRBP",
+    )
+    ApprovalStepFactory(
+        workflow=wf, order=2, approver_kind="ROLE", approver_role="HRBP",
+        timeout_hours=timeout_hours, escalation_role="ADMIN",
+    )
+    return wf
+
+
+def test_sweep_escalates_a_parallel_step_independently(org, widget):
+    """PARALLEL routing: both steps are active (PENDING) at start. Forcing ONLY
+    step-1 overdue escalates step-1 to its HRBP target, leaves the not-yet-due
+    sibling untouched, and the route stays IN_PROGRESS."""
+    artifact_id, set_ctx = widget
+    set_ctx(subject=org.report, manager=org.manager, protected={org.report.id})
+    _parallel_two_step(org.tenant)
+    route = _start(org.tenant, artifact_id, initiated_by=org.manager)
+
+    with tenant_context(org.tenant):
+        steps = {s.order: s for s in route.step_instances.all()}
+        # PARALLEL → both steps are active concurrently from the start.
+        assert steps[1].status == SI.PENDING and steps[1].due_at is not None
+        assert steps[2].status == SI.PENDING
+    _force_overdue(org.tenant, steps[1].id)
+
+    summary = escalate_overdue_routes()
+
+    with tenant_context(org.tenant):
+        s1 = ApprovalStepInstance.objects.get(id=steps[1].id)
+        s2 = ApprovalStepInstance.objects.get(id=steps[2].id)
+        route.refresh_from_db()
+    assert s1.escalated is True and s1.approver_role == "HRBP"  # escalated to its target
+    assert s2.escalated is False  # sibling not yet due → left alone
+    assert route.status == R.IN_PROGRESS
+    assert summary["escalated"] >= 1
+
+
 # ── multi-tenant, off-request ────────────────────────────────────────────────
 
 

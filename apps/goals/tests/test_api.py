@@ -385,3 +385,35 @@ def test_goal_create_audits(org):
     mgr.post(GOALS, _goal_payload(org.report, cycle), format="json")
     with tenant_context(org.tenant):
         assert AuditLog.objects.filter(action="goal.created", target_type="goal").exists()
+
+
+# ── KPI weight = 100 enforced on PATCH (not only on create) ────────────────
+
+
+def test_kpi_weight_patch_breaking_100_is_rejected(org):
+    """PATCH-ing a KPI's weight so the parent goal no longer sums to 100.00 → 400,
+    rolled back (the 100% rule holds on edit, not only on create)."""
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    mgr = _client_for(org.manager)
+    created = mgr.post(GOALS, _goal_payload(org.report, cycle, kpi_weights=(60, 40)), format="json")
+    assert created.status_code == 201
+    kpi_id = created.json()["kpis"][0]["id"]  # the 60.00 KPI
+
+    # 60.00 → 70.00 would make the goal sum to 110.00 → rejected.
+    resp = mgr.patch(f"{GOALS}kpis/{kpi_id}", {"weight": "70.00"}, format="json")
+    assert resp.status_code == 400
+    with tenant_context(org.tenant):
+        from apps.goals.models import Kpi
+        assert Kpi.objects.get(id=kpi_id).weight == Decimal("60.00")  # unchanged (rolled back)
+
+
+def test_kpi_non_weight_patch_does_not_trigger_weight_check(org):
+    """A PATCH that doesn't touch weight (e.g. the name) is accepted — the 100%
+    re-check only fires on a weight change."""
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    mgr = _client_for(org.manager)
+    created = mgr.post(GOALS, _goal_payload(org.report, cycle, kpi_weights=(60, 40)), format="json")
+    kpi_id = created.json()["kpis"][0]["id"]
+    resp = mgr.patch(f"{GOALS}kpis/{kpi_id}", {"name": "Renamed KPI"}, format="json")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Renamed KPI"

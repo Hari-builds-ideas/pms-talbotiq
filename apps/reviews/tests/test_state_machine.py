@@ -311,3 +311,30 @@ def test_cross_tenant_actor_out_of_scope(org, other_tenant, make_user, review):
     outsider_mgr = make_user(tenant=other_tenant, role="MANAGER", email="out@other.test")
     with pytest.raises(PermissionDenied):
         sm.start_edit(review, outsider_mgr)
+
+
+# ── Module-5 route-rejection edge: APPROVED -> EDITING ─────────────────────
+
+
+def test_route_rejected_returns_approved_review_to_editing(org, review):
+    """An approval route rejecting the finalize bounces the APPROVED review back to
+    EDITING as a SYSTEM transition, clearing the in-flight route link."""
+    mgr = org.manager
+    _to_pending(review, mgr)
+    sm.approve(review, mgr)
+    assert review.state == S.APPROVED
+
+    sm.route_rejected(review, reason="approver sent it back")
+    assert review.state == S.EDITING
+    assert review.approval_route_id is None
+    with tenant_context(review.tenant_id):
+        last = ReviewStateTransition.objects.filter(review=review).order_by("-at").first()
+    assert last.from_state == S.APPROVED and last.to_state == S.EDITING
+    assert last.actor_id is None  # system transition (the human decision was on the route)
+
+
+def test_route_rejected_illegal_unless_approved(org, review):
+    """route_rejected is only legal from APPROVED — illegal from PENDING_HUMAN_REVIEW."""
+    _to_pending(review, org.manager)  # PENDING_HUMAN_REVIEW
+    with pytest.raises(IllegalTransition):
+        sm.route_rejected(review, reason="x")

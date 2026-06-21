@@ -1,4 +1,6 @@
 """Service-level rules: cycle fences, the invitation flow, uniqueness, edits."""
+from unittest.mock import patch
+
 import pytest
 from django.db import IntegrityError, transaction
 from rest_framework.exceptions import ValidationError
@@ -211,3 +213,15 @@ def test_cross_tenant_isolation_on_feedback_models(org, other_tenant):
     with tenant_context(other_tenant):
         assert FeedbackCycle.objects.filter(id=cycle.id).count() == 0
         assert Feedback.objects.count() == 0
+
+
+def test_send_feedback_request_generates_a_notification(org, collecting_cycle):
+    """Sending an invitation fires feedback_request_sent, and the integrations
+    receiver invokes the Slack notifier — notification GENERATED on the event."""
+    with patch("apps.integrations.receivers.notify_feedback_request") as notify:
+        with tenant_context(org.tenant):
+            send_feedback_request(
+                cycle=collecting_cycle, giver=org.peer, relationship="PEER", actor=org.hrbp
+            )
+    assert notify.called
+    assert notify.call_args.kwargs["relationship"] == "PEER"

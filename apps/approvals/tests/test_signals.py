@@ -4,6 +4,8 @@ The approval engine fires the Module-12 notification signals (best-effort,
 start + next-step activation) and ``approval_step_escalated`` on escalation. The
 engine itself stays unaware of Slack — integrations subscribes elsewhere.
 """
+from unittest.mock import patch
+
 import pytest
 
 from apps.approvals import engine
@@ -65,3 +67,35 @@ def test_escalate_step_fires_escalation_signal(org, widget):
 
     assert len(captured) == 1
     assert captured[0]["order"] == 1
+
+
+# ── notification GENERATION: signal → integrations receiver → Slack notifier ──
+
+
+def test_route_start_generates_an_assignment_notification(org, widget):
+    """End-to-end: route start fires approval_step_assigned, and the integrations
+    receiver actually invokes the Slack notifier — the notification is GENERATED on
+    the event (not just the signal fired)."""
+    artifact_id, set_ctx = widget
+    set_ctx(subject=org.report, manager=org.manager)
+    _sequential_widget_workflow(org)
+    with patch("apps.integrations.receivers.notify_approval_assignment") as notify:
+        with tenant_context(org.tenant):
+            engine.start_route(
+                "widget", artifact_id, initiated_by=org.admin, tenant_id=str(org.tenant.id)
+            )
+    assert notify.called
+    assert notify.call_args.kwargs["order"] == 1
+
+
+def test_escalation_generates_an_escalation_notification(org, widget):
+    artifact_id, set_ctx = widget
+    set_ctx(subject=org.report, manager=org.manager)
+    _sequential_widget_workflow(org)
+    with patch("apps.integrations.receivers.notify_approval_escalation") as notify:
+        with tenant_context(org.tenant):
+            route = engine.start_route(
+                "widget", artifact_id, initiated_by=org.admin, tenant_id=str(org.tenant.id)
+            )
+            engine.escalate_step(route.step_instances.order_by("order").first())
+    assert notify.called

@@ -161,6 +161,10 @@ export const cyclesApi = {
   list: () => unwrap<PerformanceCycle[]>(api.get("/cycles/")),
   scores: (cycleId: string) =>
     unwrap<CycleScore[]>(api.get(`/cycles/${cycleId}/scores`)),
+  // One employee's score, scope-bound (404 out-of-scope / not-yet-computed) —
+  // for single-person consumers that shouldn't pull the whole cohort.
+  score: (cycleId: string, employeeId: string) =>
+    unwrap<CycleScore>(api.get(`/cycles/${cycleId}/scores/${employeeId}`)),
   myScore: (cycleId: string) =>
     unwrap<CycleScore | null>(api.get(`/cycles/${cycleId}/scores/me`)),
   recompute: (cycleId: string) =>

@@ -199,6 +199,65 @@ def test_manager_scores_show_subtree_not_peer(org):
     assert str(org.peer.id) not in emp_ids  # outside subtree → hidden
 
 
+# ── single-employee score lookup (scope-bound) ──────────────────────────────
+
+
+def test_employee_reads_own_single_score(org):
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    _active_goal_with_actual(org.report, cycle, actual=90)
+    _client_for(org.manager).post(f"{CYCLES}{cycle.id}/recompute")
+    resp = _client_for(org.report).get(f"{CYCLES}{cycle.id}/scores/{org.report.id}")
+    assert resp.status_code == 200
+    assert resp.json()["employee"] == str(org.report.id)
+
+
+def test_employee_cannot_read_peer_single_score(org):
+    """An Employee (OWN scope) asking for a peer's score gets 404 — and the score
+    DOES exist (recomputed by HRBP), so the 404 is the scope guard, not absence."""
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    _active_goal_with_actual(org.peer, cycle, actual=60)
+    _client_for(org.hrbp).post(f"{CYCLES}{cycle.id}/recompute")
+    resp = _client_for(org.report).get(f"{CYCLES}{cycle.id}/scores/{org.peer.id}")
+    assert resp.status_code == 404
+
+
+def test_manager_reads_subtree_single_score_not_peer(org):
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    _active_goal_with_actual(org.report, cycle, actual=80)  # in manager subtree
+    _active_goal_with_actual(org.peer, cycle, actual=50)    # reports to hrbp — NOT subtree
+    _client_for(org.hrbp).post(f"{CYCLES}{cycle.id}/recompute")
+    mgr = _client_for(org.manager)
+    assert mgr.get(f"{CYCLES}{cycle.id}/scores/{org.report.id}").status_code == 200
+    assert mgr.get(f"{CYCLES}{cycle.id}/scores/{org.peer.id}").status_code == 404
+
+
+def test_hrbp_reads_any_tenant_single_score(org):
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    _active_goal_with_actual(org.peer, cycle, actual=70)
+    _client_for(org.hrbp).post(f"{CYCLES}{cycle.id}/recompute")
+    resp = _client_for(org.hrbp).get(f"{CYCLES}{cycle.id}/scores/{org.peer.id}")
+    assert resp.status_code == 200
+    assert resp.json()["employee"] == str(org.peer.id)
+
+
+def test_single_score_cross_tenant_employee_is_404(org, other_tenant):
+    """Even a TENANT-scoped HRBP can't reach another tenant's employee — the
+    tenant-scoped manager hides the row → 404."""
+    from apps.testsupport.factories import UserFactory
+
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    outsider = UserFactory(tenant=other_tenant, role="EMPLOYEE")
+    resp = _client_for(org.hrbp).get(f"{CYCLES}{cycle.id}/scores/{outsider.id}")
+    assert resp.status_code == 404
+
+
+def test_single_score_404_when_none_computed(org):
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    # in-scope (own id) but no score computed yet → 404
+    resp = _client_for(org.report).get(f"{CYCLES}{cycle.id}/scores/{org.report.id}")
+    assert resp.status_code == 404
+
+
 def test_hrbp_scores_show_everyone_in_tenant(org):
     cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
     _active_goal_with_actual(org.report, cycle, actual=80)

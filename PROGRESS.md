@@ -3,13 +3,14 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1, 6.2 done)
+## Current: FINAL PUSH (BUILD_6→9) · BUILD_6 STABILIZE in progress (6.1, 6.2, 6.3 done)
 
 BUILDs 1–5 COMPLETE/pushed/green (web UX concrete work done; backend 1133 passing).
 Final push started: BUILD_6 (stabilize: org-chart crash + not-iterable sweep + the
 3 Q1 large-tenant items) → BUILD_7 (Tier-3: review comments + nine-box reposition,
 backend-first) → BUILD_8 (mobile foundation) → BUILD_9 (mobile screens). Done: 6.1
-(org crash), 6.2 (admin users pagination+search). BUILD_5 recap below.
+(org crash), 6.2 (admin users pagination+search), 6.3 (scoped single-employee
+score lookup). BUILD_5 recap below.
 
 ### BUILD_5 recap
 BUILD_5 delivered: 5.1, 5.2, 5.4a, 5.4b, 5.5 (+5.5b), 5.6, 5.7. The concrete,
@@ -87,6 +88,8 @@ fixes each view's `get_queryset` and flips `ENFORCE_BOUNDED=True`.
 ## Log
 
 (ordinal · build/phase · what · files · verification · commit)
+
+31 · BUILD_6/6.3 · scoped single-employee score lookup (Q1 item 2) · backend `apps/cycles/views.py` (new `EmployeeCycleScoreView`: `GET /api/cycles/<cid>/scores/<employee_id>` — one CycleScore, scope-bound OWN-self/TEAM-subtree+self/TENANT-anyone; out-of-scope or cross-tenant → 404 (no existence leak); no-score-yet → 404; mirrors MyCycleScoreView + the cohort scope branch), `apps/cycles/urls.py` (route declared AFTER `scores/me` so the literal wins — "me" is not a uuid; before the cohort `scores`), `apps/cycles/tests/test_api.py` (+6: own-200, peer-denied-404-with-score-present, manager-subtree-200-vs-peer-404, hrbp-any-200, cross-tenant-404, no-score-404) · frontend `lib/api/endpoints.ts` (+`cyclesApi.score(cid,eid)`), `features/reviews/ReviewEvidence.tsx` (EvidencePanel fetched the WHOLE cohort just to `.find` one employee → now the scoped single lookup with `retry:false`; a 404 leaves the score block hidden, exactly as the old `.find`→undefined did). KEPT the cohort `cyclesApi.scores` for the genuine multi-row consumers: the GoalsPage per-employee grid + calibration (both Manager+ in nav, so no 403). · **[test]** cycles 22 pass (+6); FULL backend 1139 passed/2 deselected (no regression); frontend tsc+lint clean, 35 vitest, build clean · **[live]** restarted web + recreated frontend; `/scores/<emp>` in-scope→200 (employee matches, has t_score), bogus uuid→404, `scores/me` still resolves (literal wins over the uuid route) · commit `BUILD_6 6.3`
 
 30 · BUILD_6/6.2 · admin users pagination + search (Q1 item 1) · backend `apps/administration/services.py` (list_users gains an optional `search` → server-side `Q(email|display_name|role icontains)`, still tenant-scoped + materialized in-context so the non-request test caller keeps working), `apps/administration/views.py` (UserListCreateView.get paginates via StandardResultsSetPagination + reads `?search=`), `apps/administration/tests/test_api.py` (updated the list test to the paginated shape; +test_users_list_is_paginated, +test_users_search_filters_server_side, +test_users_search_does_not_leak_other_tenants) · frontend `lib/api/endpoints.ts` (`adminApi.users(params)`→`Paginated<AdminUser>` + `AdminUserParams`), `features/admin/useAdmin.ts` (useUsers(params)), `lib/hooks/useDebouncedValue.ts` (new), `features/admin/UsersPage.tsx` (debounced search box + page controls + distinct no-users vs no-matches empty states; the manager column + manager dropdowns now read the tenant-wide `useDirectory` instead of the full user array — the two consumers that relied on the un-paginated list), `mocks/handlers.ts` (users mock → paginate + search). DECISION D15: paginate a materialized scoped list (sanctioned by pagination.py) rather than a lazy queryset, to preserve list_users' self-contained tenant-scoping that a non-request test relies on. · **[test]** admin 36 pass (+3); FULL backend 1133 passed/2 deselected (no regression); frontend tsc+lint clean, 35 vitest, build clean · **[live]** restarted web + recreated frontend; `/api/admin/users?page_size=2`→{count:31,next,2 rows}; `?search=ada@acme`→1; `?search=HRBP`(caps)→2 HRBP; `?search=zzzznope`→count 0 empty (no error) · commit `BUILD_6 6.2`
 

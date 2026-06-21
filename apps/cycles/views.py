@@ -132,3 +132,39 @@ class CycleScoresView(RBACMixin, APIView):
             visible = reporting_subtree_ids(request.user) | {request.user.id}
             scores = scores.filter(employee_id__in=visible)
         return Response(CycleScoreSerializer(scores, many=True).data)
+
+
+class EmployeeCycleScoreView(RBACMixin, APIView):
+    """``GET /api/cycles/<cycle_id>/scores/<employee_id>`` — ONE employee's
+    CycleScore, scope-bound, so a client that needs a single person's score
+    fetches just that row instead of the whole cohort.
+
+    Scope (same tiers as the cohort view, but for the one requested employee):
+      * OWN (Employee) → only the caller's own id;
+      * TEAM (Manager) → their reporting subtree plus themselves;
+      * TENANT (HRBP / Admin) → anyone in the tenant.
+    Out-of-scope (or cross-tenant — the scoped manager hides it) → 404, which also
+    avoids leaking whether such a score exists. No score computed yet → 404.
+    """
+
+    required_capability = Capability.VIEW_OWN_GOALS
+
+    def get(self, request, cycle_id, employee_id):
+        get_object_or_404(PerformanceCycle.objects.all(), pk=cycle_id)
+        scope = scope_for_role(request.user.role)
+        target = str(employee_id)
+        if scope is Scope.OWN:
+            if target != str(request.user.id):
+                raise Http404("Out of scope.")
+        elif scope is Scope.TEAM:
+            visible = {str(i) for i in reporting_subtree_ids(request.user)}
+            visible.add(str(request.user.id))
+            if target not in visible:
+                raise Http404("Out of scope.")
+        # TENANT: any employee in the tenant (the scoped manager isolates tenant).
+        score = CycleScore.objects.filter(
+            cycle_id=cycle_id, employee_id=employee_id
+        ).first()
+        if score is None:
+            raise Http404("No score for this cycle.")
+        return Response(CycleScoreSerializer(score).data)

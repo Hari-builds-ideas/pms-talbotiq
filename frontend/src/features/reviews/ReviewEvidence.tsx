@@ -26,13 +26,17 @@ export function EvidencePanel({ employee, cycle }: { employee: string; cycle: st
     queryKey: ["goals", "evidence", cycle],
     queryFn: () => goalsApi.list({ cycle, page_size: 200 }),
   });
-  const scores = useQuery({
-    queryKey: ["cycles", "scores", cycle],
-    queryFn: () => cyclesApi.scores(cycle),
+  // Fetch just this employee's score (scope-bound), not the whole cohort. A 404
+  // (no score computed yet, or out of scope) leaves `score` undefined — the panel
+  // simply omits the score block, so we don't retry it.
+  const scoreQuery = useQuery({
+    queryKey: ["cycles", "score", cycle, employee],
+    queryFn: () => cyclesApi.score(cycle, employee),
+    retry: false,
   });
 
   const myGoals = (goals.data?.results ?? []).filter((g) => g.employee === employee);
-  const score = (scores.data ?? []).find((s) => s.employee === employee);
+  const score = scoreQuery.data;
 
   return (
     <Panel
@@ -40,7 +44,7 @@ export function EvidencePanel({ employee, cycle }: { employee: string; cycle: st
       icon={BarChart3}
       aside={score ? <StatusBadge status={score.risk_status} dot /> : undefined}
     >
-      {goals.isLoading || scores.isLoading ? (
+      {goals.isLoading || scoreQuery.isLoading ? (
         <LinesSkeleton lines={4} />
       ) : (
         <div className="space-y-4">

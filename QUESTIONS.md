@@ -24,3 +24,29 @@ the user list).
 (dashboard downloading the user list) was fixed server-side. Recorded as BUILD_5
 (WEB_UX) candidates. Choosing differently (do them now) would mean UI changes
 beyond an ORM build's remit. See DECISIONS.md D3.
+
+---
+
+### Q2 (WEB_COE/W1) — Should a tenant's SAML IdP be allowed to drive (sync) the user's role?
+
+**Question.** When a tenant configures a SAML `role_map`, the SP maps the IdP's
+role/group attribute to one of our Roles and **JIT-syncs it onto the user's DB role**
+(RBAC enforces the DB role, so this is what makes the mapping actually take effect),
+writing an `identity.saml.role_synced` audit row. Do you want IdP-driven role sync at
+all, and if so should the synced role be **capped so it can never exceed** the
+admin-provisioned role (no IdP-driven privilege escalation)?
+
+**Why it matters.** It's the federation trade-off: IdP-authoritative roles are standard
+enterprise SSO, but they let a (tenant-administered) IdP attribute elevate someone to
+Admin. RBAC enforcement itself is unchanged either way; this is only about where the
+*role value* originates.
+
+**Default taken (to continue).** Conservative + opt-in: with an **empty `role_map`
+(the default) the IdP drives NO roles** — the Admin Hub stays authoritative, identical
+to the OIDC path. Sync only happens when a tenant explicitly fills `role_map`, and an
+absent/unknown attribute never escalates. See DECISIONS.md D25; proven in
+`apps/identity/tests/test_saml.py`.
+
+**Choosing differently** (e.g. add a rank-cap so a mapped role can't exceed the
+provisioned one, or disable DB sync entirely and keep role mapping advisory) is a small,
+localised change in `apps/identity/saml/service.py::_resolve_and_sync_role`.

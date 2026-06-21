@@ -613,3 +613,35 @@ overridable via `EXPO_PUBLIC_API_BASE_URL`.
 **Verified [build]:** `expo export -p ios` bundles cleanly (1767 modules); mobile
 `tsc` clean. **Live device run is Hari's** (the acceptance bar) — handed off at the
 8.2 stop.
+
+---
+
+### D24 (BUILD_8 8.2-fix) — Downgrade to Expo SDK 54; Metro resolver for shared (no symlink)
+
+**SDK 54, not 56.** Hari's iPhone Expo Go maxes at SDK 54, so the app was pinned
+down: `expo@54` + a clean reinstall (`rm node_modules package-lock.json`) — needed
+because the stale SDK-56 `react-server-dom-webpack@19.2.7` (peer react@^19.2.7)
+blocked `expo install --fix` against SDK 54's react@19.1.0 — then `expo install
+--fix` aligned everything (react 19.1.0, react-native 0.81.5, expo-router 6.0.24,
+expo-secure-store 15.0.8) and `babel-preset-expo@54` was re-added (the clean
+install had dropped it). `expo-doctor` 18/18.
+
+**Shared resolution via a Metro resolver (replaces the symlink).** The earlier
+node_modules symlink + babel alias + postinstall was fragile (npm prunes the
+symlink; gitignored). Replaced with a single `metro.config.js`
+`resolver.resolveRequest` that maps `@shared[/sub]` → `<repo>/shared/src[/sub]` and
+returns the resolved source file directly (`{type:"sourceFile", filePath}`) — which
+sidesteps Metro's refusal to resolve an out-of-root path passed as a module
+specifier. `watchFolders=[repoRoot]` lets Metro serve `shared/`; `nodeModulesPaths`
+pins `shared/`'s only bare dep (axios) to `mobile/node_modules`; tsconfig `@shared/*`
+covers TS. Symlink, babel-plugin-module-resolver usage, postinstall, and the
+`unstable_enableSymlinks` override all removed (the last was the only expo-doctor
+failure). Mobile imports read `@shared/...` exactly like web.
+
+**expo-secure-store web guard.** It's native-only and threw on web
+("getValueWithKeyAsync is not a function"). `secureTokenStore.ts` now branches on
+`Platform.OS`: native → SecureStore (Keychain), web → localStorage fallback (access
+stays in memory either way). Hari tests on iOS (native path).
+
+Verified [build]: expo-doctor 18/18, mobile tsc clean, `expo export -p ios` bundles
+(1616 modules). Web app untouched. Device run pending Hari's re-scan.

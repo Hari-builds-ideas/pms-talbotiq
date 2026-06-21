@@ -429,7 +429,13 @@ export interface NineBoxPlacement {
   cycle: UUID;
   performance_band: Band;
   potential_band: Band;
-  box: number;
+  box: number; // the computed cell (never rewritten by an override)
+  override_box: number | null; // a human override of the cell, or null
+  override_by?: UUID | null;
+  override_at?: ISODate | null;
+  override_rationale?: string;
+  effective_box: number; // override_box ?? box — the cell to display
+  is_overridden: boolean;
 }
 
 export interface SuccessionPlan {

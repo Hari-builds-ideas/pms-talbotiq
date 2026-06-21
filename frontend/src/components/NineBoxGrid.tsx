@@ -1,9 +1,19 @@
+import * as React from "react";
+import { GripVertical, RotateCcw } from "lucide-react";
 import { PersonName } from "@/components/PersonName";
+import { bucketByEffectiveBox } from "@/lib/nineBox";
 import { cn } from "@/lib/utils";
 
-interface Placement {
+/** The minimal cell contract the grid renders. The succession 9-box passes full
+ *  placements (with id + override fields → interactive); the analytics calibration
+ *  grid passes just employee + box (read-only). */
+export interface NineBoxCell {
+  id?: string;
   employee: string;
+  employee_name?: string | null;
   box: number;
+  effective_box?: number;
+  is_overridden?: boolean;
 }
 
 /** box → talent tone (top-right strong, bottom-left at-risk). */
@@ -38,12 +48,33 @@ const ROWS = [
   [1, 2, 3],
 ];
 
-export function NineBoxGrid({ placements }: { placements: Placement[] }) {
-  const byBox = new Map<number, string[]>();
-  for (const p of placements) {
-    const list = byBox.get(p.box) ?? [];
-    list.push(p.employee);
-    byBox.set(p.box, list);
+interface NineBoxGridProps {
+  placements: NineBoxCell[];
+  /** When true (HRBP/Admin), chips can be dragged between cells to set a human
+   *  override, and overridden chips can be reset. Otherwise the grid is read-only. */
+  canOverride?: boolean;
+  onReposition?: (placementId: string, box: number) => void;
+  onClearOverride?: (placementId: string) => void;
+  /** A placement id currently saving — its chip shows a pending state. */
+  pendingId?: string | null;
+}
+
+export function NineBoxGrid({
+  placements,
+  canOverride = false,
+  onReposition,
+  onClearOverride,
+  pendingId,
+}: NineBoxGridProps) {
+  const byBox = bucketByEffectiveBox(placements);
+  const [dragOver, setDragOver] = React.useState<number | null>(null);
+
+  function handleDrop(e: React.DragEvent, box: number) {
+    e.preventDefault();
+    setDragOver(null);
+    const id = e.dataTransfer.getData("text/plain");
+    const p = placements.find((x) => x.id === id);
+    if (p?.id && (p.effective_box ?? p.box) !== box) onReposition?.(p.id, box);
   }
 
   return (
@@ -62,9 +93,13 @@ export function NineBoxGrid({ placements }: { placements: Placement[] }) {
             return (
               <div
                 key={box}
+                onDragOver={canOverride ? (e) => { e.preventDefault(); setDragOver(box); } : undefined}
+                onDragLeave={canOverride ? () => setDragOver((b) => (b === box ? null : b)) : undefined}
+                onDrop={canOverride ? (e) => handleDrop(e, box) : undefined}
                 className={cn(
-                  "flex min-h-28 flex-col rounded-lg border p-2.5",
+                  "flex min-h-28 flex-col rounded-lg border p-2.5 transition-colors",
                   BOX_TONE[box],
+                  canOverride && dragOver === box && "ring-2 ring-primary ring-offset-1",
                 )}
               >
                 <div className="mb-1.5 flex items-center justify-between">
@@ -76,14 +111,46 @@ export function NineBoxGrid({ placements }: { placements: Placement[] }) {
                   </span>
                 </div>
                 <ul className="space-y-1">
-                  {people.slice(0, 5).map((id, i) => (
-                    <li key={`${id}-${i}`} className="truncate text-xs">
-                      <PersonName id={id} />
+                  {people.map((p) => (
+                    <li
+                      key={p.id ?? p.employee}
+                      draggable={canOverride}
+                      onDragStart={
+                        canOverride ? (e) => e.dataTransfer.setData("text/plain", p.id ?? "") : undefined
+                      }
+                      className={cn(
+                        "group flex items-center gap-1 truncate rounded px-1 py-0.5 text-xs",
+                        canOverride && "cursor-grab hover:bg-card/60 active:cursor-grabbing",
+                        pendingId && pendingId === p.id && "opacity-50",
+                      )}
+                      title={p.is_overridden ? "Human override — drag to move, or reset to computed" : undefined}
+                    >
+                      {canOverride && (
+                        <GripVertical className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                      )}
+                      <span className="truncate">
+                        <PersonName id={p.employee} name={p.employee_name} />
+                      </span>
+                      {p.is_overridden && (
+                        <span
+                          className="ml-auto flex shrink-0 items-center gap-0.5 text-2xs text-primary"
+                          title={`Computed box ${p.box}, moved to ${p.effective_box}`}
+                        >
+                          ●
+                          {canOverride && onClearOverride && p.id && (
+                            <button
+                              type="button"
+                              onClick={() => onClearOverride(p.id as string)}
+                              aria-label="Reset to computed placement"
+                              className="rounded p-0.5 hover:text-foreground"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                            </button>
+                          )}
+                        </span>
+                      )}
                     </li>
                   ))}
-                  {people.length > 5 && (
-                    <li className="text-2xs text-muted-foreground">+{people.length - 5} more</li>
-                  )}
                 </ul>
               </div>
             );

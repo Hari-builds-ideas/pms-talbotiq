@@ -497,3 +497,20 @@ the succession owners (HRBP/Admin). A Manager (has VIEW/ASSESS) → 403; an empl
 → 404 at the succession participant gate (the employee-invisible invariant is
 untouched). Cross-tenant placement → 404. This resolves the BUILD_7 Feature B
 go-ahead.
+
+---
+
+### D20 (BUILD_7 7.B.2) — Native HTML5 drag-and-drop, not react-dnd
+
+**Decision.** The nine-box drag-reposition UI uses the browser's native HTML5
+drag-and-drop (`draggable` chips + `onDragOver`/`onDrop` cells), NOT a library.
+
+**Why.** The BUILD_7 spec said "the design already has react-dnd available", but
+react-dnd (and dnd-kit) are NOT in `package.json`. For a simple 3×3 grid drop,
+native HTML5 DnD is fully sufficient and adds ZERO new dependency / bundle weight —
+preferable to pulling in a drag library mid-series. The `NineBoxGrid` was also
+reworked to a loose `NineBoxCell` contract with id-based callbacks so the SAME
+component serves both the interactive succession grid (HRBP/Admin, full placements)
+and the read-only analytics calibration grid (a reduced shape) without breaking
+the latter. Repositioning is gated to HRBP/Admin (canOverride); for everyone else
+the grid stays read-only (no dead UI) — and employees never reach succession at all.

@@ -477,14 +477,22 @@ export const benchByRole: Record<string, BenchCandidate[]> = {
   "cr-3": [],
 };
 
-export const nineBox: NineBoxPlacement[] = [
-  { id: "nb-1", employee: "u-1", cycle: "cy-1", performance_band: "HIGH", potential_band: "HIGH", box: 9 },
-  { id: "nb-2", employee: "u-2", cycle: "cy-1", performance_band: "MEDIUM", potential_band: "MEDIUM", box: 5 },
-  { id: "nb-3", employee: "u-4", cycle: "cy-1", performance_band: "HIGH", potential_band: "MEDIUM", box: 6 },
-  { id: "nb-4", employee: "u-6", cycle: "cy-1", performance_band: "MEDIUM", potential_band: "HIGH", box: 8 },
-  { id: "nb-5", employee: "u-7", cycle: "cy-1", performance_band: "LOW", potential_band: "MEDIUM", box: 2 },
-  { id: "nb-6", employee: "u-8", cycle: "cy-1", performance_band: "HIGH", potential_band: "HIGH", box: 9 },
-];
+export const nineBox: NineBoxPlacement[] = (
+  [
+    { id: "nb-1", employee: "u-1", performance_band: "HIGH", potential_band: "HIGH", box: 9 },
+    { id: "nb-2", employee: "u-2", performance_band: "MEDIUM", potential_band: "MEDIUM", box: 5 },
+    { id: "nb-3", employee: "u-4", performance_band: "HIGH", potential_band: "MEDIUM", box: 6 },
+    { id: "nb-4", employee: "u-6", performance_band: "MEDIUM", potential_band: "HIGH", box: 8 },
+    { id: "nb-5", employee: "u-7", performance_band: "LOW", potential_band: "MEDIUM", box: 2 },
+    { id: "nb-6", employee: "u-8", performance_band: "HIGH", potential_band: "HIGH", box: 9 },
+  ] as const
+).map((n) => ({
+  ...n,
+  cycle: "cy-1",
+  override_box: null,
+  effective_box: n.box,
+  is_overridden: false,
+}));
 
 export const plans: Record<string, SuccessionPlan> = {
   "sp-1": {

@@ -963,10 +963,46 @@ export const handlers = [
     const pot = body.potential_band ?? "MEDIUM";
     const box = bandIndex[perf] + bandIndex[pot] * 3 + 1;
     const existing = nineBox.find((n) => n.employee === body.employee && n.cycle === body.cycle);
-    if (existing) { existing.potential_band = pot; existing.box = box; return HttpResponse.json(existing); }
-    const created = { id: localId("nb"), employee: body.employee ?? "u-2", cycle: body.cycle ?? "cy-1", performance_band: perf, potential_band: pot, box };
+    if (existing) {
+      existing.potential_band = pot;
+      existing.box = box;
+      existing.effective_box = existing.override_box ?? box;
+      return HttpResponse.json(existing);
+    }
+    const created = {
+      id: localId("nb"), employee: body.employee ?? "u-2", cycle: body.cycle ?? "cy-1",
+      performance_band: perf, potential_band: pot, box,
+      override_box: null, effective_box: box, is_overridden: false,
+    };
     nineBox.push(created);
     return HttpResponse.json(created, { status: 201 });
+  }),
+  http.put(`${API}/succession/nine-box/:id/override`, async ({ request, params }) => {
+    await delay(ACTION_DELAY);
+    const u = currentUser(request);
+    if (!u) return unauthorized();
+    if (!atLeast(u.role, "HRBP")) return notFound(); // OVERRIDE_NINE_BOX is HRBP/Admin
+    const b = (await request.json()) as { box: number; rationale?: string };
+    const p = nineBox.find((n) => n.id === params.id);
+    if (!p) return notFound();
+    p.override_box = b.box;
+    p.effective_box = b.box;
+    p.is_overridden = true;
+    p.override_rationale = b.rationale ?? "";
+    return HttpResponse.json(p);
+  }),
+  http.delete(`${API}/succession/nine-box/:id/override`, async ({ request, params }) => {
+    await delay(ACTION_DELAY);
+    const u = currentUser(request);
+    if (!u) return unauthorized();
+    if (!atLeast(u.role, "HRBP")) return notFound();
+    const p = nineBox.find((n) => n.id === params.id);
+    if (!p) return notFound();
+    p.override_box = null;
+    p.effective_box = p.box;
+    p.is_overridden = false;
+    p.override_rationale = "";
+    return HttpResponse.json(p);
   }),
   http.get(`${API}/succession/plans/:id`, async ({ request, params }) => {
     await delay(GET_DELAY);

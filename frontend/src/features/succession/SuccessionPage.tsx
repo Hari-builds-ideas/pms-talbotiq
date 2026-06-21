@@ -132,13 +132,35 @@ function NineBoxTab() {
   const { atLeast } = useAuth();
   const { active } = useCycles();
   const nineBox = useNineBox(active?.id);
+  const { setNineBoxOverride, clearNineBoxOverride } = useSuccessionMutations();
   const [assessOpen, setAssessOpen] = React.useState(false);
+  // HRBP/Admin can drag a person to a new cell (a persisted human override);
+  // managers/employees see the grid read-only (employees never reach succession).
+  const canOverride = atLeast("HRBP");
+
+  function reposition(placementId: string, box: number) {
+    setNineBoxOverride
+      .mutateAsync({ placementId, box })
+      .then(() => notifySuccess("Placement overridden"))
+      .catch(notifyError);
+  }
+  function clearOverride(placementId: string) {
+    clearNineBoxOverride
+      .mutateAsync(placementId)
+      .then(() => notifySuccess("Reset to computed placement"))
+      .catch(notifyError);
+  }
+  const pendingId =
+    (setNineBoxOverride.isPending ? setNineBoxOverride.variables?.placementId ?? null : null) ??
+    (clearNineBoxOverride.isPending ? clearNineBoxOverride.variables ?? null : null);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Performance (derived) × potential (human-assigned). {active ? `Cycle: ${active.name}` : ""}
+          Performance (derived) × potential (human-assigned)
+          {canOverride ? " · drag a card to override a placement" : ""}.{" "}
+          {active ? `Cycle: ${active.name}` : ""}
         </p>
         {atLeast("MANAGER") && (
           <Button variant="outline" size="sm" onClick={() => setAssessOpen(true)}>
@@ -152,7 +174,13 @@ function NineBoxTab() {
         ) : nineBox.isError ? (
           <ErrorState error={nineBox.error} onRetry={() => nineBox.refetch()} compact />
         ) : nineBox.data && nineBox.data.results.length > 0 ? (
-          <NineBoxGrid placements={nineBox.data.results} />
+          <NineBoxGrid
+            placements={nineBox.data.results}
+            canOverride={canOverride}
+            onReposition={reposition}
+            onClearOverride={clearOverride}
+            pendingId={pendingId}
+          />
         ) : (
           <EmptyState compact icon={Grid3x3} title="No placements" description="Assess employees to populate the talent grid." />
         )}

@@ -85,5 +85,14 @@ export function useSuccessionMutations() {
         successionApi.assessNineBox(v),
       onSuccess: invalidate,
     }),
+    setNineBoxOverride: useMutation({
+      mutationFn: (v: { placementId: string; box: number; rationale?: string }) =>
+        successionApi.setNineBoxOverride(v.placementId, v.box, v.rationale),
+      onSuccess: invalidate,
+    }),
+    clearNineBoxOverride: useMutation({
+      mutationFn: (placementId: string) => successionApi.clearNineBoxOverride(placementId),
+      onSuccess: invalidate,
+    }),
   };
 }

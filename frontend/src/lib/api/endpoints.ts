@@ -314,6 +314,12 @@ export const successionApi = {
     cycle: string;
     potential_band: string;
   }) => unwrap<NineBoxPlacement>(api.post("/succession/nine-box", body)),
+  setNineBoxOverride: (placementId: string, box: number, rationale?: string) =>
+    unwrap<NineBoxPlacement>(
+      api.put(`/succession/nine-box/${placementId}/override`, { box, rationale }),
+    ),
+  clearNineBoxOverride: (placementId: string) =>
+    unwrap<NineBoxPlacement>(api.delete(`/succession/nine-box/${placementId}/override`)),
   plan: (id: string) => unwrap<SuccessionPlan>(api.get(`/succession/plans/${id}`)),
   addActionItem: (id: string, text: string) =>
     unwrap<SuccessionPlan>(api.post(`/succession/plans/${id}/action-item`, { text })),

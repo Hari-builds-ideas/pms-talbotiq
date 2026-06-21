@@ -45,6 +45,38 @@ def test_hrbp_sees_full_tenant_tree(org):
     assert {"admin@acme.test", "hrbp@acme.test"} <= root_emails
 
 
+def test_tree_nodes_carry_display(org):
+    """Every node exposes ``display`` (display_name when set, else email) so the
+    org chart renders names — never a bare email/uuid. The client ``OrgNode``
+    type requires this field; a node without it blanks the chart."""
+    with tenant_context(org.tenant):
+        org.manager.display_name = "Grace Hopper"
+        org.manager.save(update_fields=["display_name", "updated_at"])
+        services.invalidate_org_cache(org.tenant)  # drop any warm tree
+        tree = services.build_org_tree(org.hrbp)
+    assert all(n.get("display") for n in tree["nodes"])  # present on every node
+    assert _node(tree, "manager@acme.test")["display"] == "Grace Hopper"  # name wins
+    assert _node(tree, "report@acme.test")["display"] == "report@acme.test"  # email fallback
+
+
+def test_tree_wire_shape_list_nodes_and_from_to_edges(org):
+    """Lock the wire shape the web client normalizes against: ``nodes`` is a LIST
+    of node dicts (each with ``id``), ``edges`` a list of ``{from,to}`` dicts
+    (manager→report), ``roots`` a list of id strings. The client builds its
+    id→node map + child map from exactly this — a drift here re-breaks the chart
+    ("not iterable")."""
+    with tenant_context(org.tenant):
+        tree = services.build_org_tree(org.hrbp)
+    assert isinstance(tree["nodes"], list)
+    assert all(isinstance(n, dict) and "id" in n for n in tree["nodes"])
+    assert isinstance(tree["edges"], list)
+    assert all(set(e) == {"from", "to"} for e in tree["edges"])
+    assert isinstance(tree["roots"], list)
+    ids = {n["id"] for n in tree["nodes"]}
+    assert all(e["from"] in ids and e["to"] in ids for e in tree["edges"])  # edges visible-only
+    assert all(r in ids for r in tree["roots"])  # roots are node ids
+
+
 def test_employee_sees_only_their_reporting_line(org):
     with tenant_context(org.tenant):
         tree = services.build_org_tree(org.report)

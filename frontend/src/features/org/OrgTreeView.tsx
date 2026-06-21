@@ -86,10 +86,10 @@ function TreeNode({
           className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
         >
           <Avatar className="h-7 w-7">
-            <AvatarFallback className="text-[10px]">{initials(node.display)}</AvatarFallback>
+            <AvatarFallback className="text-[10px]">{initials(node.display || node.email)}</AvatarFallback>
           </Avatar>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium">{node.display}</span>
+            <span className="block truncate text-sm font-medium">{node.display || node.email}</span>
             <span className="block truncate text-2xs text-muted-foreground">{node.email}</span>
           </span>
           <Badge variant="secondary" className="ml-1 shrink-0">{ROLE_LABEL[node.role as Role]}</Badge>

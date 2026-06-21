@@ -34,7 +34,7 @@ import type {
   Me,
   NineBoxPlacement,
   Nudge,
-  OrgTree,
+  RawOrgTree,
   Paginated,
   PerformanceCycle,
   PersonCard,
@@ -224,7 +224,8 @@ export const jdApi = {
 // ---- Org -------------------------------------------------------------------
 
 export const orgApi = {
-  tree: () => unwrap<OrgTree>(api.get("/org/tree")),
+  // Returns the raw wire shape; callers normalize via normalizeOrgTree (see useOrgTree).
+  tree: () => unwrap<RawOrgTree>(api.get("/org/tree")),
   person: (id: string) => unwrap<PersonCard>(api.get(`/org/people/${id}`)),
   search: (q: string, params: PageParams = {}) =>
     unwrap<Paginated<PersonRef>>(api.get("/org/search", { params: { q, ...params } })),

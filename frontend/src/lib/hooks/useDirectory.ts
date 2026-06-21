@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { orgApi } from "@/lib/api/endpoints";
+import { normalizeOrgTree } from "@/lib/org";
 import type { OrgNode } from "@/lib/types";
 
 /**
@@ -9,13 +10,16 @@ import type { OrgNode } from "@/lib/types";
  * an out-of-scope id simply falls back to a short id.
  */
 export function useDirectory() {
+  // Same key + same normalization as useOrgTree: the raw wire shape (list nodes)
+  // is normalized to an id→node map, so a uuid lookup actually resolves (before
+  // this it indexed an array by uuid and silently returned "Unknown").
   const { data } = useQuery({
     queryKey: ["org", "tree"],
-    queryFn: orgApi.tree,
+    queryFn: () => orgApi.tree().then(normalizeOrgTree),
     staleTime: 5 * 60_000,
   });
 
-  const nodes = data?.nodes ?? {};
+  const nodes: Record<string, OrgNode> = data?.nodes ?? {};
 
   function nameOf(id?: string | null): string {
     if (!id) return "—";

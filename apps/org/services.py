@@ -76,7 +76,9 @@ def _compute_full_tree(tenant_id) -> dict:
     in the node's subtree (inclusive)."""
     with tenant_context(tenant_id):
         rows = list(
-            User.objects.filter(is_active=True).values("id", "email", "role", "manager_id")
+            User.objects.filter(is_active=True).values(
+                "id", "email", "role", "manager_id", "display_name"
+            )
         )
         open_positions = list(
             Position.objects.filter(status=Position.Status.OPEN).values_list(
@@ -112,6 +114,9 @@ def _compute_full_tree(tenant_id) -> dict:
         nodes[nid] = {
             "id": nid,
             "email": r["email"],
+            # Effective display name (mirrors User.display: display_name or email)
+            # so the org chart renders names, never bare emails/uuids.
+            "display": r["display_name"] or r["email"],
             "role": r["role"],
             "manager_id": mid if (mid in ids) else None,
             "direct_report_ids": sorted(children.get(nid, [])),

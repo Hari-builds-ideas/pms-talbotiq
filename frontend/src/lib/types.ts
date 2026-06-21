@@ -301,6 +301,18 @@ export interface OrgNode {
   vacancies: number;
 }
 
+/**
+ * The wire shape of `GET /api/org/tree` (the backend authority): `nodes` is a
+ * LIST of node objects, `edges` are `{from,to}` objects. The client normalizes
+ * this into `OrgTree` (an id→node map + tuple edges) via `normalizeOrgTree` at
+ * the API boundary — the tree components consume the normalized shape only.
+ */
+export interface RawOrgTree {
+  roots: UUID[];
+  nodes: OrgNode[];
+  edges: Array<{ from: UUID | null; to: UUID }>;
+}
+
 export interface OrgTree {
   roots: UUID[];
   nodes: Record<UUID, OrgNode>;

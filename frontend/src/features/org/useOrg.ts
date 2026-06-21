@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orgApi } from "@/lib/api/endpoints";
 import type { PageParams } from "@/lib/api/endpoints";
+import { normalizeOrgTree } from "@/lib/org";
 
 export function useOrgTree() {
-  return useQuery({ queryKey: ["org", "tree"], queryFn: orgApi.tree });
+  // Normalize the raw wire shape (list nodes + {from,to} edges) into the id→node
+  // map + tuple edges the tree components consume — at the boundary, not in render.
+  return useQuery({
+    queryKey: ["org", "tree"],
+    queryFn: () => orgApi.tree().then(normalizeOrgTree),
+  });
 }
 
 export function usePerson(id: string | null) {

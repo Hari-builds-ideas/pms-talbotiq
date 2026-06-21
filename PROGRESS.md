@@ -3,12 +3,16 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: PRODUCT-VALIDATION BUGFIX SWEEP (web only) — 4 blocking bugs, root-cause + test + live, commit/push each · BUG1 Goals-approve-stale ✓ · BUG2/3/4 NEXT
+## Current: PRODUCT-VALIDATION BUGFIX SWEEP (web only) — ALL 4 blocking bugs FIXED ✓ (root-cause + test + live, committed/pushed each) + BUGFIX_REPORT.md
 
-Hands-on validation found 4 HIGH bugs: (1) Goals Approve toast but row stays
-"awaiting approval"; (2) Request-AI-Draft unreachable; (3) employee roadmap tile →
-"no access"; (4) AI assistant routes every query to a perf summary. Fixing 1→4,
-root-cause not patch, each tested + live-verified + committed. BUG1 done (ordinal 44).
+4 HIGH bugs fixed 1→4: (1) Goals Approve stale row = frontend invalidation-key
+mismatch (prefix fix; also fixes recompute/record-actual "did anything happen?"); (2)
+Request-AI-Draft unreachable = seed had no DRAFT review for the demo manager + `_ensure`
+never reset drift (seed fix); (3) employee roadmap dead link = frontend over-gate
+(read-only own roadmap, D28); (4) AI assistant dumped metrics for everything = binary
+intent (now write/performance/capability/general, D29). backend 1194→**1201**, frontend
+74→**76**, tsc/lint/build clean. Each [test]+[live]. See ordinals 44–47. BUGFIX_REPORT.md
+written.
 
 ## (prior) WEB_COE build · W1 SSO ✓ · W2 WCAG 2.1 AA ✓ · W3 functional matrix ✓ — ALL THREE DONE + WEB_COE_REPORT.md · (mobile mock-adaptation PAUSED)
 

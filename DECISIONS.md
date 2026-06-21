@@ -772,3 +772,29 @@ Note: the back-end's `MANAGE_CAREER_ROADMAP` is `_EVERYONE` (an employee *could*
 their own roadmap), so this read-only presentation is intentionally MORE conservative than
 the server allows — managers drive roadmaps, employees view. RBAC/scope are unchanged and
 still enforced server-side; this is purely which controls the employee UI surfaces.
+
+---
+
+### D29 (BUGFIX BUG 4) — Chat intent is a 4-way taxonomy, not binary read/write
+
+The chat assistant classified intent as only `write` vs `read`, and EVERY non-write
+query fell through to the grounded goals+score answer — so "I feel lonely", "what day is
+today?", and "what can you do?" all returned the same performance-metrics dump. Root
+cause = the binary classifier, not the data layer.
+
+Fix: expand the intent to **`write` | `performance` | `capability` | `general`** and route
+each (`apps/ai/agents/chat.py`):
+- `write` → the existing read-only refusal (**unchanged — must not regress**).
+- `performance` → the existing grounded, RBAC-scoped goals + cycle-score answer (the
+  `read` value is kept as a legacy alias so a real LLM returning `read` still grounds).
+- `capability` → a plain-language description of what the assistant does.
+- `general` → a polite decline + redirect to its purpose, **never** a metrics dump.
+
+A read-only *performance* assistant is deliberately domain-bound: general/out-of-domain
+questions get a courteous "that's outside what I can help with — here's what I can"
+rather than a fabricated general-chatbot answer (and never a metrics summary). The LLM
+classifies via the updated `_CHAT` system prompt; the `FakeLLMProvider` classifier
+(`_fake`, used by tests + the no-key path) mirrors it deterministically (write → capability
+→ performance → general, write first for safety). The frontend mock chat handler mirrors
+the same routing. RBAC-scoping + the write-block are untouched — every performance fetch
+still goes through `actor_can_access`.

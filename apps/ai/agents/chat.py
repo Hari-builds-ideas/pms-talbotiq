@@ -22,6 +22,30 @@ AGENT_CODE = "chat"
 SCHEMA = {"intent": str}
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _WRITE_WORDS = ("approve", "reject", "delete", "change", "update", "finalize", "publish", "set ")
+#: Keyword cues for the deterministic FakeLLMProvider classifier (tests + the
+#: no-real-key path). The real LLM classifies via the _CHAT system prompt.
+_CAPABILITY_PHRASES = (
+    "what can you do", "what do you do", "who are you", "what are you",
+    "how do you work", "what can i ask", "capabilit", "your purpose", "what are your",
+)
+_PERF_WORDS = (
+    "goal", "kpi", "score", "rating", "review", "performance", "risk", "progress",
+    "feedback", "cycle", "objective", "assessment", "appraisal", "how am i doing",
+)
+
+#: A read-only performance assistant answers capability + general questions in
+#: plain language — it must NEVER dump a metrics summary for them (BUG 4).
+_CAPABILITY_ANSWER = (
+    "I'm your read-only performance assistant. I can summarise your goals, KPIs, "
+    "cycle scores, and review status — and, if you manage people, your team's — all "
+    "within what you're allowed to see. I can't make changes or approvals. "
+    "Try: “what are my goals?” or “how am I doing this cycle?”"
+)
+_GENERAL_ANSWER = (
+    "I'm a read-only performance assistant, so that's outside what I can help with — "
+    "but I can tell you about your goals, KPIs, cycle scores, or reviews (within your "
+    "access). For example: “how am I doing this cycle?”"
+)
 
 
 def _scoped_goal_titles(caller, target):
@@ -56,16 +80,23 @@ def chat_answer(caller, query: str) -> dict:
     if not result.ok:
         return {"status": "error", "detail": result.status}
 
-    intent = result.content.get("intent", "unknown")
+    intent = result.content.get("intent", "general")
     if intent == "write":
+        # Write/approval intent is BLOCKED — the read-only refusal (must not regress).
         return {
             "status": "blocked",
             "intent": "write",
             "answer": "I'm a read-only assistant — I can't make changes or approvals.",
         }
+    if intent == "capability":
+        return {"status": "ok", "intent": "capability", "answer": _CAPABILITY_ANSWER, "data": []}
+    if intent not in ("performance", "read"):  # "read" = legacy alias for performance
+        # General / conversational / out-of-domain ("what day is today?", "I feel
+        # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.
+        return {"status": "ok", "intent": "general", "answer": _GENERAL_ANSWER, "data": []}
 
-    # READ intent. Resolve a target person from the RAW query (if any); the fetch is
-    # ALWAYS scope-checked, so this can never surface out-of-scope data.
+    # PERFORMANCE intent. Resolve a target person from the RAW query (if any); the
+    # fetch is ALWAYS scope-checked, so this can never surface out-of-scope data.
     from apps.identity.models import User
 
     match = _EMAIL_RE.search(query or "")
@@ -103,11 +134,17 @@ def chat_answer(caller, query: str) -> dict:
 
 
 def _fake(prompt, model):
-    """Classify read vs write from the (scrubbed) query keywords — deterministic."""
+    """Deterministic intent classifier for the FakeLLMProvider (tests + no-key path):
+    write → capability → performance → general. Write is checked FIRST (safety), so
+    'approve this review' is a write even though it mentions 'review'."""
     lowered = (prompt or "").lower()
     if any(w in lowered for w in _WRITE_WORDS):
         return {"intent": "write"}
-    return {"intent": "read"}
+    if lowered.strip() in ("help", "?") or any(p in lowered for p in _CAPABILITY_PHRASES):
+        return {"intent": "capability"}
+    if any(w in lowered for w in _PERF_WORDS):
+        return {"intent": "performance"}
+    return {"intent": "general"}
 
 
 register_fake_output(AGENT_CODE, _fake)

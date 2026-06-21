@@ -77,6 +77,45 @@ def test_write_intent_is_blocked(org):
     assert body["intent"] == "write"
 
 
+# ── BUG 4: intent is honoured — general/capability questions don't dump metrics ──
+
+
+@override_settings(**FAKE)
+def test_capability_question_describes_the_assistant_not_metrics(org):
+    _seed_goals(org)
+    resp = _client_for(org.report).post(CHAT, {"query": "what can you do?"}, format="json")
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["intent"] == "capability"
+    assert body["data"] == []  # NOT a performance dump
+    assert "Report goal" not in str(body)
+    assert "read-only" in body["answer"].lower()
+
+
+@override_settings(**FAKE)
+@pytest.mark.parametrize("q", ["I feel lonely", "what day is today?", "tell me a joke"])
+def test_general_question_gets_a_conversational_answer_not_metrics(org, q):
+    _seed_goals(org)
+    resp = _client_for(org.report).post(CHAT, {"query": q}, format="json")
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["intent"] == "general"
+    assert body["data"] == []  # the bug was: every query returned the goals/score dump
+    assert "Report goal" not in str(body)
+
+
+@override_settings(**FAKE)
+def test_grounded_performance_question_still_answers_with_data(org):
+    """The fix must NOT regress grounded answers: a performance question still
+    returns the caller's scoped goals."""
+    _seed_goals(org)
+    resp = _client_for(org.report).post(CHAT, {"query": "how am I doing this cycle?"}, format="json")
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["intent"] == "performance"
+    assert "Report goal" in body["data"]
+
+
 @override_settings(**FAKE)
 def test_cross_tenant_target_returns_nothing(org, other_tenant):
     outsider = UserFactory(tenant=other_tenant, role="EMPLOYEE", email="out@other.test")

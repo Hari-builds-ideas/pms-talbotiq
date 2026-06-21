@@ -1141,13 +1141,28 @@ export const handlers = [
     const query = (body.query ?? "").trim();
     if (!query) return HttpResponse.json({ detail: "Query is required." }, { status: 400 });
     const lower = query.toLowerCase();
+    // Mirror the backend chat agent's intent routing (apps/ai/agents/chat.py):
+    // write → blocked; capability/general → conversational (NEVER a metrics dump);
+    // performance → the grounded, RBAC-scoped data answer. (BUG 4)
     if (/(approve|reject|create|update|delete|change|set |publish|finalize)/.test(lower)) {
       return HttpResponse.json({ status: "blocked", intent: "write", answer: "I'm a read-only assistant — I can't make changes or approvals." });
     }
+    if (/(what can you do|what do you do|who are you|what are you|how do you work|capabilit|your purpose)/.test(lower) || lower === "help" || lower === "?") {
+      return HttpResponse.json({
+        status: "ok", intent: "capability", data: [],
+        answer: "I'm your read-only performance assistant. I can summarise your goals, KPIs, cycle scores, and review status — within what you're allowed to see. I can't make changes or approvals. Try: “what are my goals?” or “how am I doing this cycle?”",
+      });
+    }
+    if (/(goal|kpi|score|rating|review|performance|risk|progress|feedback|cycle|objective|assessment|appraisal|how am i doing)/.test(lower)) {
+      return HttpResponse.json({
+        status: "ok", intent: "performance",
+        answer: `Based on your access, here's what I found for "${query}". (Demo answer — the chat agent is RBAC-scoped and read-only.)`,
+        data: ["Ship platform v2", "Mentor 2 engineers", "Cut p95 latency"],
+      });
+    }
     return HttpResponse.json({
-      status: "ok", intent: "read",
-      answer: `Based on your access, here's what I found for "${query}". (Demo answer — the chat agent is RBAC-scoped and read-only.)`,
-      data: ["Ship platform v2", "Mentor 2 engineers", "Cut p95 latency"],
+      status: "ok", intent: "general", data: [],
+      answer: "I'm a read-only performance assistant, so that's outside what I can help with — but I can tell you about your goals, KPIs, cycle scores, or reviews (within your access). For example: “how am I doing this cycle?”",
     });
   }),
   http.get(`${API}/ai/nudges`, async ({ request }) => {

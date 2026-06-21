@@ -108,10 +108,17 @@ _CAREER = (
 )
 
 _CHAT = (
-    "Classify the user's intent toward an HR system as either reading information "
-    "or making a change. Respond with ONLY a JSON object: {\"intent\": \"read\"} "
-    "or {\"intent\": \"write\"}. Any approval, rejection, create, update, delete, "
-    "finalize, publish, or set-value request is \"write\"; questions are \"read\"."
+    "You classify a user's message to a read-only HR PERFORMANCE assistant. Respond "
+    "with ONLY a JSON object {\"intent\": \"<value>\"} where <value> is exactly one of:\n"
+    "- \"write\": any approval, rejection, create, update, delete, finalize, publish, "
+    "or set-value request (the assistant will refuse these).\n"
+    "- \"performance\": a question to be answered from performance data — someone's "
+    "goals, KPIs, cycle scores, reviews, risk, or progress.\n"
+    "- \"capability\": asking what the assistant can do or how it works.\n"
+    "- \"general\": greetings, small talk, or anything outside performance data "
+    "(e.g. \"what day is today?\", \"I feel lonely\").\n"
+    "Do NOT answer the message — only classify it. When unsure between performance and "
+    "general, prefer \"general\"."
 )
 
 #: agent_code -> system prompt. Override any entry via settings.LLM_SYSTEM_PROMPTS.

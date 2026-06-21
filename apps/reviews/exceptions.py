@@ -66,6 +66,19 @@ class RejectionReasonRequired(APIException):
         )
 
 
+class CommentThreadingError(APIException):
+    """422: a reply violates the one-level threading rule (replying to a reply, or
+    a parent that belongs to another review)."""
+
+    status_code = 422
+    default_code = "comment_threading_error"
+
+    def __init__(self, reason):
+        super().__init__(
+            {"detail": reason, "code": "COMMENT_THREADING_ERROR"}
+        )
+
+
 class CycleNotActive(APIException):
     """409: reviews may only be created while their cycle is ACTIVE."""
 

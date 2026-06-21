@@ -18,7 +18,7 @@ from rest_framework import serializers
 
 from apps.core.display import person_label
 
-from .models import Review, ReviewAssessment, ReviewStateTransition
+from .models import Review, ReviewAssessment, ReviewComment, ReviewStateTransition
 
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -98,6 +98,26 @@ class AssessmentSerializer(serializers.ModelSerializer):
 
     def get_assessor_name(self, obj) -> str | None:
         return person_label(obj.assessor)
+
+
+class ReviewCommentSerializer(serializers.ModelSerializer):
+    """Read/write shape for a :class:`ReviewComment`. The client supplies ``body``
+    and an optional ``section``; ``author``, ``parent`` and the timestamps are
+    server-set/read-only (``parent`` is resolved scope-safely in the view, never
+    accepted as a writable FK that could point cross-tenant)."""
+
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReviewComment
+        fields = [
+            "id", "author", "author_name", "section", "body", "parent",
+            "created_at", "edited_at",
+        ]
+        read_only_fields = ["id", "author", "author_name", "parent", "created_at", "edited_at"]
+
+    def get_author_name(self, obj) -> str | None:
+        return person_label(obj.author)
 
 
 class TransitionSerializer(serializers.ModelSerializer):

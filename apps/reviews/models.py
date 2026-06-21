@@ -155,6 +155,61 @@ class ReviewAssessment(TenantScopedModel):
         return self.review.employee
 
 
+class ReviewComment(TenantScopedModel):
+    """A comment on a review, optionally tagged to a section, with ONE level of
+    threading (a comment may have replies; a reply may not be replied to).
+
+    Visibility is the review's OWN scope — a commenter must be able to view the
+    review (the view enforces VIEW_OWN_REVIEW + object scope); this does not
+    broaden review visibility. Editing/deleting are author-only; delete is the
+    soft-delete every TenantScopedModel provides.
+    """
+
+    class Section(models.TextChoices):
+        SUMMARY = "SUMMARY", "Summary"
+        STRENGTHS = "STRENGTHS", "Strengths"
+        DEVELOPMENT = "DEVELOPMENT", "Development"
+        GOALS = "GOALS", "Goals"
+        RECOMMENDATIONS = "RECOMMENDATIONS", "Recommendations"
+
+    review = models.ForeignKey(
+        "reviews.Review", on_delete=models.CASCADE, related_name="comments"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="review_comments"
+    )
+    #: A reply points at its parent (a top-level comment). One level only — a
+    #: reply may not itself be replied to (enforced in the service).
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.CASCADE, related_name="replies"
+    )
+    #: null = a general comment on the review; otherwise it tags a section.
+    section = models.CharField(
+        max_length=20, choices=Section.choices, null=True, blank=True
+    )
+    body = models.TextField()
+    #: Server-set when the body is edited (distinguishes an edit from the auto
+    #: ``updated_at``, which also moves on create).
+    edited_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "reviews_comment"
+        ordering = ["created_at"]  # conversation order, oldest first
+        indexes = [
+            models.Index(
+                fields=["tenant", "review", "created_at"], name="ix_reviewcomment_review"
+            ),
+        ]
+
+    def __str__(self):
+        return f"comment by {self.author_id} on {self.review_id}"
+
+    @property
+    def employee(self):
+        # Lets RBAC WithinScope resolve the subject uniformly (mirrors assessment).
+        return self.review.employee
+
+
 class ReviewStateTransition(TenantScopedModel):
     """Append-style transition log powering the approval-tracker / timeline.
 

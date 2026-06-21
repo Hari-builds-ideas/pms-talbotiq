@@ -15,6 +15,8 @@ from .views import (
     ReviewApproveView,
     ReviewAssessmentListCreateView,
     ReviewCalibrationView,
+    ReviewCommentDetailView,
+    ReviewCommentListCreateView,
     ReviewDetailView,
     ReviewFinalizeView,
     ReviewListCreateView,
@@ -38,6 +40,16 @@ urlpatterns = [
         "<uuid:pk>/assessments",
         ReviewAssessmentListCreateView.as_view(),
         name="assessments",
+    ),
+    path(
+        "<uuid:pk>/comments",
+        ReviewCommentListCreateView.as_view(),
+        name="comments",
+    ),
+    path(
+        "<uuid:pk>/comments/<uuid:comment_id>",
+        ReviewCommentDetailView.as_view(),
+        name="comment-detail",
     ),
     # State-machine transitions.
     path("<uuid:pk>/start-edit", ReviewStartEditView.as_view(), name="start-edit"),

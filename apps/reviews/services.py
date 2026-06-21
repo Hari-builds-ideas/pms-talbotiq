@@ -13,7 +13,7 @@ from apps.cycles.models import PerformanceCycle
 from apps.tenancy.context import tenant_context
 
 from .exceptions import CycleNotActive
-from .models import Review, ReviewAssessment
+from .models import Review, ReviewAssessment, ReviewComment
 
 
 def create_review(*, employee, cycle, actor, draft_body=""):
@@ -115,3 +115,73 @@ def _submit_assessment_bound(*, review, assessor, assessment_type, body, now, Va
         body=body,
         submitted_at=now,
     )
+
+
+# ── review comments (BUILD_7 Feature A) ──────────────────────────────────────
+
+
+def create_comment(*, review, author, body, section=None, parent=None):
+    """Create a comment on ``review`` (author = the caller; the view has already
+    confirmed the author can VIEW the review in scope). Optional ``section`` tag
+    and ``parent`` (a reply). Threading is ONE level: a reply's parent must be a
+    top-level comment of the same review, else a 422. Audited."""
+    from .exceptions import CommentThreadingError
+
+    if parent is not None:
+        if parent.review_id != review.id:
+            raise CommentThreadingError("The parent comment belongs to another review.")
+        if parent.parent_id is not None:
+            raise CommentThreadingError("Replies are one level deep — you can't reply to a reply.")
+
+    with tenant_context(review.tenant_id):
+        record(
+            action="review.commented",
+            actor=author,
+            target_type="review",
+            target_id=review.id,
+            metadata={"section": section or "general", "reply": parent is not None},
+            tenant=review.tenant_id,
+        )
+        return ReviewComment.objects.create(
+            tenant_id=review.tenant_id,
+            review=review,
+            author=author,
+            parent=parent,
+            section=section,
+            body=body,
+        )
+
+
+def edit_comment(*, comment, actor, body):
+    """Edit a comment's body. Author-only (the view enforces it); stamps
+    ``edited_at`` and audits."""
+    now = timezone.now()
+    with tenant_context(comment.tenant_id):
+        record(
+            action="review.comment_edited",
+            actor=actor,
+            target_type="review",
+            target_id=comment.review_id,
+            metadata={"comment": str(comment.id)},
+            tenant=comment.tenant_id,
+        )
+        comment.body = body
+        comment.edited_at = now
+        comment.save(update_fields=["body", "edited_at", "updated_at"])
+        return comment
+
+
+def delete_comment(*, comment, actor):
+    """Soft-delete a comment (author-only; the view enforces it). Audited. Its
+    replies cascade-soft-delete is NOT automatic — replies are kept but orphaned
+    display is handled client-side; we soft-delete just this row."""
+    with tenant_context(comment.tenant_id):
+        record(
+            action="review.comment_deleted",
+            actor=actor,
+            target_type="review",
+            target_id=comment.review_id,
+            metadata={"comment": str(comment.id)},
+            tenant=comment.tenant_id,
+        )
+        comment.delete()  # TenantScopedModel soft-delete (sets deleted_at)

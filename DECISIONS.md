@@ -443,3 +443,29 @@ upstream in serializers/services, so they never reach this fallback. The full su
 (1149→1150, all green incl. existing status-code assertions) confirms no domain
 status changed. The AI-jobs poll keeps an empty-list guard (semantically better
 than 400 for "find the job for this artifact").
+
+---
+
+### D18 (BUILD_7 Feature A) — Review comments: one-level threading, reuse VIEW_OWN_REVIEW
+
+**Threading depth.** ONE level — a comment may have replies, but a reply may not
+be replied to (a reply with a non-null parent is rejected 422
+`COMMENT_THREADING_ERROR`). Options: (a) flat (no replies) — too limiting for a
+back-and-forth; (b) one level — the chosen default (simple, shippable, covers the
+review-discussion need); (c) arbitrary depth trees — rejected as over-built for an
+internal review tool and a recursive-render/perf risk. A reply's parent must also
+belong to the SAME review (the scoped same-review lookup 404s a foreign parent).
+
+**Capability.** Reuse `VIEW_OWN_REVIEW` (everyone, scope-narrowed) for both
+listing and creating a comment — NOT a new capability. Rationale: commenting is
+intrinsic to being able to view+collaborate on a review you can ALREADY see; a
+separate capability would imply a separate privilege and risk drifting from the
+review's visibility. The view enforces `check_object_scope` (the SAME gate as the
+review detail), so comments inherit the review's visibility EXACTLY — out-of-scope
+→ 403, cross-tenant → 404, never broadening it. Edit/delete add an author-only
+check (another user's comment → 403). Delete is the standard soft-delete.
+
+**Status codes.** A one-level violation is a business-rule error → 422 (matching
+the reviews app's 422 convention: HITLApprovalRequired, RejectionReasonRequired),
+not a 400. A foreign/cross-tenant parent or review id → 404 (the scoped manager
+hides it). This resolves the BUILD_7 Feature A go-ahead.

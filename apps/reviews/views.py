@@ -41,15 +41,22 @@ from apps.rbac.scope import (
 )
 
 from . import state_machine
-from .models import Review, ReviewAssessment
+from .models import Review, ReviewAssessment, ReviewComment
 from .serializers import (
     AssessmentSerializer,
     CalibrationRowSerializer,
+    ReviewCommentSerializer,
     ReviewCreateSerializer,
     ReviewSerializer,
     TransitionSerializer,
 )
-from .services import create_review, submit_assessment
+from .services import (
+    create_comment,
+    create_review,
+    delete_comment,
+    edit_comment,
+    submit_assessment,
+)
 
 
 class ReviewListCreateView(RBACMixin, APIView):
@@ -142,6 +149,81 @@ class ReviewTimelineView(RBACMixin, APIView):
         self.check_object_scope(review)
         transitions = review.transitions.all()  # model Meta orders by `at`
         return Response(TransitionSerializer(transitions, many=True).data)
+
+
+class ReviewCommentListCreateView(RBACMixin, APIView):
+    """``GET, POST /api/reviews/<pk>/comments`` — comments on a review.
+
+    Visibility is the review's OWN scope (VIEW_OWN_REVIEW + object scope): a user
+    can only list/add comments on a review they can already see — commenting never
+    broadens review visibility. Authorship is server-set. A reply (``parent``)
+    must target a top-level comment of the SAME review (one level — the service
+    enforces it). Cross-tenant review/parent ids 404 via the scoped manager."""
+
+    required_capability = Capability.VIEW_OWN_REVIEW
+    scope_subject_attr = "employee"
+
+    def get(self, request, pk):
+        review = get_object_or_404(Review.objects.all(), pk=pk)
+        self.check_object_scope(review)
+        comments = review.comments.select_related("author").all()
+        return Response(ReviewCommentSerializer(comments, many=True).data)
+
+    def post(self, request, pk):
+        review = get_object_or_404(Review.objects.all(), pk=pk)
+        self.check_object_scope(review)
+        serializer = ReviewCommentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        parent = None
+        parent_id = request.data.get("parent")
+        if parent_id:
+            # Scoped + same-review lookup; cross-tenant/foreign parent → 404.
+            parent = get_object_or_404(
+                ReviewComment.objects.filter(review_id=review.id), pk=parent_id
+            )
+        comment = create_comment(
+            review=review,
+            author=request.user,
+            body=serializer.validated_data["body"],
+            section=serializer.validated_data.get("section"),
+            parent=parent,
+        )
+        return Response(ReviewCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
+
+
+class ReviewCommentDetailView(RBACMixin, APIView):
+    """``PATCH, DELETE /api/reviews/<pk>/comments/<comment_id>`` — edit or
+    soft-delete YOUR OWN comment. Requires both review object-scope AND
+    authorship; another user's comment → 403, a foreign/cross-tenant comment id
+    → 404."""
+
+    required_capability = Capability.VIEW_OWN_REVIEW
+    scope_subject_attr = "employee"
+
+    def _load(self, request, pk, comment_id):
+        comment = get_object_or_404(
+            ReviewComment.objects.filter(review_id=pk).select_related("review", "author"),
+            pk=comment_id,
+        )
+        self.check_object_scope(comment)  # comment.employee → review.employee
+        if comment.author_id != request.user.id:
+            raise PermissionDenied("You can only edit or delete your own comment.")
+        return comment
+
+    def patch(self, request, pk, comment_id):
+        comment = self._load(request, pk, comment_id)
+        serializer = ReviewCommentSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        body = serializer.validated_data.get("body")
+        if not body:
+            raise ValidationError({"body": "A comment body is required."})
+        comment = edit_comment(comment=comment, actor=request.user, body=body)
+        return Response(ReviewCommentSerializer(comment).data)
+
+    def delete(self, request, pk, comment_id):
+        comment = self._load(request, pk, comment_id)
+        delete_comment(comment=comment, actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class _TransitionView(RBACMixin, APIView):

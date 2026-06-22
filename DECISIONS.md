@@ -798,3 +798,39 @@ classifies via the updated `_CHAT` system prompt; the `FakeLLMProvider` classifi
 → performance → general, write first for safety). The frontend mock chat handler mirrors
 the same routing. RBAC-scoping + the write-block are untouched — every performance fetch
 still goes through `actor_can_access`.
+
+---
+
+### D30 (AI provider) — Switch active LLM provider Groq → OpenAI (Groq kept by config)
+
+The gateway is provider-agnostic, so this is **config + a small provider class, not a
+rewrite**. New `apps/ai/openai_provider.py::OpenAIProvider` mirrors `groq.py`: same
+gateway contract (budget → PII-scrub → call → schema-validate → meter → confidence →
+PENDING) and the same OpenAI-compatible **Chat Completions, JSON mode** request/response
+shape, so nothing downstream changes. Differences vs Groq: base URL
+`https://api.openai.com/v1` (`OPENAI_BASE_URL`), key `OPENAI_API_KEY` (Bearer), the model
+map, and a JSON-mode guard (OpenAI's `json_object` 400s unless "json" is in the messages;
+our prompts already say it — the guard covers a custom-prompt override). Used Chat
+Completions (not the newer Responses API) for parity with the existing gateway.
+
+**Models chosen** (`LLM_MODEL_MAP` defaults, each env-overridable): **`gpt-4o`** for the
+human-read agents (review/feedback/succession/JD/career) — strong, JSON mode, broadly
+available; **`gpt-4o-mini`** for chat + default — fast/cheap. Alternatives if preferred:
+`gpt-4.1` / `gpt-4.1-mini` (same request shape). The o-series (reasoning) would need a
+provider tweak (`max_completion_tokens`, no `temperature`) — deliberately not used.
+
+**Groq kept available**: `LLM_PROVIDER` (compose default now the OpenAI provider) can be
+pointed back at `apps.ai.groq.GroqProvider` with `GROQ_API_KEY` + the Groq model names —
+documented in docs/AI_GOLIVE.md. `groq.py` is untouched.
+
+**Paid-pricing guard**: OpenAI bills per token (Groq was free-tier), so `LLM_MAX_CALLS`
+now defaults **ON** (60/run, cache-counted) instead of 0. Per-tenant budgets are call
+counts and stay (FULL_AI 500/day ≈ $5–10 worst case at gpt-4o; 60/run ceiling ≈ $1) — no
+change required, but `LLM_MAX_CALLS` / the daily cap can be lowered for a tighter $ ceiling.
+
+**Safety unchanged**: unset key → `configured` False → 503; over-budget → 429; HITL PENDING,
+TokenLedger metering, anonymised feedback, name-free succession, read-only/RBAC-bound chat
+all flow through the same gateway. Key read from env only (never hardcoded/printed/staged).
+**[test]** `apps/ai/tests/test_openai_provider.py` (8, requests mocked — no network);
+FakeLLMProvider still covers the agent graphs; full backend 1209. Live OpenAI smoke pending
+Hari's key in `.env`.

@@ -411,29 +411,38 @@ LLM_PROVIDER = env("LLM_PROVIDER", default="apps.ai.providers.NotConfiguredProvi
 # LangSmith tracing is opt-in: a no-op until a key is set.
 LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
 
-# Groq (OpenAI-compatible) provider config. The key comes from GROQ_API_KEY (or the
-# generic LLM_API_KEY); when unset, GroqProvider.configured is False so the agents
-# stay on the graceful 503 path. The running stack points LLM_PROVIDER at
-# ``apps.ai.groq.GroqProvider`` (see docker-compose); tests pin NotConfigured.
+# Provider keys + base URLs. Both providers are OpenAI-compatible Chat Completions;
+# the active one is chosen by LLM_PROVIDER. A key is read from env (never hardcoded);
+# unset → that provider's ``configured`` is False so the agents stay on the graceful
+# 503 path. The running stack points LLM_PROVIDER at ``apps.ai.openai_provider.
+# OpenAIProvider`` (see docker-compose); switch back to Groq by config (set
+# LLM_PROVIDER=apps.ai.groq.GroqProvider + GROQ_API_KEY + the Groq LLM_MODEL_* names).
+# Tests pin NotConfigured (and override to FakeLLMProvider) — no network in CI.
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+OPENAI_BASE_URL = env("OPENAI_BASE_URL", default="https://api.openai.com/v1")
 GROQ_API_KEY = env("GROQ_API_KEY", default="")
-LLM_API_KEY = env("LLM_API_KEY", default=GROQ_API_KEY)
-LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")
+# Generic key fallback used by either provider when its specific key is unset.
+LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY)
+LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
 LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=900)
-# Run-wide safety ceiling (cache-counted across web + celery): refuse further real
-# LLM calls once reached, so seeding/smoke-testing can never exhaust the free tier.
-LLM_MAX_CALLS = env.int("LLM_MAX_CALLS", default=0)
+# Run-wide safety ceiling (cache-counted across web + celery): refuse further real LLM
+# calls once reached. OpenAI is PAID per token, so this defaults ON (60/run) — a hard
+# backstop so a runaway loop / seed smoke can never burn the quota. Raise via env.
+LLM_MAX_CALLS = env.int("LLM_MAX_CALLS", default=60)
 
-# Two-model strategy: a smarter 70B model for human-read agents, a fast 8B model
-# for high-frequency/low-stakes calls. Per-agent → trivially re-tunable here.
+# Two-model strategy (OpenAI): a strong model for the human-read agents (review/
+# feedback/succession/JD/career), a fast/cheap one for chat + default. Per-agent →
+# trivially re-tunable here or per env var. (Groq switch-back: set these to
+# llama-3.3-70b-versatile / llama-3.1-8b-instant.)
 LLM_MODEL_MAP = {
-    "review": env("LLM_MODEL_REVIEW", default="llama-3.3-70b-versatile"),
-    "feedback": env("LLM_MODEL_FEEDBACK", default="llama-3.3-70b-versatile"),
-    "succession": env("LLM_MODEL_SUCCESSION", default="llama-3.3-70b-versatile"),
-    "jd": env("LLM_MODEL_JD", default="llama-3.3-70b-versatile"),
-    "career": env("LLM_MODEL_CAREER", default="llama-3.3-70b-versatile"),
-    "chat": env("LLM_MODEL_CHAT", default="llama-3.1-8b-instant"),
-    "default": env("LLM_MODEL_DEFAULT", default="llama-3.1-8b-instant"),
+    "review": env("LLM_MODEL_REVIEW", default="gpt-4o"),
+    "feedback": env("LLM_MODEL_FEEDBACK", default="gpt-4o"),
+    "succession": env("LLM_MODEL_SUCCESSION", default="gpt-4o"),
+    "jd": env("LLM_MODEL_JD", default="gpt-4o"),
+    "career": env("LLM_MODEL_CAREER", default="gpt-4o"),
+    "chat": env("LLM_MODEL_CHAT", default="gpt-4o-mini"),
+    "default": env("LLM_MODEL_DEFAULT", default="gpt-4o-mini"),
 }
 
 # ─── i18n / tz ─────────────────────────────────────────────────────────

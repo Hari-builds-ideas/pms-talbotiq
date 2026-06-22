@@ -30,13 +30,17 @@ x-app-environment: &app_environment
   SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
   # Bearer token for the Prometheus /metrics endpoint (unset → /metrics is 404).
   METRICS_TOKEN: ${METRICS_TOKEN:-dev-metrics-token}
-  # ── AI / Groq (OpenAI-compatible). GROQ_API_KEY comes from the gitignored .env
-  # via compose interpolation — it is NEVER written into this file. With the key
-  # present the agents run on Groq; unset → GroqProvider is unconfigured → 503.
+  # ── AI / LLM provider. Keys come from the gitignored .env via compose
+  # interpolation — NEVER written into this file. Active provider is OpenAI; with
+  # OPENAI_API_KEY present the agents run on OpenAI, unset → unconfigured → 503.
+  # Switch back to Groq by config: set LLM_PROVIDER=apps.ai.groq.GroqProvider in .env
+  # (GROQ_API_KEY + the Groq model names are still honoured).
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
   GROQ_API_KEY: ${GROQ_API_KEY:-}
-  LLM_PROVIDER: ${LLM_PROVIDER:-apps.ai.groq.GroqProvider}
+  LLM_PROVIDER: ${LLM_PROVIDER:-apps.ai.openai_provider.OpenAIProvider}
   LLM_BASE_URL: ${LLM_BASE_URL:-https://api.groq.com/openai/v1}
-  # Run-wide global call ceiling protecting the free tier (cache-counted).
+  # Run-wide global call ceiling (cache-counted). OpenAI is PAID — keep this ON.
   LLM_MAX_CALLS: ${LLM_MAX_CALLS:-60}
   LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-900}
   LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}

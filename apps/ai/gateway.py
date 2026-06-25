@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from apps.billing.exceptions import BudgetExceeded
 from apps.billing.services import check_and_reserve_budget, record_usage, release_budget
 
-from .exceptions import LLMNotConfiguredError
+from .exceptions import LLMGlobalCeilingError, LLMNotConfiguredError
 from .pii import scrub
 from .providers import get_llm_provider
 from .schemas import validate_shape
@@ -78,6 +78,13 @@ class LLMGateway:
             # Reserved but the provider couldn't serve — refund (no real usage).
             release_budget(tenant, agent_code)
             return GatewayResult(status="NOT_CONFIGURED")
+        except LLMGlobalCeilingError as exc:
+            # The global cost backstop fired — a graceful limit, NOT a provider
+            # failure (audit Finding A). Refund the reservation (no real call) and
+            # surface BUDGET_EXCEEDED so the async seam DEGRADES and chat returns 429
+            # ("run ceiling reached"), never PROVIDER_ERROR → FAILED / 503.
+            release_budget(tenant, agent_code)
+            return GatewayResult(status="BUDGET_EXCEEDED", errors=[str(exc)])
         except Exception:  # noqa: BLE001 — never crash/fabricate; surface a result
             logger.error("LLM provider failed for agent=%s", agent_code, exc_info=True)
             # Reserved but the call failed before metering — refund the reservation.

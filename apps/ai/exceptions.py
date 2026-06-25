@@ -16,6 +16,19 @@ class LLMProviderError(RuntimeError):
     converts this into a ``PROVIDER_ERROR`` result; no output is fabricated."""
 
 
+class LLMGlobalCeilingError(LLMProviderError):
+    """The process-shared GLOBAL call ceiling (``settings.LLM_MAX_CALLS``) was hit —
+    a deliberate cost backstop, NOT a provider failure. The gateway maps this to a
+    ``BUDGET_EXCEEDED`` result (refunding the per-tenant reservation), so the async
+    seam DEGRADES (not FAILS) and the sync chat path returns 429 (not 503) — i.e. a
+    graceful "run ceiling reached", never a misleading hard error (audit Finding A).
+
+    Subclasses :class:`LLMProviderError` so a provider that lets it propagate, and
+    any ``except LLMProviderError`` / ``pytest.raises(LLMProviderError)`` already in
+    place, keep working — the gateway catches it FIRST (before the generic handler)
+    to apply the graceful mapping."""
+
+
 class AgentUnavailable(LLMProviderError):
     """A gateway-fronted agent could not serve because the GatewayResult was not
     ``OK`` (and not ``NOT_CONFIGURED``, which agents raise as their own

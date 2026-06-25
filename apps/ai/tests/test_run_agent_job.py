@@ -136,6 +136,38 @@ def test_over_budget_degrades_job(org, monkeypatch):
 
 
 @override_settings(**WIRED)
+def test_global_ceiling_degrades_job_not_fails(org):
+    # Finding A: hitting the run-wide LLM call ceiling is a graceful limit
+    # (DEGRADED / BUDGET_EXCEEDED), NOT a hard provider failure (FAILED /
+    # PROVIDER_ERROR). A builder that raises the ceiling error must land DEGRADED,
+    # leave the review in DRAFT, and meter nothing (the ceiling fires pre-call).
+    from apps.ai.exceptions import LLMGlobalCeilingError
+
+    def ceiling(prompt, model):
+        raise LLMGlobalCeilingError("Global LLM call ceiling (1) reached for this run.")
+
+    providers.register_fake_output("agent1", ceiling)
+    try:
+        review = _draft_review(org)
+        job = _job_for(org, review)
+        out = run_agent_job(str(org.tenant.id), str(job.id))
+    finally:
+        from apps.ai.agents import review as review_agent  # restore the good builder
+        providers.register_fake_output("agent1", review_agent._fake)
+
+    assert out["status"] == AIJob.Status.DEGRADED
+    with tenant_context(org.tenant):
+        job.refresh_from_db()
+        review.refresh_from_db()
+    assert job.status == AIJob.Status.DEGRADED
+    assert job.error_code == "BUDGET_EXCEEDED"  # graceful, NOT PROVIDER_ERROR
+    # No fabricated draft: the review is NOT locked PENDING (the seam already moved
+    # it DRAFT→AI_DRAFTING before the gateway call, exactly as for any AI failure).
+    assert review.state != Review.State.PENDING_HUMAN_REVIEW
+    assert _ledger_count(org) == 0  # ceiling fired before any real call
+
+
+@override_settings(**WIRED)
 def test_worker_cannot_touch_another_tenants_job(org):
     # A job that belongs to tenant B...
     other = TenantFactory(slug="other", name="Other")

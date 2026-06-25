@@ -426,10 +426,15 @@ LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
 LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=900)
-# Run-wide safety ceiling (cache-counted across web + celery): refuse further real LLM
-# calls once reached. OpenAI is PAID per token, so this defaults ON (60/run) — a hard
-# backstop so a runaway loop / seed smoke can never burn the quota. Raise via env.
-LLM_MAX_CALLS = env.int("LLM_MAX_CALLS", default=60)
+# Run-wide safety ceiling (cache-counted across web + celery, 24h window): refuse
+# further real LLM calls once reached. This is a DEPLOYMENT-WIDE runaway-loop backstop,
+# NOT the per-tenant budget (that's DEFAULT_AGENT_BUDGETS / AgentBudget — the real cost
+# control). Default 500 is sized for dev/QA: enough headroom that exercising every agent
+# across the demo tenants won't trip it, low enough that a runaway loop is caught at
+# roughly $5-10 worst case on OpenAI. PRODUCTION must size this to tenant count
+# (≈ tenants × per-tenant daily cap × headroom) OR set 0 to disable it and rely on the
+# per-tenant budgets + a provider-side spend limit (audit Finding B; see AI_GOLIVE.md).
+LLM_MAX_CALLS = env.int("LLM_MAX_CALLS", default=500)
 
 # Two-model strategy (OpenAI): a strong model for the human-read agents (review/
 # feedback/succession/JD/career), a fast/cheap one for chat + default. Per-agent →

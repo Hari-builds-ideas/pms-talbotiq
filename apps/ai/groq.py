@@ -28,7 +28,7 @@ from django.conf import settings
 from apps.billing import atomic
 
 from .agent_config import system_prompt_for
-from .exceptions import LLMProviderError
+from .exceptions import LLMGlobalCeilingError, LLMProviderError
 from .providers import LLMProvider
 
 logger = logging.getLogger("pms.ai.groq")
@@ -80,7 +80,9 @@ class GroqProvider(LLMProvider):
         except Exception:  # noqa: BLE001 — cache miss must not wedge the call
             return
         if count > self.global_ceiling:
-            raise LLMProviderError(
+            # A cost backstop, not a provider failure → the gateway maps this to a
+            # graceful BUDGET_EXCEEDED (DEGRADED / 429), never PROVIDER_ERROR.
+            raise LLMGlobalCeilingError(
                 f"Global LLM call ceiling ({self.global_ceiling}) reached for this "
                 "run — refusing further calls to protect the quota."
             )

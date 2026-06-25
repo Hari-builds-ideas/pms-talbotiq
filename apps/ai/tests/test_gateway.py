@@ -126,3 +126,37 @@ def test_usage_is_tenant_isolated(tenant, other_tenant):
     gateway.run(tenant=tenant, agent_code="test_agent", prompt="x")
     with tenant_context(other_tenant):
         assert TokenLedger.objects.count() == 0
+
+
+# ── global ceiling degrades GRACEFULLY (audit Finding A) ─────────────────────────
+
+
+@override_settings(LLM_PROVIDER=FAKE)
+def test_global_ceiling_maps_to_budget_exceeded_and_refunds(tenant):
+    """A run-wide LLM-ceiling hit is a graceful limit, not a provider failure: the
+    gateway returns BUDGET_EXCEEDED (→ async DEGRADED / chat 429), NOT PROVIDER_ERROR
+    (→ FAILED / 503), and REFUNDS the per-tenant reservation (no real call happened)."""
+    from apps.ai.exceptions import LLMGlobalCeilingError
+
+    def ceiling(prompt, model):
+        raise LLMGlobalCeilingError("Global LLM call ceiling (1) reached for this run.")
+
+    providers.register_fake_output("ceil_agent", ceiling)
+    with tenant_context(tenant):
+        AgentBudget.objects.create(
+            tenant_id=tenant.id, agent_code="ceil_agent", window="DAILY", limit=1
+        )
+
+    res = gateway.run(tenant=tenant, agent_code="ceil_agent", prompt="x")
+    assert res.status == "BUDGET_EXCEEDED"  # graceful, NOT PROVIDER_ERROR
+    assert any("ceiling" in str(e).lower() for e in res.errors)
+    with tenant_context(tenant):
+        assert TokenLedger.objects.filter(agent_code="ceil_agent").count() == 0  # never metered
+
+    # The reservation was refunded: the limit-1 budget is intact, so a real call
+    # still succeeds (had the ceiling burned the reservation, this would be 429'd).
+    providers.register_fake_output("ceil_agent", lambda p, m: {"summary": "ok"})
+    ok = gateway.run(
+        tenant=tenant, agent_code="ceil_agent", prompt="x", schema={"summary": str}
+    )
+    assert ok.status == "OK"

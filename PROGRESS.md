@@ -3,7 +3,23 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: RW_BUILD_1 — Navigation re-cut + RBAC visibility (per role)
+## Current: RW_BUILD_2 — Recognition (kudos card + feed)
+
+New `apps/recognition` (backend-first). The load-bearing property is **server-enforced visibility** — a
+card reaches exactly its permitted audience and no one else.
+
+- **2.1 (model + visibility-enforced API) DONE** — `Recognition` + `RecognitionReaction`
+  (TenantScopedModel), migration 0001 applied. Services own the security: `recognition_feed` builds the
+  visibility predicate as one Q-object (PRIVATE=parties only — even from Admin; MANAGER_ONLY=+recipient's
+  manager; TEAM=+immediate team of either party; COMPANY=tenant). React only to a card you can see (else
+  404). Sender-only soft delete, no self-recognition, fixed company-values list. Endpoints under
+  `/api/recognition/` (feed/create, react, delete, meta). Caps added: GIVE_RECOGNITION/VIEW_RECOGNITION
+  (_EVERYONE), VIEW_RECOGNITION_ANALYTICS (_MANAGER_UP). **[test]** `test_recognition.py` (9) incl. the
+  8×4 **visibility matrix** + tenant isolation (cross-tenant recipient/feed) + reactions + delete. D32, Q7.
+- **2.2 (light analytics) DONE** — `recognition_analytics` aggregate-only (total, top values, visibility
+  breakdown, caller's own given/received) — no per-person leaderboard (privacy). **[test]** covered.
+
+## RW_BUILD_1 (DONE) — Navigation re-cut + RBAC visibility (per role)
 
 Re-weighting series (UI/permissions only, no new backend): each role's sidebar + dashboard show ONLY
 what it can use; enterprise screens demoted to an HR/Admin "Advanced" area; server-side gating unchanged

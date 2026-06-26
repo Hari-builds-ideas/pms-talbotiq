@@ -33,6 +33,8 @@ urlpatterns = [
     path("api/integrations/", include("apps.integrations.urls")),
     # Module 10 — AI Agents (Chat Assistant; other agents fill existing seams)
     path("api/ai/", include("apps.ai.urls")),
+    # RW_BUILD_2 — Recognition (kudos card + feed)
+    path("api/recognition/", include("apps.recognition.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

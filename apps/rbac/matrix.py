@@ -118,6 +118,12 @@ class Capability:
     # the DATA it can return is bounded by the caller's own scope in the services,
     # and the surface is additionally entitlement-gated ("chat", STARTER).
     USE_CHAT = "use_chat"
+    # ── RW_BUILD_2 — Recognition (kudos). Everyone may give + view; the FEED's
+    # row visibility (PRIVATE/MANAGER_ONLY/TEAM/COMPANY) is enforced in the
+    # recognition services, not by capability. Analytics is aggregate, Manager+. ──
+    GIVE_RECOGNITION = "give_recognition"
+    VIEW_RECOGNITION = "view_recognition"
+    VIEW_RECOGNITION_ANALYTICS = "view_recognition_analytics"
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -233,6 +239,12 @@ CAPABILITIES: dict[str, frozenset] = {
     # Module 10 — Chat Assistant. Everyone may use chat; data is scope-bounded in
     # the services + the surface is entitlement-gated ("chat").
     Capability.USE_CHAT: _EVERYONE,
+    # RW_BUILD_2 — Recognition. Give + view are universal (the feed's row
+    # visibility is enforced server-side in apps.recognition.services); analytics
+    # is Manager+ aggregate-only.
+    Capability.GIVE_RECOGNITION: _EVERYONE,
+    Capability.VIEW_RECOGNITION: _EVERYONE,
+    Capability.VIEW_RECOGNITION_ANALYTICS: _MANAGER_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

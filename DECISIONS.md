@@ -866,3 +866,20 @@ integrations/tenant-config/entitlements/users stay **Admin-only** (the plan's "H
 Integrations, but the backend gates them to Admin — exposing to HRBP would be a dead link); Check-ins/
 1-on-1/Recognition/Templates are **omitted** (no routes yet — RW_BUILD_2/3); Approvals kept on the
 Manager+ "Team" surface (a core workflow the plan didn't explicitly place).
+
+### D32 (RW_BUILD_2) — Recognition: server-enforced visibility; sender-only delete; fixed values
+
+**Decisions (kept deliberately simple — "do not over-build"):**
+- **Visibility is enforced server-side** in `apps.recognition.services.recognition_feed` (one Q-object
+  predicate) — never trusted from the client. PRIVATE = the two parties ONLY (not even HR/Admin —
+  private is private); MANAGER_ONLY = + the recipient's direct manager; TEAM = + the recipient's/sender's
+  immediate team (you manage a party, or share a manager with one); COMPANY = everyone in the tenant.
+  Role/data-scope does NOT widen this — visibility is a property of the card. Reacting is gated the same
+  way (react only to a card you can see; otherwise 404, never reveal it exists). This is the load-bearing
+  security property, proven by `test_visibility_matrix` (8 viewers × 4 levels).
+- **No edit; sender-only soft delete** (no time window — simpler than the "within a window" default;
+  a window can be added if abuse appears). **No self-recognition.**
+- **Company values are a FIXED default list** (`models.COMPANY_VALUES`), validated on create. Per-tenant
+  customisation of the value list is deferred (Q7) — a config model would be over-building for now.
+- **Analytics is aggregate-only** (total, top values, visibility breakdown, the caller's own
+  given/received) — **no per-person leaderboard**, which would re-identify individuals.

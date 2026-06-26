@@ -89,6 +89,11 @@ EXPECTED = {
     Capability.MANAGE_INTEGRATIONS: {Role.ADMIN},
     # Module 10 — Chat Assistant (everyone; data is scope-bounded + entitlement-gated).
     Capability.USE_CHAT: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    # RW_BUILD_2 — Recognition (give + view everyone; the feed's row visibility is
+    # enforced in the recognition services, not by capability). Analytics is Manager+.
+    Capability.GIVE_RECOGNITION: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_RECOGNITION: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_RECOGNITION_ANALYTICS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

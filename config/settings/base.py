@@ -88,6 +88,8 @@ LOCAL_APPS = [
     "apps.integrations.apps.IntegrationsConfig",
     # Module 10 — AI Agents (LLM Gateway + LangGraph)
     "apps.ai.apps.AiConfig",
+    # RW_BUILD_2 — Recognition (kudos card + feed)
+    "apps.recognition.apps.RecognitionConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

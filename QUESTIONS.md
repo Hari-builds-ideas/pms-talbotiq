@@ -96,3 +96,11 @@ off their everyday surface. **Default taken:** removed the manager cockpit's suc
 deep-links to `/succession` still gets their tier). **Different choice would change:** if managers
 should keep coverage visibility, re-add the "Coverage gaps" StatCard + `SuccessionRiskTile` to
 `ManagerCockpit` (trivial revert) and/or add Succession back to the Team nav group at `minRole: MANAGER`.
+
+### Q7 (RW_BUILD_2) — Recognition company values are a fixed list (per-tenant customisation deferred)
+
+**Question.** The brief says recognition cites "the tenant's configurable company values"; I shipped a
+**fixed default list** (`apps.recognition.models.COMPANY_VALUES`) validated on create. **Why it matters.**
+A tenant may want its own values. **Default taken:** fixed list now (a per-tenant values model is
+over-building for the MVP and not needed to demo the feature). **Different choice would change:** add a
+small per-tenant `CompanyValue` config (admin-managed) and validate against it instead of the constant.

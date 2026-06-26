@@ -14,7 +14,18 @@ role slice, so a per-item `minRole` is exactly a capability check.
   section → who-sees, with current mismatches flagged. Key finding: the EmployeeCockpit tiles link to
   `/goals`,`/reviews`,`/feedback` but the sidebar hides them AND the router over-gates them at `MANAGER`,
   though the backend grants own-scoped access (`VIEW_OWN_GOALS`/`VIEW_OWN_REVIEW`/`GIVE_FEEDBACK`) — the
-  "dashboard then no access" complaint. See **D31**; Q3–Q5 logged. **[doc]** (commit `RW_BUILD_1 1.1`).
+  "dashboard then no access" complaint. See **D31**; Q3–Q5 logged. **[doc]** (commit `38e4354`).
+- **1.2 + 1.3 (gate + demote) DONE** — `navForRole(role)` in `nav.ts` (pure, the source the sidebar
+  renders + tests assert): Workspace(EMPLOYEE) Home/Goals/Feedback/Reviews/Career · Team(MANAGER)
+  Approvals/Team-Analytics · Advanced(HRBP) Succession/Org/JD/Audit · Administration(ADMIN). Dropped the
+  over-strict `RoleGate min=MANAGER` on /goals,/reviews,/feedback (backend already own-scopes — not a
+  weakening). Intra-screen gates: Goals New/Recompute, Feedback Cycles tab, Reviews New review → Manager+.
+  ManagerCockpit succession entry point removed (demoted; backend unchanged; Q6). **[test]+[build]** +5
+  vitest (`nav.test.ts`); frontend 83→**88**, tsc/lint/build clean. (commit `9a6e546`).
+- **1.4 (defense in depth) DONE** — `apps/rbac/tests/test_recut_surface_gating.py` (+9) over the REAL
+  endpoints: employee→succession 404, employee→dept-analytics 403, manager→audit/calibration 403,
+  HRBP→admin-users/integrations 403; employee→own goals/reviews/feedback-requests 200 (no dead links).
+  Backend 1213→**1222**, 2 deselected. **[test]** (commit pending). RW_BUILD_1_REPORT.md written.
 
 ## (prev) PRODUCT-VALIDATION BUGFIX SWEEP (web only) — ALL 4 blocking bugs FIXED ✓ (root-cause + test + live, committed/pushed each) + BUGFIX_REPORT.md
 

@@ -124,6 +124,10 @@ taken:** one well-built action + the full safety machinery (propose→confirm→
 execution); "keep it small and safe first, then extend." **Different choice would change:** add registry
 entries (e.g. "nudge reports with no progress in 30 days", "remind people with no check-in this week"),
 each mapping to an existing audited, permission-checked endpoint, with its own confirm card.
+**Update (overnight QW5):** shipped the 2nd action — `approve_reviews` — proving the registry takes
+another action without loosening the contract. It reuses `state_machine.approve` (the human
+ReviewApproveView's exact call: re-checks APPROVE_REVIEW + row scope + HITL state, audits once), so the
+assistant and human paths can't drift. See `docs/AI_QUICKWIN_5_ASSISTANT_ACTIONS.md`.
 
 ### Q10 (RW_BUILD_5) — AI quick wins: shipped the goal-writer; the others are follow-ups
 
@@ -134,3 +138,9 @@ self-contained"). **Different choice would change:** add (b) 1-on-1/meeting summ
 bias/quality flag, (d) stale-goal nudge (fits the RW_BUILD_4 propose-confirm registry), (e) NL search —
 each via the LLMGateway, HITL, with FakeLLMProvider tests. Also: decide which entitlement pack gates the
 goal-writer (currently capability + gateway-budget, not pack-gated — see D35).
+
+**✅ DONE (overnight 2026-06-26/27).** Shipped all five backend-only + additive (D36), each its own
+green commit + per-feature `docs/AI_QUICKWIN_*.md`: (1) meeting summary `cc4d3dc`, (2) review-quality
+flag `b253628`, (3) stale-goal nudge `eca8aeb`, (4) NL search `b8b290f`, (5) 2nd assistant action
+`approve_reviews`. **Still open for your call:** (i) the entitlement-pack gating above; (ii) the UI
+wiring for each (specs in the docs — they touch the shared layer / nav, which were off-limits overnight).

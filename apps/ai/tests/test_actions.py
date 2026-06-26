@@ -15,7 +15,7 @@ from apps.audit.models import AuditLog
 from apps.goals.models import Goal
 from apps.identity.tokens import issue_tokens_for_user
 from apps.tenancy.context import tenant_context
-from apps.testsupport.factories import CycleFactory, GoalFactory
+from apps.testsupport.factories import CycleFactory, GoalFactory, ReviewFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -111,3 +111,56 @@ def test_execute_endpoint_writes_once_over_http(org):
         format="json",
     )
     assert emp.status_code == 403
+
+
+# ── RW_BUILD_5: a 2nd action — approve_reviews (reuses state_machine.approve) ──
+
+REVIEW_MSG = "approve my team's reviews"
+
+
+def _pending_review(org, employee):
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    return ReviewFactory(employee=employee, cycle=cycle, state="PENDING_HUMAN_REVIEW")
+
+
+def test_review_proposal_is_inert(org):
+    with tenant_context(org.tenant):
+        review = _pending_review(org, org.report)
+        proposal = propose_action(org.manager, REVIEW_MSG)
+        assert proposal and proposal["action"] == "approve_reviews"
+        assert str(review.id) in proposal["params"]["review_ids"]
+        review.refresh_from_db()
+        assert review.state == "PENDING_HUMAN_REVIEW"  # proposing changed nothing
+
+
+def test_execute_approves_reviews_and_is_idempotent(org):
+    with tenant_context(org.tenant):
+        review = _pending_review(org, org.report)
+        out = execute_action(org.manager, "approve_reviews", {"review_ids": [str(review.id)]})
+        assert out["approved"] == 1
+        review.refresh_from_db()
+        assert review.state == "APPROVED" and review.human_reviewer_id == org.manager.id
+        assert AuditLog.objects.filter(action="review.approved", target_id=review.id).count() == 1
+        # Re-run: already APPROVED → the state machine rejects → skipped, no double write.
+        again = execute_action(org.manager, "approve_reviews", {"review_ids": [str(review.id)]})
+        assert again["approved"] == 0 and again["skipped"]
+        assert AuditLog.objects.filter(action="review.approved", target_id=review.id).count() == 1
+
+
+def test_review_out_of_scope_refused_at_execution(org):
+    with tenant_context(org.tenant):
+        peer_review = _pending_review(org, org.peer)  # peer reports to hrbp, not manager
+        out = execute_action(org.manager, "approve_reviews", {"review_ids": [str(peer_review.id)]})
+        assert out["approved"] == 0 and out["skipped"]
+        peer_review.refresh_from_db()
+        assert peer_review.state == "PENDING_HUMAN_REVIEW"  # untouched
+
+
+def test_employee_no_review_proposal_or_execute(org):
+    with tenant_context(org.tenant):
+        review = _pending_review(org, org.report)
+        assert propose_action(org.report, REVIEW_MSG) is None
+        with pytest.raises(PermissionDenied):
+            execute_action(org.report, "approve_reviews", {"review_ids": [str(review.id)]})
+        review.refresh_from_db()
+        assert review.state == "PENDING_HUMAN_REVIEW"

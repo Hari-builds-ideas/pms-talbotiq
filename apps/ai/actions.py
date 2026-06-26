@@ -94,6 +94,63 @@ def _execute_approve_goals(user, params) -> dict:
     return {"action": "approve_goals", "approved": approved, "skipped": skipped}
 
 
+# ── approve_reviews (RW_BUILD_5 — a 2nd action; reuses the SAME state-machine call
+#     the human ReviewApproveView uses, which re-checks capability + scope + HITL) ──
+
+
+def _pending_reviews_in_scope(user):
+    from apps.reviews.models import Review
+
+    subtree = reporting_subtree_ids(user)
+    if not subtree:
+        return []
+    return list(
+        Review.objects.filter(
+            employee_id__in=subtree, state=Review.State.PENDING_HUMAN_REVIEW
+        ).select_related("employee")[:_MAX_TARGETS]
+    )
+
+
+def _propose_approve_reviews(user, _message):
+    if not role_has_capability(user.role, Capability.APPROVE_REVIEW):
+        return None
+    reviews = _pending_reviews_in_scope(user)
+    if not reviews:
+        return None
+    return {
+        "action": "approve_reviews",
+        "summary": f"Approve {len(reviews)} review(s) pending your sign-off?",
+        "preview": [{"employee": _display(r.employee)} for r in reviews],
+        "params": {"review_ids": [str(r.id) for r in reviews]},
+    }
+
+
+def _execute_approve_reviews(user, params) -> dict:
+    """Approve each pending review by calling the SAME ``state_machine.approve`` the
+    human endpoint calls — it re-checks APPROVE_REVIEW + row scope + the HITL state and
+    raises on anything out of scope / wrong state, which we skip (never force)."""
+    from apps.reviews import state_machine
+    from apps.reviews.models import Review
+
+    if not role_has_capability(user.role, Capability.APPROVE_REVIEW):
+        raise PermissionDenied("You don't have permission to approve reviews.")
+    ids = params.get("review_ids") or []
+    if not isinstance(ids, list):
+        raise ValidationError({"review_ids": "Expected a list."})
+    approved, skipped = 0, []
+    for rid in ids[:_MAX_TARGETS]:
+        review = Review.objects.filter(id=rid).select_related("employee").first()  # tenant-scoped
+        if review is None:
+            skipped.append({"review_id": str(rid), "reason": "not_found"})
+            continue
+        try:
+            state_machine.approve(review, user)  # re-checks capability + scope + HITL state
+            approved += 1
+        except Exception as exc:  # noqa: BLE001 — out of scope / wrong state → skip, never force
+            skipped.append({"review_id": str(rid), "reason": type(exc).__name__})
+    return {"action": "approve_reviews", "approved": approved, "skipped": skipped}
+
+
 # ── registry ──────────────────────────────────────────────────────────────────
 
 ACTIONS: dict[str, dict] = {
@@ -103,6 +160,11 @@ ACTIONS: dict[str, dict] = {
         # Deterministic match on the (raw) message — the LLM decides it's a WRITE
         # intent; the action mapping stays deterministic + safe (D34).
         "match": lambda m: "approve" in m and "goal" in m,
+    },
+    "approve_reviews": {
+        "propose": _propose_approve_reviews,
+        "execute": _execute_approve_reviews,
+        "match": lambda m: "approve" in m and "review" in m,
     },
 }
 

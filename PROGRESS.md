@@ -24,7 +24,16 @@ each; green→commit+push, red→BLOCKER+skip.
 - **(4) natural-language search DONE** — `agents/nl_search.py` + `POST /api/ai/search` (VIEW_TEAM_SCORES).
   LLM CLASSIFIES the question into a fixed supported search (employees_missing_goals /
   reports_without_checkin); the search is DETERMINISTIC + scope-bound (only people the caller can see).
-  Read-only. **[test]** `test_nl_search.py` (5). Frontend untouched/green. `docs/AI_QUICKWIN_4_NL_SEARCH.md`.
+  Read-only. **[test]** `test_nl_search.py` (5). Frontend untouched/green. `docs/AI_QUICKWIN_4_NL_SEARCH.md`. (b8b290f)
+- **(5) additional propose-and-confirm action DONE** — `approve_reviews` in `apps/ai/actions.py` (registry
+  only; reuses the existing `POST /api/ai/actions/execute`). A manager asks → inert proposal; Approve →
+  `execute` calls the SAME `state_machine.approve(review, user)` the human ReviewApproveView calls
+  (re-checks APPROVE_REVIEW + row scope + HITL state; audits `review.approved` once). Out-of-scope/wrong-
+  state → skipped, never forced; no proposal/403 without the capability. **[test]** `test_actions.py` (+4,
+  10 total). Frontend untouched/green. `docs/AI_QUICKWIN_5_ASSISTANT_ACTIONS.md`.
+
+**Overnight batch COMPLETE (all 5 quick wins shipped, each its own green commit). STOPPING per the
+hard limit — not starting mobile (needs Hari's device). Follow-up UI specs are in each `docs/AI_QUICKWIN_*.md`.**
 
 ## RW_BUILD_5 (DONE) — AI quick wins (the AI goal-writer)
 

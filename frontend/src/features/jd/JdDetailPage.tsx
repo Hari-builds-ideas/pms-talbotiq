@@ -35,7 +35,22 @@ import { useAIAction } from "@/lib/hooks/useAIAction";
 import { AIJobBanner } from "@/components/AIJobBanner";
 import type { JdBody } from "@/lib/types";
 
-const EMPTY_BODY: JdBody = { summary: "", responsibilities: [], must_haves: [], nice_to_haves: [] };
+/**
+ * Coerce a possibly partial/empty/null JD body into a complete JdBody. The backend
+ * stores `body` as a JSONField defaulting to `{}` (a manual draft, or a JD before
+ * any AI/author body), so `body.responsibilities` can be undefined at runtime even
+ * though the type says string[]. Calling `.join`/`.map` on that threw and crashed
+ * the whole screen ("This screen hit an unexpected error" — BUG 4). Normalising
+ * every field to a safe default makes a bad/empty body degrade gracefully.
+ */
+export function normalizeBody(body: Partial<JdBody> | null | undefined): JdBody {
+  return {
+    summary: body?.summary ?? "",
+    responsibilities: body?.responsibilities ?? [],
+    must_haves: body?.must_haves ?? [],
+    nice_to_haves: body?.nice_to_haves ?? [],
+  };
+}
 
 function toLines(s: string): string[] {
   return s.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -70,7 +85,7 @@ export function JdDetailPage() {
   const working = versions.data?.[0];
 
   React.useEffect(() => {
-    const b = working?.body ?? EMPTY_BODY;
+    const b = normalizeBody(working?.body);
     setSummary(b.summary);
     setResp(b.responsibilities.join("\n"));
     setMust(b.must_haves.join("\n"));
@@ -182,7 +197,7 @@ export function JdDetailPage() {
                   </div>
                 </div>
               ) : (
-                <BodyView body={working?.body ?? EMPTY_BODY} />
+                <BodyView body={normalizeBody(working?.body)} />
               )}
             </Panel>
 

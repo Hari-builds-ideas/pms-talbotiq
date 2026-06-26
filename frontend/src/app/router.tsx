@@ -46,30 +46,15 @@ export function AppRouter() {
               </RoleGate>
             }
           />
-          <Route
-            path="reviews/*"
-            element={
-              <RoleGate min="MANAGER">
-                <ReviewsRoutes />
-              </RoleGate>
-            }
-          />
-          <Route
-            path="goals/*"
-            element={
-              <RoleGate min="MANAGER">
-                <GoalsPage />
-              </RoleGate>
-            }
-          />
-          <Route
-            path="feedback/*"
-            element={
-              <RoleGate min="MANAGER">
-                <FeedbackPage />
-              </RoleGate>
-            }
-          />
+          {/* Goals / Reviews / Feedback are EVERYDAY surfaces open to every role:
+              the backend grants VIEW_OWN_GOALS / VIEW_OWN_REVIEW / GIVE_FEEDBACK to
+              all roles (own scope) and enforces it server-side, so no RoleGate here.
+              The prior min="MANAGER" gate was stricter than the backend and produced
+              the "dashboard tile → no access" dead end for employees (RW_BUILD_1,
+              D31). Management-only ACTIONS inside these screens stay role-gated. */}
+          <Route path="reviews/*" element={<ReviewsRoutes />} />
+          <Route path="goals/*" element={<GoalsPage />} />
+          <Route path="feedback/*" element={<FeedbackPage />} />
           <Route
             path="org/*"
             element={

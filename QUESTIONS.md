@@ -84,3 +84,15 @@ them clickable for employees is a shown-then-denied *within* a screen. **Default
 obvious actions to Manager+ in Phase 1.2 (the employee primary read + own-actuals stay); a full
 intra-screen action-gating sweep across every screen is deferred to the finish-the-web track.
 **Different choice would change:** a dedicated pass to role-gate every action/button app-wide.
+
+### Q6 (RW_BUILD_1) — Manager succession visibility (dashboard entry point removed)
+
+**Question.** The re-weighting demotes succession to an HR/Admin "Advanced" area "not visible to
+employee/manager" (RW_BUILD_1 Phase 1.3). The manager dashboard previously had a "Coverage gaps"
+stat + a Succession-risk tile linking into `/succession`. **Why it matters.** The backend DOES grant
+managers `VIEW_SUCCESSION` (own report tier), so managers *can* use succession — but the plan keeps it
+off their everyday surface. **Default taken:** removed the manager cockpit's succession stat + tile
+(and the nav item) per the explicit Phase 1.3 text; **backend access is unchanged** (a manager who
+deep-links to `/succession` still gets their tier). **Different choice would change:** if managers
+should keep coverage visibility, re-add the "Coverage gaps" StatCard + `SuccessionRiskTile` to
+`ManagerCockpit` (trivial revert) and/or add Succession back to the Team nav group at `minRole: MANAGER`.

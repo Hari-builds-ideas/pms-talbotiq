@@ -30,6 +30,7 @@ import { Field } from "@/components/Field";
 import { useReviews } from "./useReviews";
 import { useCycles } from "@/lib/hooks/useCycles";
 import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useAuth } from "@/lib/auth/AuthContext";
 import { reviewsApi } from "@/lib/api/endpoints";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifyError, notifySuccess } from "@/lib/toast";
@@ -40,6 +41,10 @@ const PAGE_SIZE = 50;
 
 export function ReviewsListPage() {
   const navigate = useNavigate();
+  // Reviews is an everyday surface for ALL roles — the list is own-scoped server-side
+  // (VIEW_OWN_REVIEW), so an employee sees their own review(s). Creating a review is
+  // Manager+ (MANAGE_REVIEWS) — gate the "New review" entry points (D31).
+  const { atLeast } = useAuth();
   const { cycles, active, nameOf } = useCycles();
   const [cycle, setCycle] = React.useState<string>("all");
   const [page, setPage] = React.useState(1);
@@ -85,10 +90,12 @@ export function ReviewsListPage() {
         title="Reviews"
         description="Performance reviews for your scope. Every AI draft passes a human approval gate before it's finalized."
         actions={
-          <Button onClick={() => setCreateOpen(true)} disabled={!active}>
-            <Plus className="h-4 w-4" />
-            New review
-          </Button>
+          atLeast("MANAGER") ? (
+            <Button onClick={() => setCreateOpen(true)} disabled={!active}>
+              <Plus className="h-4 w-4" />
+              New review
+            </Button>
+          ) : undefined
         }
       />
 
@@ -122,7 +129,7 @@ export function ReviewsListPage() {
           icon={FileText}
           title="No reviews yet"
           description="Create a review for someone on your team to start the cycle."
-          action={active ? <Button onClick={() => setCreateOpen(true)}>New review</Button> : undefined}
+          action={atLeast("MANAGER") && active ? <Button onClick={() => setCreateOpen(true)}>New review</Button> : undefined}
         />
       )}
 

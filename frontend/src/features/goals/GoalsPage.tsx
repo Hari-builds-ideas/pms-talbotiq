@@ -43,6 +43,10 @@ export function GoalsPage() {
   // Managers can't list cycles (HRBP+ only), so resolve the working cycle from
   // the active cycle when available, else from the scope's own goals.
   const { active, nameOf } = useCycles();
+  // Goals is an everyday surface for ALL roles (employees see their own, read +
+  // own-actuals); the management actions below (create / recompute) are Manager+
+  // only — gated so an employee never sees a button the server would deny (D31).
+  const { atLeast } = useAuth();
   const goalsAll = useGoals(undefined);
   const rows = goalsAll.data?.results ?? [];
   const cycle = active?.id ?? rows[0]?.cycle;
@@ -60,24 +64,26 @@ export function GoalsPage() {
         title="Goals & KPIs"
         description="Weighted goals with KPI attainment. Weights must sum to exactly 100. Record actuals, recompute scores, and approve."
         actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() =>
-                m.recompute
-                  .mutateAsync(cycle)
-                  .then(() => notifySuccess("Scores recomputed"))
-                  .catch(notifyError)
-              }
-              loading={m.recompute.isPending}
-              disabled={!cycle}
-            >
-              <RefreshCw className="h-4 w-4" /> Recompute scores
-            </Button>
-            <Button onClick={() => setCreateOpen(true)} disabled={!cycle}>
-              <Plus className="h-4 w-4" /> New goal
-            </Button>
-          </div>
+          atLeast("MANAGER") ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  m.recompute
+                    .mutateAsync(cycle)
+                    .then(() => notifySuccess("Scores recomputed"))
+                    .catch(notifyError)
+                }
+                loading={m.recompute.isPending}
+                disabled={!cycle}
+              >
+                <RefreshCw className="h-4 w-4" /> Recompute scores
+              </Button>
+              <Button onClick={() => setCreateOpen(true)} disabled={!cycle}>
+                <Plus className="h-4 w-4" /> New goal
+              </Button>
+            </div>
+          ) : undefined
         }
       />
 

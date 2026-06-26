@@ -1,11 +1,14 @@
 import { NavLink } from "react-router-dom";
-import { NAV, APP_ICON } from "@/app/nav";
+import { navForRole, APP_ICON } from "@/app/nav";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
 
 /** Fixed dark sidebar with role-filtered, grouped navigation. */
 export function Sidebar() {
-  const { atLeast, me } = useAuth();
+  const { me } = useAuth();
+  // Visibility is a pure function of role (navForRole) — the same source the
+  // nav tests assert. A role only ever sees the sections/items it can use.
+  const sections = navForRole(me?.role ?? "EMPLOYEE");
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -20,16 +23,14 @@ export function Sidebar() {
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-5 overflow-y-auto scrollbar-thin px-3 py-4">
-        {NAV.map((section) => {
-          const items = section.items.filter((i) => atLeast(i.minRole));
-          if (items.length === 0) return null;
+        {sections.map((section) => {
           return (
             <div key={section.title}>
               <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
                 {section.title}
               </div>
               <ul className="space-y-0.5">
-                {items.map((item) => (
+                {section.items.map((item) => (
                   <li key={item.to}>
                     <NavLink
                       to={item.to}

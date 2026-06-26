@@ -105,20 +105,20 @@ function ManagerCockpit() {
   const inbox = useQuery({ queryKey: ["approvals", "inbox"], queryFn: approvalsApi.inbox });
   const nudges = useQuery({ queryKey: ["ai", "nudges"], queryFn: aiApi.nudges, enabled: hasFeature("agent2") });
   const reviews = useQuery({ queryKey: ["reviews", "list", { dashboard: true }], queryFn: () => reviewsApi.list({ page_size: 50 }) });
-  const succession = useQuery({ queryKey: ["succession", "dashboard"], queryFn: successionApi.dashboard });
 
   const pending = inbox.data?.length ?? 0;
   const critical = nudges.data?.filter((n) => n.level === "CRITICAL").length ?? 0;
   const toAction = (reviews.data?.results ?? []).filter((r) => ACTIVE_REVIEW_STATES.includes(r.state)).length;
-  const redRoles = succession.data?.critical_roles.filter((r) => r.coverage_status === "RED").length ?? 0;
 
+  // Succession is an HR/Admin tool in the re-weighted surface (RW_BUILD_1 Phase 1.3,
+  // D31) — the manager cockpit no longer surfaces a coverage stat or risk tile that
+  // links into /succession. Backend VIEW_SUCCESSION for managers is unchanged.
   return (
     <>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="Pending approvals" value={pending} icon={ClipboardCheck} tone={pending > 0 ? "warning" : "default"} loading={inbox.isLoading} hint={pending > 0 ? "Awaiting your decision" : "Inbox zero"} to="/approvals" />
         <StatCard label="At-risk reports" value={hasFeature("agent2") ? critical : "—"} icon={TrendingUp} tone={critical > 0 ? "danger" : "default"} loading={hasFeature("agent2") && nudges.isLoading} hint={hasFeature("agent2") ? "Flagged by KPI Intelligence" : "Upgrade to surface"} />
         <StatCard label="Reviews to action" value={toAction} icon={FileText} tone={toAction > 0 ? "info" : "default"} loading={reviews.isLoading} hint="Drafting or approval" to="/reviews" />
-        <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" to="/succession" />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
@@ -127,7 +127,6 @@ function ManagerCockpit() {
         </div>
         <div className="space-y-5">
           <ApprovalsInboxTile />
-          <SuccessionRiskTile />
           <LockedFeaturesTile />
         </div>
       </div>

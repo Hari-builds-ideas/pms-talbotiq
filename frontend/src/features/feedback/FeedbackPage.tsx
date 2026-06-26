@@ -60,14 +60,18 @@ export function FeedbackPage() {
       />
       <Tabs defaultValue="inbox">
         <TabsList>
+          {/* "For me" + "My 360" are for everyone (give feedback / see own released
+              360). Managing cycles is Manager+ (MANAGE_FEEDBACK_CYCLE); releasing
+              summaries is HRBP+ — gate those tabs so a role never lands on a tab the
+              server would 403 (RW_BUILD_1, D31). */}
           <TabsTrigger value="inbox">For me</TabsTrigger>
           <TabsTrigger value="mine">My 360</TabsTrigger>
-          <TabsTrigger value="cycles">Cycles</TabsTrigger>
+          {atLeast("MANAGER") && <TabsTrigger value="cycles">Cycles</TabsTrigger>}
           {atLeast("HRBP") && <TabsTrigger value="review">Summaries to release</TabsTrigger>}
         </TabsList>
         <TabsContent value="inbox"><InboxTab /></TabsContent>
         <TabsContent value="mine"><My360Tab /></TabsContent>
-        <TabsContent value="cycles"><CyclesTab /></TabsContent>
+        {atLeast("MANAGER") && <TabsContent value="cycles"><CyclesTab /></TabsContent>}
         {atLeast("HRBP") && <TabsContent value="review"><ReviewTab /></TabsContent>}
       </Tabs>
     </div>

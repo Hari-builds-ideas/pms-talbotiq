@@ -10,6 +10,8 @@ import type {
   BenchCandidate,
   CalibrationGrid,
   ChatResponse,
+  CheckIn,
+  CheckInPriorityStatus,
   CriticalRole,
   CycleScore,
   DevelopmentRoadmap,
@@ -509,4 +511,24 @@ export const recognitionApi = {
       api.post(`/recognition/${id}/react`, { emoji }),
     ),
   remove: (id: string) => api.delete(`/recognition/${id}`),
+};
+
+// ── RW_BUILD_3 — Weekly Check-ins. Scope is enforced server-side (own / a
+// manager's reporting subtree); cross-manager + cross-tenant → 404. ──
+export const checkinsApi = {
+  mine: () => unwrap<CheckIn[]>(api.get("/checkins/")),
+  team: () => unwrap<CheckIn[]>(api.get("/checkins/team")),
+  detail: (id: string) => unwrap<CheckIn>(api.get(`/checkins/${id}`)),
+  upsert: (body: {
+    week_of: string;
+    mood: number;
+    wins?: string;
+    blockers?: string;
+    learning?: string;
+    priorities?: { text: string; status?: CheckInPriorityStatus }[];
+  }) => unwrap<CheckIn>(api.post("/checkins/", body)),
+  respond: (
+    id: string,
+    body: { comment?: string; reaction?: string; follow_up?: boolean; add_to_one_on_one?: boolean },
+  ) => unwrap<CheckIn>(api.post(`/checkins/${id}/respond`, body)),
 };

@@ -11,7 +11,7 @@ import type { Role } from "@/lib/enums";
 const labels = (role: Role) => navForRole(role).flatMap((s) => s.items.map((i) => i.label));
 const sections = (role: Role) => navForRole(role).map((s) => s.title);
 
-const WORKSPACE = ["Home", "Goals & KPIs", "360 Feedback", "Recognition", "Reviews", "Career"];
+const WORKSPACE = ["Home", "Goals & KPIs", "Check-ins", "360 Feedback", "Recognition", "Reviews", "Career"];
 const TEAM = ["Approvals", "Team Analytics"];
 const ADVANCED = ["Succession", "Org Chart", "JD Library", "Audit Console"];
 const ADMINISTRATION = ["Users & Roles", "Tenant Config", "Entitlements", "Integrations"];
@@ -49,7 +49,7 @@ describe("navForRole — per-role sidebar surface", () => {
 
   it("employee surface is strictly minimal and a subset of every higher role", () => {
     const emp = labels("EMPLOYEE");
-    expect(emp).toHaveLength(6);
+    expect(emp).toHaveLength(7);
     for (const role of ["MANAGER", "HRBP", "ADMIN"] as Role[]) {
       for (const item of emp) expect(labels(role)).toContain(item);
     }

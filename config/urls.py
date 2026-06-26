@@ -35,6 +35,8 @@ urlpatterns = [
     path("api/ai/", include("apps.ai.urls")),
     # RW_BUILD_2 — Recognition (kudos card + feed)
     path("api/recognition/", include("apps.recognition.urls")),
+    # RW_BUILD_3 — Weekly Check-ins
+    path("api/checkins/", include("apps.checkins.urls")),
     # OAuth / OIDC login + callback (django-allauth)
     path("accounts/", include("allauth.urls")),
 ]

@@ -3,7 +3,24 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: RW_BUILD_2 — Recognition (kudos card + feed)
+## Current: RW_BUILD_3 — Weekly Check-ins
+
+New `apps/checkins` (backend-first). The core engagement loop: an employee writes a weekly check-in
+(mood/wins/blockers/learning/priorities), their manager reads + responds; scope enforced server-side.
+
+- **3.1–3.3 (backend + UI + seed) DONE** — `CheckIn` + `CheckInPriority` + `ManagerResponse`
+  (TenantScopedModel), migration 0001. Services own the scope: own writes/reads; a manager reads/responds
+  within their subtree (cross-manager/peer → 404; cross-tenant impossible). One check-in per (author,
+  week); priorities replace on re-submit; goal progress is a **read-only pull** from the goals engine (no
+  duplication). Endpoints `/api/checkins/` (mine/upsert), `/team`, `/<id>` (+goal_progress), `/<id>/respond`.
+  Caps MANAGE_OWN_CHECKIN (_EVERYONE), VIEW_TEAM_CHECKINS/RESPOND_CHECKIN (_MANAGER_UP). Frontend:
+  CheckInsPage (weekly form + my history + a manager "My team" tab with inline respond), `/checkins` route,
+  **Check-ins** nav item (Workspace, all roles). Seed: 1 check-in (+2 priorities +manager response)/tenant,
+  idempotent. **[test]** `test_checkins.py` (9: scope, cross-manager 404, tenant isolation, one-per-week,
+  priorities-replace, manager-response rules, read-only goal pull) + frontend (role-aware tabs). **[live]**
+  ada sees reza's check-in / lin (other mgr) gets empty feed + 404. D33, Q8. AI summary deferred to RW_4/5.
+
+## RW_BUILD_2 (DONE) — Recognition (kudos card + feed)
 
 New `apps/recognition` (backend-first). The load-bearing property is **server-enforced visibility** — a
 card reaches exactly its permitted audience and no one else.

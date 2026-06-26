@@ -94,6 +94,7 @@ class Command(BaseCommand):
         self._reviews(tenant, cycle, people)
         self._feedback(tenant, people)
         self._recognitions(tenant, people)
+        self._checkins(tenant, people)
         self._approvals(tenant)
         jds = self._jds(tenant, people)
         self._positions(tenant, people, jds)
@@ -424,6 +425,46 @@ class Command(BaseCommand):
                 message=msg,
                 defaults={"value": value, "visibility": vis},
             )
+
+    def _checkins(self, tenant, people):
+        """A seeded weekly check-in (reza → his manager Ada) with priorities and a
+        manager response, so the check-in loop + the manager 'My team' view aren't
+        empty in a demo. Idempotent: keyed on (author, week_of) / (check_in, text)."""
+        import datetime
+
+        from apps.checkins.models import CheckIn, CheckInPriority, ManagerResponse
+
+        managers, employees = people["managers"], people["employees"]
+        if not managers or not employees:
+            return
+        ada, reza = managers[0], employees[0]  # reza reports to ada in both tenants
+        week = datetime.date(2026, 6, 22)
+        ci, _ = self._ensure(
+            CheckIn,
+            author=reza,
+            week_of=week,
+            defaults={
+                "mood": 4,
+                "wins": "Shipped the first slice of the recognition feed.",
+                "blockers": "Waiting on a design review for the check-in form.",
+                "learning": "Got a lot faster with React Query cache invalidation.",
+            },
+        )
+        for i, (text, status) in enumerate(
+            [("Finish the check-ins UI", "ACTIVE"), ("Pair with Sam on the KPI engine", "CARRY_FORWARD")]
+        ):
+            self._ensure(
+                CheckInPriority, check_in=ci, text=text, defaults={"status": status, "order": i}
+            )
+        self._ensure(
+            ManagerResponse,
+            check_in=ci,
+            defaults={
+                "responder": ada,
+                "comment": "Strong week. Let's unblock the design review in our 1-on-1.",
+                "add_to_one_on_one": True,
+            },
+        )
 
     def _approvals(self, tenant):
         from apps.approvals.models import ApprovalStep, ApprovalWorkflow

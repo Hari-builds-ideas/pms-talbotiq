@@ -124,6 +124,11 @@ class Capability:
     GIVE_RECOGNITION = "give_recognition"
     VIEW_RECOGNITION = "view_recognition"
     VIEW_RECOGNITION_ANALYTICS = "view_recognition_analytics"
+    # ── RW_BUILD_3 — Weekly Check-ins. Everyone manages their OWN check-in; a
+    # manager reads + responds to their reports' (scope-bound in the services). ──
+    MANAGE_OWN_CHECKIN = "manage_own_checkin"
+    VIEW_TEAM_CHECKINS = "view_team_checkins"
+    RESPOND_CHECKIN = "respond_checkin"
     # Held by NOBODY — see module docstring. Present so the matrix is explicit
     # that these powers do not exist for any role.
     BYPASS_TENANT_ISOLATION = "bypass_tenant_isolation"
@@ -245,6 +250,11 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.GIVE_RECOGNITION: _EVERYONE,
     Capability.VIEW_RECOGNITION: _EVERYONE,
     Capability.VIEW_RECOGNITION_ANALYTICS: _MANAGER_UP,
+    # RW_BUILD_3 — Check-ins. Own is universal; reading/responding to reports' is
+    # Manager+ (scope enforced in apps.checkins.services).
+    Capability.MANAGE_OWN_CHECKIN: _EVERYONE,
+    Capability.VIEW_TEAM_CHECKINS: _MANAGER_UP,
+    Capability.RESPOND_CHECKIN: _MANAGER_UP,
     Capability.BYPASS_TENANT_ISOLATION: _NOBODY,
     Capability.ALTER_AUDIT_LOG: _NOBODY,
 }

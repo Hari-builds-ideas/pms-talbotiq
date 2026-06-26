@@ -795,3 +795,40 @@ export interface RecognitionAnalytics {
   by_visibility: Record<string, number>;
   you: { given: number; received: number };
 }
+
+// ── RW_BUILD_3 — Weekly Check-ins ─────────────────────────────────────────────
+export type CheckInPriorityStatus = "ACTIVE" | "DONE" | "CARRY_FORWARD";
+export interface CheckInPerson {
+  id: UUID;
+  display: string;
+}
+export interface CheckInPriority {
+  id: UUID;
+  text: string;
+  status: CheckInPriorityStatus;
+}
+export interface CheckInManagerResponse {
+  comment: string;
+  reaction: string;
+  follow_up: boolean;
+  add_to_one_on_one: boolean;
+  responder: CheckInPerson;
+}
+export interface CheckInGoalProgress {
+  goal: string;
+  attainment_pct: number | null;
+}
+export interface CheckIn {
+  id: UUID;
+  author: CheckInPerson;
+  week_of: string;
+  mood: number;
+  wins: string;
+  blockers: string;
+  learning: string;
+  priorities: CheckInPriority[];
+  response: CheckInManagerResponse | null;
+  created_at: string;
+  /** present on the detail endpoint — read-only pull from the goals engine */
+  goal_progress?: CheckInGoalProgress[];
+}

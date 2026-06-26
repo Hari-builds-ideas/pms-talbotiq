@@ -883,3 +883,20 @@ Manager+ "Team" surface (a core workflow the plan didn't explicitly place).
   customisation of the value list is deferred (Q7) — a config model would be over-building for now.
 - **Analytics is aggregate-only** (total, top values, visibility breakdown, the caller's own
   given/received) — **no per-person leaderboard**, which would re-identify individuals.
+
+### D33 (RW_BUILD_3) — Check-ins: scope in the service; core loop now, optional extras deferred
+
+**Decisions:**
+- **Scope is enforced in `apps.checkins.services`**: an employee writes/reads their OWN check-ins; a
+  manager reads + responds within their reporting subtree (`actor_can_access`); cross-manager / peer →
+  **404** (never reveal), cross-tenant impossible (TenantScopedManager). Proven live (a report's manager
+  sees the check-in; a different manager gets an empty team feed + 404 detail).
+- **One check-in per (author, week)** (`update_or_create`); priorities are REPLACED on re-submit (a
+  queryset bulk-delete; carry-forward is a *status*, not a copy). Manager response is one-per-check-in.
+- **Goal progress is a READ-ONLY pull** from the goals engine (`kpi_attainment`) — the check-in stores
+  no goal/review state (it feeds review evidence; it is not a review). Proven by a test that the pull
+  creates nothing.
+- **Built the core loop; deferred the OUTLINE's *optional* extras** (Q8): the AI manager-side check-in
+  summary moves to the AI builds (RW_BUILD_4/5) so RW_BUILD_3 needs ~zero LLM calls; the cadence "due"
+  nudge + rotating custom questions are deferred (not needed to demonstrate the loop). The check-in
+  already feeds review evidence by being readable scoped data; no review-state duplication.

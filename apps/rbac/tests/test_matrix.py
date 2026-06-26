@@ -94,6 +94,10 @@ EXPECTED = {
     Capability.GIVE_RECOGNITION: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_RECOGNITION: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.VIEW_RECOGNITION_ANALYTICS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    # RW_BUILD_3 — Weekly Check-ins.
+    Capability.MANAGE_OWN_CHECKIN: {Role.EMPLOYEE, Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.VIEW_TEAM_CHECKINS: {Role.MANAGER, Role.HRBP, Role.ADMIN},
+    Capability.RESPOND_CHECKIN: {Role.MANAGER, Role.HRBP, Role.ADMIN},
     Capability.BYPASS_TENANT_ISOLATION: set(),
     Capability.ALTER_AUDIT_LOG: set(),
 }

@@ -104,3 +104,14 @@ should keep coverage visibility, re-add the "Coverage gaps" StatCard + `Successi
 A tenant may want its own values. **Default taken:** fixed list now (a per-tenant values model is
 over-building for the MVP and not needed to demo the feature). **Different choice would change:** add a
 small per-tenant `CompanyValue` config (admin-managed) and validate against it instead of the constant.
+
+### Q8 (RW_BUILD_3) — Check-in optional extras deferred (AI summary, cadence nudge, custom questions)
+
+**Question.** The outline lists optional check-in extras: a manager-side AI summary + suggested
+follow-ups (HITL), a cadence-configurable "due" nudge reusing the nudge surface, and rotating custom
+questions. **Why it matters.** They add polish but aren't the core loop. **Default taken:** shipped the
+core (write / read-scoped / respond / goal-pull / priorities) and deferred the extras — the AI summary to
+RW_BUILD_4/5 (keeps RW_BUILD_3 LLM-free per the quota rule), the cadence-nudge + custom questions as
+follow-ups. **Different choice would change:** add an AI summary endpoint via the LLMGateway (proposed,
+HITL, FakeLLMProvider in tests), a per-tenant cadence setting + a beat-driven "due" nudge, and a
+rotating-question config.

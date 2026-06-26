@@ -90,6 +90,8 @@ LOCAL_APPS = [
     "apps.ai.apps.AiConfig",
     # RW_BUILD_2 — Recognition (kudos card + feed)
     "apps.recognition.apps.RecognitionConfig",
+    # RW_BUILD_3 — Weekly Check-ins
+    "apps.checkins.apps.CheckinsConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

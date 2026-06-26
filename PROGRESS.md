@@ -3,7 +3,20 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: PRODUCT-VALIDATION BUGFIX SWEEP (web only) — ALL 4 blocking bugs FIXED ✓ (root-cause + test + live, committed/pushed each) + BUGFIX_REPORT.md
+## Current: RW_BUILD_1 — Navigation re-cut + RBAC visibility (per role)
+
+Re-weighting series (UI/permissions only, no new backend): each role's sidebar + dashboard show ONLY
+what it can use; enterprise screens demoted to an HR/Admin "Advanced" area; server-side gating unchanged
+(defense in depth). Grounded in `apps/rbac/matrix.py` — every capability is granted to an upward-closed
+role slice, so a per-item `minRole` is exactly a capability check.
+
+- **1.1 (audit map) DONE** — wrote `docs/NAV_RBAC_MAP.md`: every route → primary-landing capability →
+  section → who-sees, with current mismatches flagged. Key finding: the EmployeeCockpit tiles link to
+  `/goals`,`/reviews`,`/feedback` but the sidebar hides them AND the router over-gates them at `MANAGER`,
+  though the backend grants own-scoped access (`VIEW_OWN_GOALS`/`VIEW_OWN_REVIEW`/`GIVE_FEEDBACK`) — the
+  "dashboard then no access" complaint. See **D31**; Q3–Q5 logged. **[doc]** (commit `RW_BUILD_1 1.1`).
+
+## (prev) PRODUCT-VALIDATION BUGFIX SWEEP (web only) — ALL 4 blocking bugs FIXED ✓ (root-cause + test + live, committed/pushed each) + BUGFIX_REPORT.md
 
 4 HIGH bugs fixed 1→4: (1) Goals Approve stale row = frontend invalidation-key
 mismatch (prefix fix; also fixes recompute/record-actual "did anything happen?"); (2)

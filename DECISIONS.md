@@ -834,3 +834,35 @@ all flow through the same gateway. Key read from env only (never hardcoded/print
 **[test]** `apps/ai/tests/test_openai_provider.py` (8, requests mocked — no network);
 FakeLLMProvider still covers the agent graphs; full backend 1209. Live OpenAI smoke pending
 Hari's key in `.env`.
+
+### D31 (RW_BUILD_1) — Nav visibility = the screen's primary-read capability; minRole ≡ capability
+
+**Decision.** Drive the sidebar/dashboard visibility of each screen from the **backend capability its
+primary (landing) read requires**, expressed as a per-item `minRole`. An item appears for a role iff the
+role can use that screen's primary view. This is valid because every capability in `apps/rbac/matrix.py`
+is granted to an **upward-closed** role slice (`_EVERYONE`/`_MANAGER_UP`/`_HRBP_UP`/`_ADMIN_ONLY`), so
+`atLeast(minRole)` is exactly equivalent to `role_has_capability` — no separate capability map needed on
+the client.
+
+**Consequences (the re-cut, RW_BUILD_1):**
+- **Employees gain Goals/Feedback/Reviews/Career** (own-scoped) — the sidebar shows them and the
+  over-restrictive frontend `RoleGate min="MANAGER"` on `/goals`,`/reviews`,`/feedback` is removed.
+  This is **not** an RBAC weakening: the frontend gate was *stricter* than the backend, which already
+  grants `VIEW_OWN_GOALS`/`VIEW_OWN_REVIEW`/`GIVE_FEEDBACK` to all roles (own scope) and still enforces
+  it server-side. Defense in depth is intact.
+- **Enterprise screens (succession, org, JD, audit) demote to an HRBP+ "Advanced" group**; managers no
+  longer carry them on the everyday surface. Routes + backend gates are **unchanged** — a manager can
+  still deep-link to `/succession` (backend `VIEW_SUCCESSION` allows Manager+); we simply stop
+  advertising it (per the re-weighting plan: "routes still exist and work").
+
+**Options considered.** (a) Mirror the full capability matrix in TS and check `role_has_capability` on
+the client — rejected: duplicates the matrix, drift risk, and is behaviourally identical given the
+upward-closed grants. (b) Keep coarse hardcoded minRoles unrelated to caps — rejected: that is exactly
+the current mismatch. (c) **[chosen]** minRole = lowest capability-holding role, documented per item in
+`docs/NAV_RBAC_MAP.md`.
+
+**Deviations from the (absent) PRODUCT_REWEIGHTING_PLAN.md, defaulted safely (see Q3–Q5):**
+integrations/tenant-config/entitlements/users stay **Admin-only** (the plan's "HR set" listed Settings/
+Integrations, but the backend gates them to Admin — exposing to HRBP would be a dead link); Check-ins/
+1-on-1/Recognition/Templates are **omitted** (no routes yet — RW_BUILD_2/3); Approvals kept on the
+Manager+ "Team" surface (a core workflow the plan didn't explicitly place).

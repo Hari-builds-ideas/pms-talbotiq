@@ -54,3 +54,33 @@ localised change in `apps/identity/saml/service.py::_resolve_and_sync_role`.
 **✅ RESOLVED (2026-06-22).** Hari: keep sync opt-in (empty role_map = no sync) **and add
 the rank-cap** so a synced role can NEVER exceed the admin-provisioned role — no
 IdP-driven privilege escalation. Implemented + tested; see DECISIONS.md D27.
+
+---
+
+### Q3 (RW_BUILD_1) — `PRODUCT_REWEIGHTING_PLAN.md` referenced but not present in the repo
+
+**Question.** The paste + RW_BUILD_1 reference `PRODUCT_REWEIGHTING_PLAN.md` (Decisions 3 & 4) as the
+product-direction source, but only `docs/NEW/{PASTE_THIS_RW.md, RW_BUILD_1..3}` exist — no plan file.
+**Why it matters.** The plan would be the authoritative per-role nav + the demote list. **Default taken:**
+executed from the explicit spec inside `RW_BUILD_1_NAV_AND_RBAC.md` (Phase 1.2 per-role nav, Phase 1.3
+demote list) + `PASTE_THIS_RW.md`, cross-checked against the real RBAC matrix. **Different choice would
+change:** if the plan specifies a different per-role nav, adjust `nav.ts` minRoles + sections accordingly.
+
+### Q4 (RW_BUILD_1) — Plan's "HR set" includes Settings/Integrations, but the backend gates them Admin-only
+
+**Question.** The plan gives HR/HRBP a "Settings" + an Advanced group that includes integrations/tenant
+config; the backend gates `MANAGE_INTEGRATIONS`/`MANAGE_TENANT_CONFIG`/`MANAGE_ENTITLEMENTS`/
+`MANAGE_USERS_ROLES` to **Admin only**. **Why it matters.** Showing them to HRBP would be a dead link
+(403). **Default taken:** kept those four **Admin-only** (Administration group); HRBP's Advanced group is
+succession/org/JD/audit (all HRBP-capable). **Different choice would change:** if HRBP should manage
+tenant settings/integrations, that's a backend RBAC change (widen the capability to HRBP) — out of
+RW_BUILD_1's "no new backend" scope; would need its own decision.
+
+### Q5 (RW_BUILD_1) — Intra-screen action gating on the newly employee-exposed screens
+
+**Question.** Exposing Goals/Reviews/Feedback to employees means a few manager-only actions sit inside
+those screens (e.g. Goals "New goal"/"Recompute"; Feedback "Cycles" tab). **Why it matters.** Leaving
+them clickable for employees is a shown-then-denied *within* a screen. **Default taken:** gate just those
+obvious actions to Manager+ in Phase 1.2 (the employee primary read + own-actuals stay); a full
+intra-screen action-gating sweep across every screen is deferred to the finish-the-web track.
+**Different choice would change:** a dedicated pass to role-gate every action/button app-wide.

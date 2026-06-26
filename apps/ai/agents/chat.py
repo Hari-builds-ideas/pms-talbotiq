@@ -82,7 +82,20 @@ def chat_answer(caller, query: str) -> dict:
 
     intent = result.content.get("intent", "general")
     if intent == "write":
-        # Write/approval intent is BLOCKED — the read-only refusal (must not regress).
+        # Propose-and-confirm (RW_BUILD_4): if the write maps to a SUPPORTED action
+        # the caller is allowed to perform, return an inert PROPOSAL for the UI to
+        # confirm (nothing executes here). Otherwise the read-only refusal holds —
+        # the assistant never writes on its own say-so.
+        from apps.ai.actions import propose_action
+
+        proposal = propose_action(caller, query)
+        if proposal is not None:
+            return {
+                "status": "proposal",
+                "intent": "write",
+                "proposal": proposal,
+                "answer": proposal["summary"],
+            }
         return {
             "status": "blocked",
             "intent": "write",

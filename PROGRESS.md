@@ -3,7 +3,23 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: RW_BUILD_3 — Weekly Check-ins
+## Current: RW_BUILD_4 — AI assistant: read-only → propose-and-confirm (HITL)
+
+The headline AI upgrade. The chat may now PROPOSE a supported action (an inert Approve/Cancel card);
+nothing executes until the human taps Approve → `POST /api/ai/actions/execute`, which re-checks
+capability + scope on the real targets (= the human path) and audits each effect.
+
+- **DONE** — `apps/ai/actions.py` registry + `approve_goals` (mirrors `GoalApproveView` exactly:
+  APPROVE_GOALS + `actor_can_access(employee)` + `goal.approved` audit + stamp). chat.py write-intent →
+  proposal (deterministic action match; LLM only decides it's a write); `ChatActionExecuteView`
+  (`/api/ai/actions/execute`, USE_CHAT + chat entitlement, AI-throttled). Frontend: the chat renders the
+  proposal as an Approve/Cancel card → `aiApi.executeAction` → invalidates goals. **[test]**
+  `test_actions.py` (6): proposal-writes-nothing, execute approves+audits-once + idempotent, out-of-scope
+  refused at execution, employee gets no proposal + 403 on execute, HTTP endpoint. Frontend 93 green.
+  **[live]** ada chat→proposal (1 OpenAI call), Approve→execute 200/approved 1, 1 audit row, employee→403.
+  D34, Q9. No new capabilities (reuses USE_CHAT + APPROVE_GOALS) so no matrix change.
+
+## RW_BUILD_3 (DONE) — Weekly Check-ins
 
 New `apps/checkins` (backend-first). The core engagement loop: an employee writes a weekly check-in
 (mood/wins/blockers/learning/priorities), their manager reads + responds; scope enforced server-side.

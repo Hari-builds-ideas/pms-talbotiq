@@ -900,3 +900,26 @@ Manager+ "Team" surface (a core workflow the plan didn't explicitly place).
   summary moves to the AI builds (RW_BUILD_4/5) so RW_BUILD_3 needs ~zero LLM calls; the cadence "due"
   nudge + rotating custom questions are deferred (not needed to demonstrate the loop). The check-in
   already feeds review evidence by being readable scoped data; no review-state duplication.
+
+### D34 (RW_BUILD_4) — AI assistant: propose-and-confirm (HITL), execution = the human path
+
+**Decision.** The chat assistant's WRITE intent no longer just refuses — for a SUPPORTED, permitted
+action it returns an inert **proposal** the UI renders as an Approve/Cancel card. Nothing executes until
+the human taps Approve, which calls `POST /api/ai/actions/execute`. Hard invariants (all tested):
+- **A proposal writes nothing** — only `execute_action` writes, only on the explicit tap.
+- **Execute re-checks capability + object scope on the REAL targets** — it mirrors the human endpoint
+  exactly (approve_goals = `APPROVE_GOALS` + `actor_can_access(goal.employee)` + the `goal.approved`
+  audit + the same stamp). It can never do what the user couldn't do directly; out-of-scope targets are
+  skipped, not approved.
+- **Audited + idempotent** — each approval audits once; re-running an approved action is a no-op.
+- **No capability → no proposal AND no execute** (an employee gets neither).
+
+**Design choices.** The LLM decides only that the message is a WRITE *intent* (via the existing gateway
+classification); the action MAPPING + target resolution + execution are **deterministic and
+permission-checked** — the model never picks or runs the action. Started with ONE action
+(`approve_goals`) behind an extensible registry (`apps/ai/actions.py`); more actions are a follow-up
+(Q9). This keeps the headline upgrade small + safe first.
+
+**Verified live:** ada chats "approve my team's goals" → proposal (1 OpenAI call); Approve → execute
+200/approved 1; goal stamped by ada + 1 audit row; a second execute is a no-op; an employee's execute →
+403.

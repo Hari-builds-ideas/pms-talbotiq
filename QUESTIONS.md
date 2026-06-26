@@ -115,3 +115,12 @@ RW_BUILD_4/5 (keeps RW_BUILD_3 LLM-free per the quota rule), the cadence-nudge +
 follow-ups. **Different choice would change:** add an AI summary endpoint via the LLMGateway (proposed,
 HITL, FakeLLMProvider in tests), a per-tenant cadence setting + a beat-driven "due" nudge, and a
 rotating-question config.
+
+### Q9 (RW_BUILD_4) — Assistant action catalogue (started with one)
+
+**Question.** The outline suggests 1–2 safe action types; I shipped one (`approve_goals`) behind an
+extensible registry. **Why it matters.** More proposable actions = more admin-work saved. **Default
+taken:** one well-built action + the full safety machinery (propose→confirm→execute→audit, re-checked at
+execution); "keep it small and safe first, then extend." **Different choice would change:** add registry
+entries (e.g. "nudge reports with no progress in 30 days", "remind people with no check-in this week"),
+each mapping to an existing audited, permission-checked endpoint, with its own confirm card.

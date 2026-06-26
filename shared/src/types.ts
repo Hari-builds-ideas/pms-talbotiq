@@ -525,11 +525,25 @@ export interface TenantIntegration {
 
 // ---- AI --------------------------------------------------------------------
 
+/** A proposed assistant action (RW_BUILD_4) — inert until the human taps Approve,
+ *  which calls aiApi.executeAction; the server re-checks permission + scope. */
+export interface ChatProposal {
+  action: string;
+  summary: string;
+  preview: Record<string, unknown>[];
+  params: Record<string, unknown>;
+}
+export interface ChatActionResult {
+  action: string;
+  approved?: number;
+  skipped?: { goal_id: string; reason: string }[];
+}
 export interface ChatResponse {
-  status: "ok" | "blocked";
+  status: "ok" | "blocked" | "proposal";
   intent: string;
   answer: string;
   data?: unknown;
+  proposal?: ChatProposal;
 }
 
 export interface Nudge {

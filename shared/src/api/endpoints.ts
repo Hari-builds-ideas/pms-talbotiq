@@ -9,6 +9,7 @@ import type {
   AuditLog,
   BenchCandidate,
   CalibrationGrid,
+  ChatActionResult,
   ChatResponse,
   CheckIn,
   CheckInPriorityStatus,
@@ -383,6 +384,10 @@ export const integrationsApi = {
 
 export const aiApi = {
   chat: (query: string) => unwrap<ChatResponse>(api.post("/ai/chat", { query })),
+  // RW_BUILD_4 — run a previously PROPOSED assistant action on explicit human
+  // Approve. The server re-checks permission + scope and audits each effect.
+  executeAction: (action: string, params: Record<string, unknown>) =>
+    unwrap<ChatActionResult>(api.post("/ai/actions/execute", { action, params })),
   nudges: () => unwrap<Nudge[]>(api.get("/ai/nudges")),
 };
 

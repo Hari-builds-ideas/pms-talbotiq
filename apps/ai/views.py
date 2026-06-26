@@ -15,6 +15,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.ai.actions import execute_action
 from apps.ai.agents.chat import chat_answer
 from apps.ai.agents.kpi import team_nudges
 from apps.ai.models import AIJob
@@ -58,6 +59,32 @@ class ChatView(RBACMixin, APIView):
             return Response({"detail": f"chat unavailable: {result.get('detail')}"},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
         # ok / blocked-write → 200 (a blocked write is a valid, informative answer).
+        return Response(result)
+
+
+class ChatActionExecuteView(RBACMixin, APIView):
+    """``POST /api/ai/actions/execute`` — run a previously PROPOSED assistant action
+    on an explicit human Approve. Body ``{"action": str, "params": {...}}``.
+
+    Capability + data scope are RE-CHECKED inside ``execute_action`` on the real
+    targets (the assistant can only ever do what the caller could do via the normal
+    endpoint), and each effect is audited there. Gated by USE_CHAT + the chat
+    entitlement, exactly like the chat surface; AI-throttled.
+    """
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()  # IsAuthenticated + HasCapability(USE_CHAT)
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def post(self, request):
+        action = (request.data.get("action") or "").strip()
+        if not action:
+            return Response({"detail": "action is required."}, status=status.HTTP_400_BAD_REQUEST)
+        result = execute_action(request.user, action, request.data.get("params") or {})
         return Response(result)
 
 

@@ -93,6 +93,7 @@ class Command(BaseCommand):
         self._goals_and_scores(tenant, cycle, people)
         self._reviews(tenant, cycle, people)
         self._feedback(tenant, people)
+        self._recognitions(tenant, people)
         self._approvals(tenant)
         jds = self._jds(tenant, people)
         self._positions(tenant, people, jds)
@@ -393,6 +394,37 @@ class Command(BaseCommand):
             )
 
     # ── approval workflows ────────────────────────────────────────────────────
+    def _recognitions(self, tenant, people):
+        """A few recognitions across EVERY visibility level so the feed isn't empty
+        and the server-side visibility behaviour is demonstrable (a PRIVATE one must
+        not show in an uninvolved teammate's feed; a COMPANY one shows to all).
+        Idempotent: keyed on (sender, recipient, message)."""
+        from apps.recognition.models import Recognition
+
+        managers, employees = people["managers"], people["employees"]
+        if not managers or not employees:
+            return
+        ada, reza = managers[0], employees[0]  # reza reports to ada in both tenants
+        V = Recognition.Visibility
+        cards = [
+            (ada, reza, "Teamwork", V.COMPANY,
+             "Carried the launch under real pressure — the whole company should see this."),
+            (reza, ada, "Leadership", V.MANAGER_ONLY,
+             "Thanks for the steady guidance this cycle — for your eyes/HR only."),
+            (ada, reza, "Helping Others", V.TEAM,
+             "Always the first to unblock a teammate."),
+            (ada, reza, "Innovation", V.PRIVATE,
+             "That quiet idea in standup was brilliant — just between us."),
+        ]
+        for sender, recipient, value, vis, msg in cards:
+            self._ensure(
+                Recognition,
+                sender=sender,
+                recipient=recipient,
+                message=msg,
+                defaults={"value": value, "visibility": vis},
+            )
+
     def _approvals(self, tenant):
         from apps.approvals.models import ApprovalStep, ApprovalWorkflow
 

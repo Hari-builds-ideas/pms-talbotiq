@@ -758,3 +758,40 @@ export interface RoadmapEnrichResult {
   roadmap_id?: UUID;
   status?: DevelopmentRoadmap["status"];
 }
+
+// ── RW_BUILD_2 — Recognition (kudos) ──────────────────────────────────────────
+export type RecognitionVisibility = "PRIVATE" | "MANAGER_ONLY" | "TEAM" | "COMPANY";
+export interface RecognitionPerson {
+  id: UUID;
+  display: string;
+}
+export interface RecognitionReactions {
+  /** emoji -> count */
+  counts: Record<string, number>;
+  /** the emojis the viewer has reacted with */
+  mine: string[];
+}
+export interface RecognitionCard {
+  id: UUID;
+  sender: RecognitionPerson;
+  recipient: RecognitionPerson;
+  value: string;
+  message: string;
+  badge: string;
+  visibility: RecognitionVisibility;
+  created_at: string;
+  reactions: RecognitionReactions;
+  /** true iff the viewer is the sender (only the sender may remove it) */
+  can_delete: boolean;
+}
+export interface RecognitionMeta {
+  values: string[];
+  reactions: string[];
+  visibilities: { value: RecognitionVisibility; label: string }[];
+}
+export interface RecognitionAnalytics {
+  total: number;
+  top_values: { value: string; count: number }[];
+  by_visibility: Record<string, number>;
+  you: { given: number; received: number };
+}

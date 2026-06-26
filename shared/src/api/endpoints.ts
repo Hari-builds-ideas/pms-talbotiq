@@ -40,6 +40,10 @@ import type {
   PersonCard,
   PersonRef,
   Position,
+  RecognitionAnalytics,
+  RecognitionCard,
+  RecognitionMeta,
+  RecognitionVisibility,
   Review,
   ReviewAssessment,
   ReviewComment,
@@ -485,4 +489,24 @@ export const careerApi = {
   // Mark a tier's progress (upsert per roadmap+tier).
   setProgress: (id: string, body: { tier_index: number; status: RoadmapProgressStatus }) =>
     unwrap<RoadmapProgressItem>(api.post(`/career/roadmaps/${id}/progress`, body)),
+};
+
+// ── RW_BUILD_2 — Recognition (kudos card + feed). Visibility is enforced
+// server-side; the feed returns only what the caller is permitted to see. ──
+export const recognitionApi = {
+  feed: () => unwrap<RecognitionCard[]>(api.get("/recognition/")),
+  meta: () => unwrap<RecognitionMeta>(api.get("/recognition/meta")),
+  analytics: () => unwrap<RecognitionAnalytics>(api.get("/recognition/analytics")),
+  give: (body: {
+    recipient: string;
+    value: string;
+    message: string;
+    visibility: RecognitionVisibility;
+    badge?: string;
+  }) => unwrap<RecognitionCard>(api.post("/recognition/", body)),
+  react: (id: string, emoji: string) =>
+    unwrap<{ recognition: string; emoji: string; reacted: boolean }>(
+      api.post(`/recognition/${id}/react`, { emoji }),
+    ),
+  remove: (id: string) => api.delete(`/recognition/${id}`),
 };

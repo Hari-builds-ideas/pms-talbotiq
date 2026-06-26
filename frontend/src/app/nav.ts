@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Award,
   Building2,
   ClipboardCheck,
   CreditCard,
@@ -60,6 +61,7 @@ export const NAV: NavSection[] = [
       { label: "Home", to: "/", icon: LayoutDashboard, minRole: "EMPLOYEE", end: true },
       { label: "Goals & KPIs", to: "/goals", icon: Target, minRole: "EMPLOYEE" },
       { label: "360 Feedback", to: "/feedback", icon: MessageSquareText, minRole: "EMPLOYEE" },
+      { label: "Recognition", to: "/recognition", icon: Award, minRole: "EMPLOYEE" },
       { label: "Reviews", to: "/reviews", icon: FileText, minRole: "EMPLOYEE" },
       { label: "Career", to: "/career", icon: GraduationCap, minRole: "EMPLOYEE" },
     ],

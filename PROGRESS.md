@@ -18,6 +18,13 @@ card reaches exactly its permitted audience and no one else.
   8×4 **visibility matrix** + tenant isolation (cross-tenant recipient/feed) + reactions + delete. D32, Q7.
 - **2.2 (light analytics) DONE** — `recognition_analytics` aggregate-only (total, top values, visibility
   breakdown, caller's own given/received) — no per-person leaderboard (privacy). **[test]** covered.
+- **2.3 (UI: card + feed) DONE** — `features/recognition/` (RecognitionPage feed + give dialog + reaction
+  toggles + sender-only delete), `useRecognition` hooks, `recognitionApi` + types in the shared layer,
+  route `/recognition`, and the deferred **Recognition** nav item added to the Workspace set (EMPLOYEE+).
+  **[test]+[build]** RecognitionPage.test.tsx (feed render + per-card visibility label + empty-state) +
+  nav.test.ts updated; frontend 88→**91**, tsc/lint/build clean.
+- **2.4 (seed) DONE** — `seed_demo._recognitions`: 4 cards/tenant across PRIVATE/MANAGER_ONLY/TEAM/COMPANY,
+  idempotent (keyed on sender+recipient+message; verified 4 after two runs). **[live]**.
 
 ## RW_BUILD_1 (DONE) — Navigation re-cut + RBAC visibility (per role)
 

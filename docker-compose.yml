@@ -126,7 +126,11 @@ services:
     # Django-served paths (/api, /admin, /accounts, /static, /healthz, /readyz)
     # to the web tier (see frontend/nginx.conf). Built against the REAL API.
     build:
-      context: ./frontend
+      # Repo-root context so the sibling shared/ layer (consumed via @shared ->
+      # ../shared/src) is available to the build; ./frontend alone omitted it and
+      # broke `tsc` (see frontend/Dockerfile).
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_USE_MOCKS: "false"
         VITE_API_BASE_URL: /api

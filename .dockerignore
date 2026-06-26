@@ -12,6 +12,14 @@ htmlcov
 .coverage
 .env
 *.sqlite3
+# Exclude node_modules / build output at ANY depth so the repo-root build context
+# (now used by the frontend image too) never copies host-arch node_modules over the
+# image's `npm ci`, nor stale dist. The frontend .env is excluded so only the
+# build-arg controls VITE_USE_MOCKS (no passwordless-mock leak into the build).
 node_modules
+**/node_modules
+**/dist
+frontend/.env
+mobile/.env
 .DS_Store
 docs/.DS_Store

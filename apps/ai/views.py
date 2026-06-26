@@ -127,6 +127,40 @@ class MeetingSummaryView(RBACMixin, APIView):
         return Response(out)
 
 
+class ReviewQualityView(RBACMixin, APIView):
+    """``POST /api/ai/review-quality`` — body ``{"text": str}``. ASSISTIVE quality/bias
+    flags on a draft review's text → ``{flags: [{type, note}]}`` (empty = clean). Never
+    blocks, persists nothing (RW_BUILD_5). Gated by MANAGE_REVIEWS (reviewers, Manager+),
+    AI-throttled; maps the gateway result to HTTP (200 / 503 / 429)."""
+
+    required_capability = Capability.MANAGE_REVIEWS
+    throttle_classes = AI_THROTTLES
+
+    def post(self, request):
+        text = (request.data.get("text") or "").strip()
+        if not text:
+            return Response({"detail": "text is required."}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.ai.agents.review_quality import flag_review_quality
+
+        out = flag_review_quality(request.user, text)
+        if out["status"] == "not_configured":
+            return Response(
+                {"detail": "The AI review check is not configured (no LLM provider)."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if out["status"] == "budget":
+            return Response(
+                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if out["status"] == "error":
+            return Response(
+                {"detail": f"AI review check unavailable: {out.get('detail')}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(out)
+
+
 class NudgesView(RBACMixin, APIView):
     """``GET /api/ai/nudges`` (VIEW_TEAM_SCORES — Manager+) — Agent 2's current KPI
     nudges for the caller's tier: a Manager sees their reporting subtree, HRBP/Admin

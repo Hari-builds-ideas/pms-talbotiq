@@ -13,7 +13,10 @@ each; green→commit+push, red→BLOCKER+skip.
 
 - **(1) 1-on-1/meeting summary DONE** — `agents/meeting_summary.py` + `POST /api/ai/meeting-summary`
   (USE_CHAT + chat entitlement). Stateless notes→{summary, action_items}, persists nothing. **[test]**
-  `test_meeting_summary.py` (3). Frontend untouched/green. `docs/AI_QUICKWIN_1_MEETING_SUMMARY.md`.
+  `test_meeting_summary.py` (3). Frontend untouched/green. `docs/AI_QUICKWIN_1_MEETING_SUMMARY.md`. (cc4d3dc)
+- **(2) review bias/quality flag DONE** — `agents/review_quality.py` + `POST /api/ai/review-quality`
+  (MANAGE_REVIEWS). Stateless text→advisory {flags:[{type,note}]}, never blocks, persists nothing.
+  **[test]** `test_review_quality.py` (3). Frontend untouched/green. `docs/AI_QUICKWIN_2_REVIEW_QUALITY.md`.
 
 ## RW_BUILD_5 (DONE) — AI quick wins (the AI goal-writer)
 

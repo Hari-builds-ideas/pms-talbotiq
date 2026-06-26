@@ -144,6 +144,13 @@ SYSTEM_PROMPTS: dict[str, str] = {
     "agent1": _AGENT1,
     "goal_draft": _GOAL_DRAFT,
     "meeting_summary": _MEETING_SUMMARY,
+    "review_quality": (
+        "You are an ASSISTIVE reviewer-coach. Flag quality/bias issues in a draft "
+        "performance review (recency_bias, harsh_wording, missing_evidence, vague, "
+        "other), each with a short constructive note. Respond with ONLY {\"flags\": "
+        "[{\"type\": str, \"note\": str}]}; an EMPTY list when the text is balanced, "
+        "specific and professional. Never a verdict, never blocking. JSON only."
+    ),
     "agent3": _AGENT3,
     "agent4": _AGENT4,
     "jd_generator": _JD,

@@ -3,7 +3,19 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: RW_BUILD_5 — AI quick wins (the AI goal-writer)
+## Current: OVERNIGHT — AI quick wins (Q9/Q10), backend-only + additive (D36)
+
+Unattended overnight: the remaining AI quick wins, each a backend-only additive feature in `apps/ai`
+(new agent + endpoint + tests via the LLMGateway; existing models read-only; existing capabilities
+reused — no matrix change; FakeLLMProvider, ZERO live OpenAI). UI wiring deferred to per-feature
+`docs/AI_QUICKWIN_*.md` specs (shared layer + nav are do-not-touch). Full suite + frontend gates after
+each; green→commit+push, red→BLOCKER+skip.
+
+- **(1) 1-on-1/meeting summary DONE** — `agents/meeting_summary.py` + `POST /api/ai/meeting-summary`
+  (USE_CHAT + chat entitlement). Stateless notes→{summary, action_items}, persists nothing. **[test]**
+  `test_meeting_summary.py` (3). Frontend untouched/green. `docs/AI_QUICKWIN_1_MEETING_SUMMARY.md`.
+
+## RW_BUILD_5 (DONE) — AI quick wins (the AI goal-writer)
 
 The final re-weighting build. Shipped the highest-value quick win — an AI goal-writer — via the one
 LLMGateway, HITL (a draft, never auto-saved).

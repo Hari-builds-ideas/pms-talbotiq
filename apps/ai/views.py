@@ -88,6 +88,45 @@ class ChatActionExecuteView(RBACMixin, APIView):
         return Response(result)
 
 
+class MeetingSummaryView(RBACMixin, APIView):
+    """``POST /api/ai/meeting-summary`` — body ``{"notes": str}``. Stateless AI
+    summary of 1-on-1 / meeting notes → ``{summary, action_items}``. DRAFT only,
+    persists nothing (RW_BUILD_5). USE_CHAT + the chat entitlement, AI-throttled;
+    maps the gateway result to HTTP (200 / 503 no-provider / 429 over-budget)."""
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def post(self, request):
+        notes = (request.data.get("notes") or "").strip()
+        if not notes:
+            return Response({"detail": "notes is required."}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.ai.agents.meeting_summary import summarize_meeting
+
+        out = summarize_meeting(request.user, notes)
+        if out["status"] == "not_configured":
+            return Response(
+                {"detail": "The AI summary is not configured (no LLM provider)."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if out["status"] == "budget":
+            return Response(
+                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if out["status"] == "error":
+            return Response(
+                {"detail": f"AI summary unavailable: {out.get('detail')}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(out)
+
+
 class NudgesView(RBACMixin, APIView):
     """``GET /api/ai/nudges`` (VIEW_TEAM_SCORES — Manager+) — Agent 2's current KPI
     nudges for the caller's tier: a Manager sees their reporting subtree, HRBP/Admin

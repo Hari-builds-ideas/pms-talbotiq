@@ -940,3 +940,19 @@ goal through the existing scope-gated, audited create endpoint.
   evenly split to sum to 100, so the draft is immediately valid) — all editable before create.
 - Tests use `FakeLLMProvider` (no network). Verified live: ada drafts a real goal (1 OpenAI call), nothing
   persisted, employee 403.
+
+### D36 (RW_BUILD_5 overnight) — AI quick wins built BACKEND-ONLY + additive (the safe surface)
+
+**Context.** An unattended overnight run with hard limits: touch ONLY additive AI features; do NOT modify
+auth/SSO, the shared layer, deployment/Docker, navigation, or any existing passing module; never push a
+red state. **Decision:** build each remaining AI quick win as a **backend-only, additive** feature in
+`apps/ai` — a new agent + endpoint + tests through the existing `LLMGateway` (budget→scrub→validate→
+meter→HITL), reading existing models READ-ONLY, **reusing existing capabilities** (no `matrix.py` change),
+with `FakeLLMProvider` in tests and **zero live OpenAI**. The UI wiring (which would require the shared
+layer + navigation — both forbidden surfaces) is deferred to a per-feature **follow-up spec in `docs/`**
+for Hari's morning review. Each feature is its own committed+pushed+green phase; on any red, leave the last
+green state, write `BLOCKER_<phase>.md`, and move to the next independent feature.
+
+**Why safe.** The forbidden surfaces (auth/SSO/shared/deploy/nav) are exactly the ones that caused silent
+breakage before; backend-only additive endpoints can't affect them. Reusing capabilities avoids touching
+core RBAC. Every feature is HITL (drafts/proposes, never decides) and scope/tenant-bound.

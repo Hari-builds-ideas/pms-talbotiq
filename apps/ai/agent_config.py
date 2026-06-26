@@ -132,10 +132,18 @@ _GOAL_DRAFT = (
     "output ONLY the JSON."
 )
 
+_MEETING_SUMMARY = (
+    "You summarise 1-on-1 / meeting notes for the participant. Respond with ONLY a "
+    "JSON object {\"summary\": str, \"action_items\": [str]}. summary = 2-4 sentences "
+    "of the key points and decisions; action_items = concrete next steps (0-6). Be "
+    "specific and faithful to the notes; invent nothing; no text outside the JSON."
+)
+
 #: agent_code -> system prompt. Override any entry via settings.LLM_SYSTEM_PROMPTS.
 SYSTEM_PROMPTS: dict[str, str] = {
     "agent1": _AGENT1,
     "goal_draft": _GOAL_DRAFT,
+    "meeting_summary": _MEETING_SUMMARY,
     "agent3": _AGENT3,
     "agent4": _AGENT4,
     "jd_generator": _JD,

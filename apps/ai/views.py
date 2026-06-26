@@ -161,6 +161,24 @@ class ReviewQualityView(RBACMixin, APIView):
         return Response(out)
 
 
+class StaleGoalsView(RBACMixin, APIView):
+    """``GET /api/ai/stale-goals`` (VIEW_TEAM_SCORES — Manager+) — READ-ONLY: the
+    caller's reporting-subtree ACTIVE goals with no KPI progress in ~30 days, plus ONE
+    AI-drafted follow-up suggestion (RW_BUILD_5). Advisory — suggests, never nudges
+    anyone automatically; persists nothing. The deterministic list always returns; the
+    suggestion is null with no AI provider. AI-throttled (the LLM is called at most once)."""
+
+    required_capability = Capability.VIEW_TEAM_SCORES
+    throttle_classes = AI_THROTTLES
+
+    def get(self, request):
+        from apps.ai.agents.stale_goals import stale_goals_for, suggest_followup
+
+        stale = stale_goals_for(request.user)
+        suggestion = suggest_followup(request.user, stale)
+        return Response({"stale": stale, "suggestion": suggestion})
+
+
 class NudgesView(RBACMixin, APIView):
     """``GET /api/ai/nudges`` (VIEW_TEAM_SCORES — Manager+) — Agent 2's current KPI
     nudges for the caller's tier: a Manager sees their reporting subtree, HRBP/Admin

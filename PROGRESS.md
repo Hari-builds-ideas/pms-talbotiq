@@ -20,7 +20,11 @@ each; green→commit+push, red→BLOCKER+skip.
 - **(3) stale-goal nudge DONE** — `agents/stale_goals.py` + `GET /api/ai/stale-goals` (VIEW_TEAM_SCORES).
   READ-ONLY: deterministic stale ACTIVE goals (no KPI progress ~30d) in scope + ONE AI follow-up
   suggestion (≤1 LLM call; null with no provider). Advisory, persists nothing. **[test]**
-  `test_stale_goals.py` (4). Frontend untouched/green. `docs/AI_QUICKWIN_3_STALE_GOALS.md`.
+  `test_stale_goals.py` (4). Frontend untouched/green. `docs/AI_QUICKWIN_3_STALE_GOALS.md`. (eca8aeb)
+- **(4) natural-language search DONE** — `agents/nl_search.py` + `POST /api/ai/search` (VIEW_TEAM_SCORES).
+  LLM CLASSIFIES the question into a fixed supported search (employees_missing_goals /
+  reports_without_checkin); the search is DETERMINISTIC + scope-bound (only people the caller can see).
+  Read-only. **[test]** `test_nl_search.py` (5). Frontend untouched/green. `docs/AI_QUICKWIN_4_NL_SEARCH.md`.
 
 ## RW_BUILD_5 (DONE) — AI quick wins (the AI goal-writer)
 

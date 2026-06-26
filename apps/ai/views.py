@@ -179,6 +179,41 @@ class StaleGoalsView(RBACMixin, APIView):
         return Response({"stale": stale, "suggestion": suggestion})
 
 
+class NLSearchView(RBACMixin, APIView):
+    """``POST /api/ai/search`` (VIEW_TEAM_SCORES — Manager+) — body ``{"query": str}``.
+    Natural-language search: the LLM classifies the question into a fixed SUPPORTED
+    search, then a DETERMINISTIC, scope-bound query runs (returns only people the
+    caller can see). Read-only; persists nothing (RW_BUILD_5). Maps the gateway result
+    to HTTP (200 / 503 / 429); AI-throttled."""
+
+    required_capability = Capability.VIEW_TEAM_SCORES
+    throttle_classes = AI_THROTTLES
+
+    def post(self, request):
+        query = (request.data.get("query") or "").strip()
+        if not query:
+            return Response({"detail": "query is required."}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.ai.agents.nl_search import nl_search
+
+        out = nl_search(request.user, query)
+        if out["status"] == "not_configured":
+            return Response(
+                {"detail": "AI search is not configured (no LLM provider)."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if out["status"] == "budget":
+            return Response(
+                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if out["status"] == "error":
+            return Response(
+                {"detail": f"AI search unavailable: {out.get('detail')}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({"search": out["search"], "results": out["results"]})
+
+
 class NudgesView(RBACMixin, APIView):
     """``GET /api/ai/nudges`` (VIEW_TEAM_SCORES — Manager+) — Agent 2's current KPI
     nudges for the caller's tier: a Manager sees their reporting subtree, HRBP/Admin

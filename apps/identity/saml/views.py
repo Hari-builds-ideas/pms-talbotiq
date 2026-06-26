@@ -15,8 +15,6 @@ to the cross-site IdP POST.
 import logging
 
 from django.http import HttpResponse, HttpResponseRedirect
-from onelogin.saml2.auth import OneLogin_Saml2_Auth
-from onelogin.saml2.settings import OneLogin_Saml2_Settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -32,6 +30,14 @@ from .service import SamlAuthError, process_saml_response
 from .settings import build_saml_settings, prepare_django_request
 
 logger = logging.getLogger("pms.identity")
+
+# ``onelogin`` (python3-saml) is imported LAZILY inside the request handlers below,
+# not at module top-level. Reason: this module is pulled in when Django loads the
+# URLconf, which also happens in the Celery worker/beat (they import the Django app).
+# A top-level import made a missing/optional SSO dependency crash the worker on
+# startup — taking down all async AI jobs (the "Request AI Draft" hang). SSO is an
+# HTTP-only concern; deferring the import keeps the URLconf importable everywhere and
+# only requires python3-saml where SAML is actually served.
 
 
 def _resolve_tenant_and_config(tenant_slug):
@@ -59,6 +65,8 @@ class _SamlSpView(APIView):
 
 class SamlMetadataView(_SamlSpView):
     def get(self, request, tenant_slug):
+        from onelogin.saml2.settings import OneLogin_Saml2_Settings
+
         tenant, config = _resolve_tenant_and_config(tenant_slug)
         if config is None:
             return self._not_configured()
@@ -80,6 +88,8 @@ class SamlLoginView(_SamlSpView):
     """SP-initiated login: redirect the browser to the tenant's IdP with an AuthnRequest."""
 
     def get(self, request, tenant_slug):
+        from onelogin.saml2.auth import OneLogin_Saml2_Auth
+
         tenant, config = _resolve_tenant_and_config(tenant_slug)
         if config is None:
             return self._not_configured()

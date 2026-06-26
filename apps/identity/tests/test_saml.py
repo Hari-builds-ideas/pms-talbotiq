@@ -417,3 +417,31 @@ def test_saml_login_redirects_to_idp():
     resp = APIClient().get(reverse("identity:saml-login", args=["acme"]))
     assert resp.status_code == 302
     assert resp["Location"].startswith("https://idp.mock/sso")
+
+
+def test_saml_modules_do_not_import_onelogin_at_top_level():
+    """Regression guard (worker hang): python3-saml (``onelogin``) must be imported
+    LAZILY inside the request handlers, never at module top-level. These SAML modules
+    are pulled in when Django loads the URLconf — which ALSO happens in the Celery
+    worker/beat (they import the Django app). A top-level import of this HTTP-only SSO
+    dependency crashed the worker on startup when its image lacked python3-saml,
+    silently stranding every async AI job (the "Request AI Draft" infinite spinner).
+
+    We assert the invariant two ways: the onelogin symbols are not bound in the module
+    namespaces (so the import is deferred), and no ``import onelogin`` appears at
+    column 0 in the source. The metadata/login/acs tests above prove the lazy imports
+    still work end-to-end."""
+    import inspect
+
+    from apps.identity.saml import service as saml_service
+    from apps.identity.saml import views as saml_views
+
+    for mod in (saml_views, saml_service):
+        g = vars(mod)
+        assert "onelogin" not in g
+        assert "OneLogin_Saml2_Auth" not in g
+        assert "OneLogin_Saml2_Settings" not in g
+        for line in inspect.getsource(mod).splitlines():
+            assert not (line.startswith("import onelogin") or line.startswith("from onelogin")), (
+                f"{mod.__name__} imports onelogin at top level: {line!r}"
+            )

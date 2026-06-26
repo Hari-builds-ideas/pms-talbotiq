@@ -145,7 +145,13 @@ class GroqProvider(LLMProvider):
         last_exc: Exception | None = None
         for attempt in range(attempts):
             try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+                # Hard (connect, read) timeout — short connect cap fails fast if the
+                # host is unreachable; read cap bounds a slow generation. A stalled
+                # call degrades within seconds, never an open-ended hang.
+                resp = requests.post(
+                    url, json=payload, headers=headers,
+                    timeout=(min(self.timeout, 10.0), self.timeout),
+                )
             except requests.RequestException as exc:
                 last_exc = exc
                 time.sleep(1.5 * (attempt + 1))

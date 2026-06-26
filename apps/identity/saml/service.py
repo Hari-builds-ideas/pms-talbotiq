@@ -12,7 +12,6 @@ guard over the assertion id. See DECISIONS D25.
 import logging
 
 from django.core.cache import cache
-from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
 from apps.audit.services import record as audit_record
 from apps.tenancy.context import tenant_context
@@ -118,6 +117,10 @@ def process_saml_response(tenant, config, request):
 
     Raises ``SamlAuthError`` on any validation, replay, or mapping failure.
     """
+    # Lazy import (see saml/views.py): keep this module importable by the URLconf in
+    # contexts that don't serve SAML (e.g. the Celery worker) without python3-saml.
+    from onelogin.saml2.auth import OneLogin_Saml2_Auth
+
     auth = OneLogin_Saml2_Auth(
         prepare_django_request(request),
         old_settings=build_saml_settings(config, request, tenant.slug),

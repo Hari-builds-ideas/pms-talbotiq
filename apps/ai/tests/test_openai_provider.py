@@ -67,6 +67,21 @@ def test_generate_parses_openai_shape_and_builds_request():
 
 
 @override_settings(**FAKE)
+def test_request_uses_a_bounded_connect_and_read_timeout():
+    """A slow/unreachable OpenAI must degrade quickly, never hang open-ended (the
+    "Request AI Draft" spinner). The request carries a hard (connect, read) timeout
+    tuple — both finite, connect capped short so an unreachable host fails fast."""
+    body = _completion({"intent": "general"})
+    with patch("apps.ai.openai_provider.requests.post", return_value=_resp(200, body)) as post:
+        OpenAIProvider().generate(agent_code="chat", prompt="hi json", model="chat")
+    timeout = post.call_args.kwargs["timeout"]
+    assert isinstance(timeout, tuple) and len(timeout) == 2
+    connect, read = timeout
+    assert 0 < connect <= 10  # fail fast on an unreachable host
+    assert 0 < read <= 60  # bounded read — never open-ended
+
+
+@override_settings(**FAKE)
 def test_non_json_content_raises_provider_error_not_fabrication():
     bad = {"choices": [{"finish_reason": "stop", "message": {"content": "not json at all"}}], "usage": {}}
     with patch("apps.ai.openai_provider.requests.post", return_value=_resp(200, bad)):

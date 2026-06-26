@@ -124,3 +124,13 @@ taken:** one well-built action + the full safety machinery (propose→confirm→
 execution); "keep it small and safe first, then extend." **Different choice would change:** add registry
 entries (e.g. "nudge reports with no progress in 30 days", "remind people with no check-in this week"),
 each mapping to an existing audited, permission-checked endpoint, with its own confirm card.
+
+### Q10 (RW_BUILD_5) — AI quick wins: shipped the goal-writer; the others are follow-ups
+
+**Question.** The outline lists five quick wins; I shipped (a) the goal-writer. **Why it matters.** Each
+of the rest reduces admin work too. **Default taken:** one well-built, gateway-routed, HITL win + the
+machinery others can reuse (the outline says "build whichever you value most first; each small +
+self-contained"). **Different choice would change:** add (b) 1-on-1/meeting summary, (c) review
+bias/quality flag, (d) stale-goal nudge (fits the RW_BUILD_4 propose-confirm registry), (e) NL search —
+each via the LLMGateway, HITL, with FakeLLMProvider tests. Also: decide which entitlement pack gates the
+goal-writer (currently capability + gateway-budget, not pack-gated — see D35).

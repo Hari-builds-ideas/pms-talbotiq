@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 from apps.audit.services import record
 from apps.core.concurrency import check_version
 from apps.core.pagination import StandardResultsSetPagination
+from apps.core.throttling import AI_THROTTLES
 from apps.cycles.models import PerformanceCycle
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
@@ -335,6 +336,42 @@ class KpiTemplateInstantiateView(RBACMixin, APIView):
             employee=employee, cycle=cycle, created_by=request.user, role=role
         )
         return Response(GoalSerializer(goal).data, status=status.HTTP_201_CREATED)
+
+
+class GoalAIDraftView(RBACMixin, APIView):
+    """``POST /api/goals/ai-draft`` (MANAGE_REPORTS_GOALS) — draft a SMART goal from a
+    one-line intent via the AI Goal-writer (RW_BUILD_5). Returns an editable DRAFT
+    (title, objective, KPIs); **nothing is persisted** — the human edits it and creates
+    the goal through the normal (scope-gated, audited) create endpoint. The draft flows
+    through the LLMGateway (budget/scrub/validate/meter); maps the result to HTTP: 503
+    (no provider), 429 (over budget). AI-throttled."""
+
+    required_capability = Capability.MANAGE_REPORTS_GOALS
+    throttle_classes = AI_THROTTLES
+
+    def post(self, request):
+        intent = (request.data.get("prompt") or "").strip()
+        if not intent:
+            return Response({"detail": "prompt is required."}, status=status.HTTP_400_BAD_REQUEST)
+        from apps.ai.agents.goal_writer import draft_goal
+
+        out = draft_goal(request.user, intent)
+        if out["status"] == "not_configured":
+            return Response(
+                {"detail": "The AI goal-writer is not configured (no LLM provider)."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if out["status"] == "budget":
+            return Response(
+                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if out["status"] == "error":
+            return Response(
+                {"detail": f"AI draft unavailable: {out.get('detail')}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response(out)
 
 
 def _lock_goal(goal):

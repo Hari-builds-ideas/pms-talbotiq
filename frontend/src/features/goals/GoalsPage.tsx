@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, Plus, RefreshCw, Target, Trash2 } from "lucide-react";
+import { Check, Plus, RefreshCw, Sparkles, Target, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ import { KPI_DIRECTION, humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
 import { sumWeights, weightsSumTo100 } from "@/lib/weights";
 import { mapApiError } from "@/lib/errors";
+import { goalsApi } from "@/lib/api/endpoints";
 import { notifyError, notifySuccess } from "@/lib/toast";
 import { activeWeightTotal, useCycleScores, useGoalMutations, useGoals } from "./useGoals";
 import type { CycleScore, Goal } from "@/lib/types";
@@ -270,12 +271,47 @@ function NewGoalDialog({
   const [kpis, setKpis] = React.useState<DraftKpi[]>([newKpi()]);
   const [error, setError] = React.useState<string | null>(null);
   const [step, setStep] = React.useState<1 | 2>(1);
+  const [aiPrompt, setAiPrompt] = React.useState("");
+  const [aiBusy, setAiBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
-      setEmployee(""); setTitle(""); setObjective(""); setWeight("100"); setKpis([newKpi()]); setError(null); setStep(1);
+      setEmployee(""); setTitle(""); setObjective(""); setWeight("100"); setKpis([newKpi()]); setError(null); setStep(1); setAiPrompt("");
     }
   }, [open]);
+
+  // AI goal-writer (RW_BUILD_5): a one-line intent → an editable SMART draft. It
+  // PREFILLS the form (title, objective, KPIs with evenly-split weights summing to
+  // 100) — nothing is saved until the human submits the normal create.
+  async function aiDraft() {
+    const intent = aiPrompt.trim();
+    if (!intent) return;
+    setAiBusy(true);
+    try {
+      const { draft } = await goalsApi.aiDraft(intent);
+      setTitle(draft.title);
+      setObjective(draft.objective);
+      const ks = draft.kpis ?? [];
+      if (ks.length) {
+        const n = ks.length;
+        const base = Math.floor((100 / n) * 100) / 100;
+        setKpis(
+          ks.map((k, i) => ({
+            name: k.name,
+            weight: (i === n - 1 ? 100 - base * (n - 1) : base).toFixed(2),
+            target_value: k.target_value || "100",
+            direction: k.direction === "DECREASING" ? "DECREASING" : "INCREASING",
+            unit: k.unit || "",
+          })),
+        );
+      }
+      notifySuccess("Draft ready — review and edit before creating");
+    } catch (err) {
+      notifyError(err);
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   const kpiTotal = sumWeights(kpis);
   const kpiOk = weightsSumTo100(kpis);
@@ -325,6 +361,22 @@ function NewGoalDialog({
           {error && <p className="rounded-md bg-danger-subtle px-3 py-2 text-sm text-danger">{error}</p>}
           {step === 1 && (
           <>
+          <div className="rounded-md border border-dashed border-ai/40 bg-ai-subtle/30 p-3">
+            <p className="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-ai">
+              <Sparkles className="h-3.5 w-3.5" /> Draft with AI
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="e.g. improve our sales response time"
+              />
+              <Button type="button" variant="outline" onClick={aiDraft} loading={aiBusy} disabled={!aiPrompt.trim()}>
+                Draft
+              </Button>
+            </div>
+            <p className="mt-1 text-2xs text-muted-foreground">Fills the fields below — review and edit before creating.</p>
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Employee" required>
               <Select value={employee} onValueChange={setEmployee}>

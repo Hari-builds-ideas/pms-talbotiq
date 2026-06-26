@@ -25,6 +25,7 @@ import type {
   FeedbackSummary,
   MyFeedbackCycle,
   Goal,
+  GoalDraftResponse,
   OwnFeedback,
   DepartmentAnalytics,
   Entitlement,
@@ -404,6 +405,10 @@ export const aiJobsApi = {
 export const goalsApi = {
   list: (params: PageParams & { employee?: string; cycle?: string } = {}) =>
     unwrap<Paginated<Goal>>(api.get("/goals/", { params })),
+  // RW_BUILD_5 — AI goal-writer: a one-line intent → an editable SMART goal DRAFT
+  // (persists nothing; the human edits + creates it the normal way).
+  aiDraft: (prompt: string) =>
+    unwrap<GoalDraftResponse>(api.post("/goals/ai-draft", { prompt })),
   detail: (id: string) => unwrap<Goal>(api.get(`/goals/${id}`)),
   create: (body: {
     employee: string;

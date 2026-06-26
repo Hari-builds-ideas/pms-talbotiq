@@ -923,3 +923,20 @@ permission-checked** — the model never picks or runs the action. Started with 
 **Verified live:** ada chats "approve my team's goals" → proposal (1 OpenAI call); Approve → execute
 200/approved 1; goal stamped by ada + 1 audit row; a second execute is a no-op; an employee's execute →
 403.
+
+### D35 (RW_BUILD_5) — AI goal-writer: a gateway-routed, HITL draft (persists nothing)
+
+**Decision.** Shipped ONE AI quick win — the goal-writer — as the highest-value, self-contained one
+(the outline explicitly allows "whichever you value most first"). A one-line intent → an editable SMART
+goal draft (title + objective + 1–3 KPIs) via the one `LLMGateway` (budget → scrub → schema-validate →
+meter → confidence), so it's metered, budget-bounded, and degrades to a clean 503 with no provider.
+**HITL:** it persists NOTHING — the draft prefills the New-Goal form and the human edits + creates the
+goal through the existing scope-gated, audited create endpoint.
+
+- **Gating:** `POST /api/goals/ai-draft` requires `MANAGE_REPORTS_GOALS` (the same capability as goal
+  creation) — an employee gets 403. No new entitlement/pack was added (gateway budget + capability gate
+  cover it); the pack mapping (which tier includes the goal-writer) is a follow-up (Q10).
+- **Frontend:** a "Draft with AI" field in the New-Goal dialog prefills title + objective + KPIs (weights
+  evenly split to sum to 100, so the draft is immediately valid) — all editable before create.
+- Tests use `FakeLLMProvider` (no network). Verified live: ada drafts a real goal (1 OpenAI call), nothing
+  persisted, employee 403.

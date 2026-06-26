@@ -846,3 +846,21 @@ export interface CheckIn {
   /** present on the detail endpoint — read-only pull from the goals engine */
   goal_progress?: CheckInGoalProgress[];
 }
+
+// ── RW_BUILD_5 — AI goal-writer (draft, never auto-saved) ─────────────────────
+export interface GoalDraftKpi {
+  name: string;
+  target_value: string;
+  unit: string;
+  direction: string;
+}
+export interface GoalDraft {
+  title: string;
+  objective: string;
+  kpis: GoalDraftKpi[];
+}
+export interface GoalDraftResponse {
+  status: string;
+  draft: GoalDraft;
+  confidence?: number;
+}

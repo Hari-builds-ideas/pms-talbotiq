@@ -9,6 +9,7 @@ match first. RBAC gating lives on the views.
 from django.urls import path
 
 from .views import (
+    GoalAIDraftView,
     GoalApproveView,
     GoalDetailView,
     GoalKpiListCreateView,
@@ -30,6 +31,8 @@ urlpatterns = [
         KpiTemplateInstantiateView.as_view(),
         name="template-instantiate",
     ),
+    # AI goal-writer (RW_BUILD_5) — drafts a SMART goal; persists nothing.
+    path("ai-draft", GoalAIDraftView.as_view(), name="ai-draft"),
     # KPI sub-resources.
     path("kpis/<uuid:pk>", KpiDetailView.as_view(), name="kpi-detail"),
     path("kpis/<uuid:kpi_id>/actuals", KpiActualsView.as_view(), name="kpi-actuals"),

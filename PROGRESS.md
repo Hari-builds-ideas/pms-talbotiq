@@ -3,7 +3,23 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: RW_BUILD_4 — AI assistant: read-only → propose-and-confirm (HITL)
+## Current: RW_BUILD_5 — AI quick wins (the AI goal-writer)
+
+The final re-weighting build. Shipped the highest-value quick win — an AI goal-writer — via the one
+LLMGateway, HITL (a draft, never auto-saved).
+
+- **DONE** — `apps/ai/agents/goal_writer.py` (`draft_goal` through the gateway: budget→scrub→validate→
+  meter→confidence; schema = title+objective+kpis). `POST /api/goals/ai-draft` (`GoalAIDraftView`,
+  MANAGE_REPORTS_GOALS, AI-throttled) returns an editable draft and persists NOTHING — the human edits +
+  creates via the normal scope-gated/audited path. Frontend: a "Draft with AI" field in the New-Goal
+  dialog prefills title+objective+KPIs (weights split to sum 100). `goalsApi.aiDraft` + types in the
+  shared layer; tailored `goal_draft` system prompt. **[test]** `test_goal_writer.py` (3): structured
+  draft + nothing persisted (FakeLLMProvider), no-provider→503, endpoint manager-200/employee-403/empty-400.
+  Frontend 93 green. **[live]** ada drafts "Enhance Sales Response Time" (1 OpenAI call), nothing
+  persisted, employee→403. D35, Q10. The other four quick wins (1-on-1 summary, bias flag, stale-goal
+  nudge, NL search) are logged follow-ups.
+
+## RW_BUILD_4 (DONE) — AI assistant: read-only → propose-and-confirm (HITL)
 
 The headline AI upgrade. The chat may now PROPOSE a supported action (an inert Approve/Cancel card);
 nothing executes until the human taps Approve → `POST /api/ai/actions/execute`, which re-checks

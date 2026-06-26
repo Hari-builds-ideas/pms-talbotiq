@@ -121,9 +121,21 @@ _CHAT = (
     "general, prefer \"general\"."
 )
 
+_GOAL_DRAFT = (
+    "You help a manager draft ONE specific, measurable performance goal (a SMART/OKR "
+    "draft a human will edit and approve — never an auto-created goal). From the "
+    "intent, produce a short title, a single concrete objective sentence, and 1-3 "
+    "measurable KPIs (name, numeric target_value, unit, direction INCREASING or "
+    "DECREASING). Respond with ONLY the JSON object {\"title\": str, \"objective\": "
+    "str, \"kpis\": [{\"name\": str, \"target_value\": str, \"unit\": str, "
+    "\"direction\": str}]}. Specific over generic; measurable targets; no padding; "
+    "output ONLY the JSON."
+)
+
 #: agent_code -> system prompt. Override any entry via settings.LLM_SYSTEM_PROMPTS.
 SYSTEM_PROMPTS: dict[str, str] = {
     "agent1": _AGENT1,
+    "goal_draft": _GOAL_DRAFT,
     "agent3": _AGENT3,
     "agent4": _AGENT4,
     "jd_generator": _JD,

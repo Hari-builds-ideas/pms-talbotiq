@@ -1,126 +1,154 @@
-# BUGFIX_REPORT — product-validation blocking bugs (web)
+# BUGFIX_REPORT — hands-on test round (post Groq→OpenAI swap)
 
-Four HIGH bugs from a hands-on product validation, fixed in priority order — root-cause
-(not patch), each with a test and verified live, committed + pushed per fix. No mobile
-work. RBAC / HITL / scope intact throughout; LLM verification used the FakeLLMProvider.
+Four bugs from a hands-on test, fixed in priority order — root-cause (not patch), each
+with a test and verified live, committed + pushed per fix. RBAC / HITL / tenant scope
+intact throughout; no real LLM calls in the test suite (FakeLLMProvider).
 
-| # | Bug | Commit |
-|---|---|---|
-| 1 | Goals approve doesn't update state | `1a2849e` |
-| 2 | "Request AI Draft" unreachable | `a0bb2b5` |
-| 3 | Employee roadmap dead link | `df0d351` |
-| 4 | AI assistant ignores intent | `e9f7b53` |
+> A note on the theme: **two of the four were stale-deployment bugs, not logic bugs.**
+> The running containers were older than the code. BUG 1 was a crash-looping Celery
+> worker; BUG 3 was a frontend image that hadn't successfully rebuilt since Jun 21
+> because the Docker build was silently broken. Both are now fixed at the root so the
+> running stack matches the source.
 
-**Suite movement:** backend **1196 → 1201** passing (+5 chat) — and earlier +2 (seed)
-from 1194 — net **1194 → 1201**, 2 deselected. Frontend **74 → 76** vitest (+2 goals
-invalidation, +2 CareerPage; the goals test file replaced none). tsc / eslint / production
-build clean. No regressions.
+| # | Bug | Root cause | Commit |
+|---|---|---|---|
+| 1 | "Request AI Draft" hangs forever | Celery worker crash-looping on a top-level `onelogin` import | `83fa069` |
+| 2 | Login doesn't ask for a password | Not a server defect (persisted session); closed the mock footgun | `36e9b56` |
+| 3 | Goals approve doesn't update live | Stale frontend bundle — Docker build broken since the 8.1 shared-layer move | `a0bc723` |
+| 4 | JD library crashes | `.join` on an undefined list when a JD body is partial/empty | `a1cfa71` |
+
+**Suite status:** backend **1213 passing, 2 deselected** (+2 this round: SAML lazy-import
+guard, OpenAI timeout). Frontend **83 vitest passing** (+7 this round: 3 AuthGuard, 4
+normalizeBody); `tsc` clean, `eslint` clean, `vite build` clean.
+
+**Active AI provider: OpenAI** (`gpt-4o` / `gpt-4o-mini`) — confirmed working live (a review
+draft completed in ~4s, landed PENDING + metered + confidence 0.88). No Groq fallback needed.
 
 ---
 
-## BUG 1 (HIGH) — Goals approval state doesn't update
+## BUG 1 — "Request AI Draft" hangs forever (infinite spinner)
 
-**Symptom.** Manager clicks Approve → success toast, but the row stays "Awaiting approval"; repeatable.
+**Symptom.** Requesting an AI review draft span for 10+ minutes and never completed.
+Started after the Groq→OpenAI swap.
 
-**Root cause (frontend, not backend).** The goals list is cached under
-`["goals","list", cycle ?? "all"]`, but the post-mutation `refresh()` invalidated
-`["goals","list", cycle]`. With **no cycle selected** (the default view) the cached key is
-`…"all"` while the invalidation key is `…undefined` — React Query never matches them, so
-the list **never refetched** after approve (same latent staleness for create / recordActual /
-recompute). The backend was already correct: `GoalApproveView` stamps `approved_by` +
-`approved_at` and returns the updated goal.
+**Root cause (NOT the swap).** The Celery **worker and beat were crash-looping** on startup:
+`ModuleNotFoundError: No module named 'onelogin'`. The W1 SAML SP code imported
+`python3-saml` (`onelogin`) at **module top level** in `apps/identity/saml/{views,service}.py`.
+Those modules are pulled in when Django builds the URLconf — which also happens in the
+Celery worker (it imports the Django app). The worker image lacks that HTTP-only SSO
+dependency, so the import killed it. With the worker dead, every "Request AI Draft"
+enqueued an `AIJob` that **nobody ran** → the client polled a job that never reached a
+terminal state → infinite spinner. (A `docker compose restart` earlier surfaced this
+latent breakage; restart doesn't rebuild.)
 
-**Fix.** Invalidate by the stable **prefix** `["goals","list"]` + `["cycles","scores"]`,
-which prefix-matches every cached variant — the row flips to "Approved" immediately, and
-Recompute/record-actual now refetch too.
+**Fix.** Import `onelogin` **lazily**, inside the SAML request handlers, so the URLconf
+imports everywhere (including the worker) without the dependency. SAML still works on web
+(which has the dep) — proven by the existing metadata/login/acs tests. Also hardened the
+provider HTTP call to a `(connect, read)` timeout in both providers so a slow/unreachable
+OpenAI degrades to a clean error in seconds (defence in depth — a 30s timeout already
+existed; the infinite hang was the dead worker, not a missing timeout).
 
-**Verified.** **[test]** `frontend/src/features/goals/useGoals.test.tsx` (2) — the default
-no-cycle list AND a cycle-specific list are both invalidated after approve (fails pre-fix).
-Backend persistence already covered by `test_manager_can_approve_report_goal_and_audit`.
-**[live]** created a goal (`approved_by` null) → POST approve → 200 with `approved_by` +
-`approved_at` set → GET list refetch shows it populated.
+**Files.** `apps/identity/saml/views.py`, `apps/identity/saml/service.py`,
+`apps/ai/openai_provider.py`, `apps/ai/groq.py`.
+**Tests (+2).** SAML modules must not import `onelogin` at top level (the worker-hang
+invariant); provider request carries a bounded `(connect, read)` timeout.
+**Verified live.** Brought the worker up → it drained the stuck queue; two review-draft
+jobs completed against OpenAI in ~3.7s / ~3.9s → review `PENDING_HUMAN_REVIEW` (HITL
+intact), metered (gpt-4o, 535+210 tokens), confidence 0.88. No more spinner.
 
-## BUG 2 (HIGH) — "Request AI Draft" not reachable
+## BUG 2 — Login doesn't ask for a password
 
-**Symptom.** A manager could not find any review where AI generation was available.
+**Symptom.** Visiting `/login` appeared to walk straight into the app with no credentials.
 
-**Root cause (the seed, not RBAC/feature/UI).** The action only renders on a **DRAFT**
-review. RBAC was fine (`RUN_AI_REVIEW_DRAFT` = Manager+), the feature was unlocked
-(`acme` = FULL_AI → `agent1`, confirmed live), and the reviews list/detail UI surface
-DRAFT rows. But (a) the seeded DRAFT review belonged to a non-demo manager (`employees[1]`
-→ `lin`, not the primary demo manager `ada`), so it wasn't in her scope; and (b) `_ensure`
-is get-or-create that **never resets state**, so once a tester clicked "Start editing"
-(DRAFT → EDITING) the review was permanently non-DRAFT on re-seed. Live: the demo manager
-saw **0** DRAFT reviews; the tenant-wide HRBP saw 8, none DRAFT.
+**Root cause — not a server defect.** Verified live with a headless browser against the
+served app: a **fresh/incognito** session at `/login`, `/`, and deep links all **require
+login** (redirect to `/login`, password field shown, no app shell); wrong credentials are
+rejected by the real backend; `/api/auth/me` 401s without a token. The "walk straight in"
+was a **persisted, still-valid refresh token** from an earlier login (remember-me), which
+`AuthContext` validates via `/api/auth/me`. Clearing site data / incognito requires login.
 
-**Fix.** `seed_demo._reviews` now seeds a dedicated DRAFT review for one of **ada's**
-reports (not used by the spectrum specs) and **force-resets it to DRAFT on every seed**, so
-the action is reliably reachable.
+The one real passwordless path in the repo: `VITE_USE_MOCKS` defaulted to `true`, and mock
+mode shows "any password works" + auto-authenticates. The Docker build already forces it
+`false` (so the served app was always safe), but a bare `npm run dev`/`build` would be
+passwordless.
 
-**Verified.** **[test]** `apps/core/tests/test_seed_demo.py` (2) — the demo manager reaches
-a DRAFT review + `request_ai_draft` fires (→ AI_DRAFTING); a re-seed resets a drifted
-(EDITING) review back to DRAFT. The HITL landing (DRAFT → AI_DRAFTING → **PENDING**, never
-auto-finalized) and the no-provider loud no-op are already proven by `test_agent1_seam`
-with the **FakeLLMProvider**. **[live]** re-seeded → ada sees a DRAFT review (Ella Nyberg,
-her report) → `POST /api/reviews/<id>/request-ai-draft` → **202** (reachable + fires); with
-no LLM key Agent-1 logs-and-skips (the documented behaviour); re-seeded to leave the demo
-with a reachable DRAFT.
+**Fix.** Flipped the `frontend/.env.example` default to `VITE_USE_MOCKS=false` so the safe
+path is the default everywhere and mocks are an explicit opt-in. (The host-local gitignored
+`.env` is flipped too; not committed.)
+**Files.** `frontend/.env.example`.
+**Test (+3).** AuthGuard unit test — unauthenticated → redirect to `/login` (no protected
+content), loading → loader (not the app), authenticated → content.
+**Verified live.** Fresh session → login required; wrong creds rejected; correct creds enter.
 
-## BUG 3 (HIGH) — Employee roadmap access inconsistent (dead link)
+## BUG 3 — Goals approval doesn't update in real time (regression)
 
-**Symptom.** The employee dashboard advertises a Career Roadmap tile; clicking it returned
-"You do not have access."
+**Symptom.** Approving a goal showed the toast but the row stayed "Awaiting approval" until
+a full reload — despite the prior fix (prefix-invalidate the goals list query).
 
-**Root cause (frontend over-gate).** The dashboard's `MyRoadmapTile` (a Panel `to="/career"`)
-is shown to employees, but `router.tsx` wrapped `career/*` in `RoleGate min="MANAGER"` (and
-the sidebar entry was MANAGER+). The **backend already authorizes it** — `VIEW_CAREER_ROADMAP`
-is granted to all roles (OWN scope); live, an employee `GET /api/career/roadmap` → **200**.
+**Root cause — stale deployment, not the React code.** The prior fix (`1a2849e`, Jun 22
+00:21) is correct and unit-tested, but the **served frontend image was built Jun 21 17:23**
+and **never successfully rebuilt since**. BUILD_8 8.1 moved the shared layer to the
+repo-root `shared/` dir, consumed via the `@shared` alias (`../shared/src`). The frontend
+Docker build context was `./frontend`, so the sibling `shared/` was never copied → the
+`@shared` re-export shims resolved to nothing → `tsc --noEmit` failed → the build broke.
+The failure was masked (build piped to `tail`, exit code lost), so the old bundle kept
+serving — and **every** post-Jun-21 frontend fix (this one, BUG 4, the chat-intent fix, the
+career-roadmap fix, the a11y pass) never reached the browser.
 
-**Fix (decision D28: show employees their OWN roadmap, read-only).** Removed the career
-`RoleGate`; lowered the sidebar Career entry to `EMPLOYEE`; `CareerPage` gates the "My team"
-tab and all manage controls (choose/change target, refresh, AI-enrich, adopt, per-tier
-progress edit) behind `atLeast("MANAGER")`. Employees see only "My development" with their
-roadmap read-only; the empty state points them to their manager. (Hiding the tile was the
-alternative; showing the advertised, server-authorized own-roadmap is the coherent choice.)
+**Fix.** Build the frontend from the **repo root** so `shared/` is a sibling at `../shared`:
+compose `context: .` + `dockerfile: frontend/Dockerfile`; the Dockerfile copies `shared/`
+into `/app/shared` and frontend into `/app/frontend` (reproducing the local layout the alias
+expects); `.dockerignore` excludes `**/node_modules`, `**/dist`, `frontend/.env` so host
+artifacts can't leak into the now repo-root context.
+**Files.** `docker-compose.yml`, `frontend/Dockerfile`, `.dockerignore`.
+**Test.** The existing `useGoals` invalidation test already covers the code fix; this commit
+unblocks its **deployment**.
+**Verified live.** Freshly rebuilt + deployed bundle (`index-C-pjkoeb.js`): clicking Approve
+flipped the row **without a reload** — Approve buttons 6→5, "Awaiting approval" 6→5,
+"Approved" +1.
 
-**Verified.** **[test]** `frontend/src/features/career/CareerPage.test.tsx` (2) — employee:
-no team tab, no target picker, read-only empty copy; manager: full tabs + picker. **[live]**
-employee `reza@acme.test` `GET /api/career/roadmap` → 200 (own roadmap, no dead link).
+## BUG 4 — JD library crashes
 
-## BUG 4 (HIGH) — AI assistant ignores intent
+**Symptom.** Opening/generating a JD (e.g. a manual "staff" draft) threw "This screen hit an
+unexpected error".
 
-**Symptom.** Every query ("I feel lonely", "what day is today?", "what can you do?")
-returned the same performance-metrics summary.
+**Root cause.** The backend stores `JDVersion.body` as a `JSONField` defaulting to `{}` (a
+manual draft, or a JD before any AI/author body) — one seeded JD even had `body=[]`. The
+editor effect did `body.responsibilities.join("\n")` (and `must_haves`/`nice_to_haves`)
+directly, so a missing/empty list was `undefined` and `.join` threw a `TypeError` → the
+error boundary replaced the whole screen. (The read-only `Section` already guarded `!items`;
+the editor path did not.)
 
-**Root cause.** `chat_answer` classified intent **binary** (`write` vs `read`); every
-non-write query fell through to the grounded goals+score answer → a metrics dump for
-everything.
+**Fix.** A `normalizeBody()` helper coerces any partial/null/`[]` body into a complete
+`JdBody` (`summary ""` + the three arrays `[]`), applied at the editor effect and the read
+view — so a bad/empty body degrades gracefully.
+**Files.** `frontend/src/features/jd/JdDetailPage.tsx`.
+**Test (+4).** `normalizeBody` handles `{}`, `null`, `undefined`, partial and complete bodies,
+and the exact `.join` the editor performs never throws.
+**Verified live.** Opening the `body=[]` "staff" JD now renders the detail screen — no error
+boundary, no crash.
 
-**Fix (decision D29).** Expanded the intent to **`write` | `performance` | `capability` |
-`general`** and routed each: `write` → the read-only refusal (**unchanged**);
-`performance` → the existing grounded, RBAC-scoped goals + cycle-score answer (`read` kept
-as a legacy alias); `capability` → a description of what the assistant does; `general` → a
-polite decline + redirect, **never** a metrics dump. Updated the `_CHAT` LLM system prompt;
-the `FakeLLMProvider` classifier mirrors it deterministically; the frontend mock chat
-handler mirrors the same routing. RBAC-scoping + the write-block are untouched — every
-performance fetch still goes through `actor_can_access`.
+---
 
-**Verified.** **[test]** `apps/ai/tests/test_chat.py` +5 (capability + 3 general variants
-return no metrics; a grounded performance question still answers with data) — 14 pass.
-**[live]** the real `chat_answer` + gateway + **FakeLLMProvider** on the demo DB: "how am I
-doing this cycle?" → `performance` + data; "I feel lonely" / "what day is today?" →
-`general`, no data; "what can you do?" → `capability`; "approve review 123" → `write`,
-blocked.
+## What needs your device / eyes
 
-## Feedback / state-update polish
+Everything above is fixed and verified by automation, but two items are best double-checked
+by you in a real browser:
 
-The "did anything happen?" symptom after **Recompute** and **approval** is resolved by the
-BUG 1 prefix-invalidation: both actions already showed a toast ("Scores recomputed" /
-"Goal approved"), and now the goals list **and** cycle scores refetch, so the data updates
-on screen. No other stale-invalidation sites remained (audited
-`invalidateQueries` across the app).
+1. **BUG 2 (login):** to *see* the login screen yourself, **clear site data for
+   localhost:8080 or use an incognito window** — your current tab holds a valid session, so
+   it (correctly) won't ask again. A fresh session does require credentials (verified).
+2. **BUG 3 / BUG 4 (frontend fixes):** your browser may serve the **old cached bundle** —
+   do a **hard refresh** (Cmd-Shift-R) on localhost:8080 so it loads `index-C-pjkoeb.js`,
+   then confirm goals-approve updates instantly and a manual JD opens without the crash.
 
-## Verification honesty key
-**[test]** asserted by an automated test in the suite · **[live]** exercised over real HTTP
-/ the real service on the running stack (LLM paths via FakeLLMProvider, per the no-LLM
-constraint) · **[build]** typecheck/lint/production-build only.
+## Operational notes (not bugs, worth knowing)
+
+- The frontend image had been **un-rebuildable since Jun 21**; it now rebuilds cleanly from
+  the repo root. Rebuild the frontend after frontend changes:
+  `docker compose build frontend && docker compose up -d frontend`.
+- The Celery **worker/beat** must be running for any AI draft/feedback/JD/career/succession
+  job to complete; they now start cleanly. Watch jobs in Flower (localhost:5555).
+- Active LLM provider is **OpenAI** and the key is loaded — AI actions cost real (tiny) money
+  per call. The data-egress sign-off for review/JD/career (names + KPIs to OpenAI) is still
+  open in `docs/AI_GOLIVE.md` (feedback/succession are name-free).

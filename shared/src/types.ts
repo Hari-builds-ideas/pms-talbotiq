@@ -552,6 +552,18 @@ export interface Nudge {
   message: string;
 }
 
+/** RW_BUILD_5 quick win — a stateless AI summary of 1-on-1 / meeting notes.
+ *  DRAFT only: the server persists nothing; the manager keeps/uses the result. */
+export interface MeetingSummary {
+  summary: string;
+  action_items: string[];
+}
+export interface MeetingSummaryResponse {
+  status: "ok";
+  summary: MeetingSummary;
+  confidence?: number;
+}
+
 // ---- Goals & KPIs (Module 2) -----------------------------------------------
 
 export interface Kpi {

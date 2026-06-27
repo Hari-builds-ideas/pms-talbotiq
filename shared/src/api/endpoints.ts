@@ -36,6 +36,7 @@ import type {
   JdVersion,
   JobDescription,
   Me,
+  MeetingSummaryResponse,
   NineBoxPlacement,
   Nudge,
   RawOrgTree,
@@ -390,6 +391,11 @@ export const aiApi = {
   executeAction: (action: string, params: Record<string, unknown>) =>
     unwrap<ChatActionResult>(api.post("/ai/actions/execute", { action, params })),
   nudges: () => unwrap<Nudge[]>(api.get("/ai/nudges")),
+  // RW_BUILD_5 quick win — stateless AI summary of meeting / 1-on-1 notes.
+  // DRAFT only; persists nothing. 503 (no provider) / 429 (over budget) surface
+  // as mapApiError kinds the caller can render.
+  meetingSummary: (notes: string) =>
+    unwrap<MeetingSummaryResponse>(api.post("/ai/meeting-summary", { notes })),
 };
 
 // ---- Async AI jobs (poll surface) ------------------------------------------

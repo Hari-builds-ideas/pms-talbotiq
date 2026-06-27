@@ -1,18 +1,22 @@
 import * as React from "react";
-import { CalendarCheck, MessageSquare } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { CalendarCheck, ListChecks, MessageSquare, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Field } from "@/components/Field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CardGridSkeleton } from "@/components/Skeletons";
 import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
+import { aiApi } from "@/lib/api/endpoints";
+import { mapApiError } from "@/lib/errors";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { notifyError, notifySuccess } from "@/lib/toast";
-import type { CheckIn } from "@/lib/types";
+import type { CheckIn, MeetingSummary } from "@/lib/types";
 import {
   mondayOf,
   useCheckinMutations,
@@ -180,16 +184,115 @@ function CheckInCard({ c }: { c: CheckIn }) {
 // ── Manager: team check-ins ─────────────────────────────────────────────────────
 function TeamCheckinsTab() {
   const q = useTeamCheckins(true);
-  if (q.isLoading) return <CardGridSkeleton count={3} />;
-  if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
   const items = q.data ?? [];
-  if (items.length === 0) {
-    return <EmptyState icon={CalendarCheck} title="No check-ins from your team yet" description="When your reports check in, they'll appear here for you to read and respond." />;
-  }
   return (
-    <div className="mx-auto max-w-2xl space-y-3">
-      {items.map((c) => <TeamCheckInCard key={c.id} c={c} />)}
+    <div className="mx-auto max-w-2xl space-y-6">
+      <MeetingSummaryCard />
+      {q.isLoading ? (
+        <CardGridSkeleton count={3} />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : items.length === 0 ? (
+        <EmptyState icon={CalendarCheck} title="No check-ins from your team yet" description="When your reports check in, they'll appear here for you to read and respond." />
+      ) : (
+        <div className="space-y-3">
+          {items.map((c) => <TeamCheckInCard key={c.id} c={c} />)}
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Manager-only AI helper (RW_BUILD_5 quick win): paste 1-on-1 / meeting notes and
+ * get a concise summary + concrete action items. The draft is HITL — it persists
+ * NOTHING; the manager keeps and uses it. Lives only in the manager "My team" tab,
+ * so it's never shown to employees. Errors are kind-aware: a missing AI provider
+ * (503) or an exhausted budget (429) render inline; anything else toasts.
+ */
+function MeetingSummaryCard() {
+  const [notes, setNotes] = React.useState("");
+  const [result, setResult] = React.useState<MeetingSummary | null>(null);
+  const [unavailable, setUnavailable] = React.useState<string | null>(null);
+
+  const m = useMutation({
+    mutationFn: (text: string) => aiApi.meetingSummary(text),
+    onSuccess: (res) => {
+      setResult(res.summary);
+      setUnavailable(null);
+    },
+    onError: (err) => {
+      const mapped = mapApiError(err);
+      setResult(null);
+      if (mapped.kind === "ai_unavailable" || mapped.kind === "rate_limited") {
+        setUnavailable(mapped.message);
+      } else {
+        notifyError(err);
+      }
+    },
+  });
+
+  function summarise() {
+    const text = notes.trim();
+    if (!text) return;
+    setUnavailable(null);
+    m.mutate(text);
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Sparkles className="h-4 w-4 text-ai" /> Summarise 1-on-1 / meeting notes
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Paste your raw notes — the assistant drafts a short summary and action items.
+          It’s a draft for you; nothing is saved or shared.
+        </p>
+        <Field label="Notes">
+          <Textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="min-h-24"
+            placeholder="Paste your 1-on-1 or meeting notes…"
+            aria-label="Meeting notes"
+          />
+        </Field>
+        <div className="flex justify-end">
+          <Button onClick={summarise} loading={m.isPending} disabled={!notes.trim()}>
+            <Sparkles className="mr-1.5 h-4 w-4" /> Summarise with AI
+          </Button>
+        </div>
+
+        {unavailable && (
+          <Alert variant="ai">
+            <Sparkles />
+            <AlertTitle>AI summary unavailable</AlertTitle>
+            <AlertDescription>{unavailable}</AlertDescription>
+          </Alert>
+        )}
+
+        {result && (
+          <div className="space-y-3 rounded-md border border-ai/30 bg-ai-subtle/40 p-3">
+            <div>
+              <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Summary</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm">{result.summary}</p>
+            </div>
+            {result.action_items.length > 0 && (
+              <div>
+                <p className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <ListChecks className="h-3 w-3" /> Action items
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm">
+                  {result.action_items.map((a, i) => <li key={i}>{a}</li>)}
+                </ul>
+              </div>
+            )}
+            <p className="text-2xs italic text-muted-foreground">Draft — review before you act on it. Nothing was saved.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -1,6 +1,6 @@
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, Check, Send, Sparkles, User as UserIcon } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Bot, Send, Sparkles, User as UserIcon } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { cn } from "@/lib/utils";
 import type { ChatProposal } from "@/lib/types";
+import { ProposalCard } from "./ProposalCard";
 
 interface ChatContextValue {
   open: boolean;
@@ -220,61 +221,6 @@ function ChatBubble({ turn }: { turn: Turn }) {
             ))}
           </ul>
         )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * The inline confirm card for a proposed assistant action (RW_BUILD_4). The
- * proposal is inert — nothing happens until the human taps Approve, which calls
- * the execute endpoint (the server re-checks permission + scope and audits). On
- * success we invalidate goals so an open screen reflects the approvals.
- */
-function ProposalCard({ proposal }: { proposal: ChatProposal }) {
-  const qc = useQueryClient();
-  const [phase, setPhase] = React.useState<"pending" | "running" | "done" | "cancelled">("pending");
-  const [result, setResult] = React.useState("");
-
-  async function approve() {
-    setPhase("running");
-    try {
-      const r = await aiApi.executeAction(proposal.action, proposal.params);
-      void qc.invalidateQueries({ queryKey: ["goals"] });
-      const n = r.approved ?? 0;
-      const skipped = r.skipped?.length ?? 0;
-      setResult(`Approved ${n} goal(s)${skipped ? `, skipped ${skipped}` : ""}.`);
-      setPhase("done");
-    } catch (err) {
-      setResult(mapApiError(err).message);
-      setPhase("done");
-    }
-  }
-
-  if (phase === "cancelled") {
-    return <p className="mt-1 text-2xs italic opacity-80">Cancelled — nothing was changed.</p>;
-  }
-  if (phase === "done") {
-    return (
-      <p className="mt-1 flex items-center gap-1 text-2xs">
-        <Check className="h-3 w-3 text-success" /> {result}
-      </p>
-    );
-  }
-  return (
-    <div className="mt-1.5 rounded-md border border-ai/30 bg-card/60 p-2 text-xs text-foreground">
-      <ul className="mb-2 list-disc space-y-0.5 pl-4">
-        {proposal.preview.slice(0, 8).map((p, i) => (
-          <li key={i}>
-            {String(p.goal ?? "")}
-            {p.employee ? <span className="opacity-70"> · {String(p.employee)}</span> : null}
-          </li>
-        ))}
-        {proposal.preview.length > 8 && <li className="opacity-70">…and {proposal.preview.length - 8} more</li>}
-      </ul>
-      <div className="flex gap-2">
-        <Button size="sm" onClick={approve} loading={phase === "running"}>Approve</Button>
-        <Button size="sm" variant="outline" onClick={() => setPhase("cancelled")}>Cancel</Button>
       </div>
     </div>
   );

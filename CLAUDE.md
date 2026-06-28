@@ -43,7 +43,10 @@ Company: Talbotiq
 - Repo: private GitHub repo (pms-talbotiq)
 - Commit after every module is complete and tests pass
 - Never commit broken tests
-- Commit message format: "Module X — [module name] complete"
+- Commit message format: **conventional commits** — `<type>(<scope>): <summary>`
+  (types: feat, fix, refactor, test, docs, chore, perf, ci, style, build, revert),
+  e.g. `feat(ai): stale-goal nudge tile`. Enforced by a pro-workflow commit hook.
+  (Earlier history used "Module X — … complete"; conventional commits supersede it.)
 
 ## Build Order (follow this exactly)
 1. Foundation (multi-tenancy + RBAC + auth) ← CURRENT

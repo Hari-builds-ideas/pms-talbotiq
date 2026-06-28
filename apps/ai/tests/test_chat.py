@@ -77,6 +77,39 @@ def test_write_intent_is_blocked(org):
     assert body["intent"] == "write"
 
 
+# ── RW_BUILD_5: natural-language team search, surfaced through chat ──────────────
+
+
+@override_settings(**FAKE)
+def test_manager_team_search_via_chat(org):
+    """A manager's 'find people' query routes through the deterministic, scope-bound
+    NL search and returns the matching teammates in `data` (the fake classifies any
+    search query to employees_missing_goals; report has no active goal → surfaces)."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Reza Report"
+        org.report.save(update_fields=["display_name"])
+    resp = _client_for(org.manager).post(
+        CHAT, {"query": "who on my team is missing goals?"}, format="json"
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["intent"] == "search"
+    assert "Reza Report" in body["data"]  # the report (no goal) surfaces, scope-bound
+
+
+@override_settings(**FAKE)
+def test_employee_team_search_is_not_exposed(org):
+    """Team search is a manager/HR capability (VIEW_TEAM_SCORES). An employee's
+    search-shaped query falls through to the general redirect — never the team path."""
+    resp = _client_for(org.report).post(
+        CHAT, {"query": "who on my team is missing goals?"}, format="json"
+    )
+    assert resp.status_code == 200, resp.content
+    body = resp.json()
+    assert body["intent"] == "general"
+    assert body["data"] == []
+
+
 # ── BUG 4: intent is honoured — general/capability questions don't dump metrics ──
 
 

@@ -32,6 +32,16 @@ _PERF_WORDS = (
     "goal", "kpi", "score", "rating", "review", "performance", "risk", "progress",
     "feedback", "cycle", "objective", "assessment", "appraisal", "how am i doing",
 )
+#: Cues for a TEAM "find people" query (RW_BUILD_5 NL search). Checked BEFORE the
+#: performance words (a search mentions 'goal'/'check-in' too) so a manager's
+#: "who's missing goals?" routes to search, not a self-performance answer.
+_SEARCH_PHRASES = (
+    "missing goal", "missing a goal", "missing goals", "no active goal", "without a goal",
+    "without goals", "no goal set", "who has no goal", "who is missing",
+    "haven't checked in", "hasn't checked in", "not checked in", "without a check-in",
+    "no check-in", "missing check-in", "checked in this week", "who on my team",
+    "which of my reports", "who hasn't",
+)
 
 #: A read-only performance assistant answers capability + general questions in
 #: plain language — it must NEVER dump a metrics summary for them (BUG 4).
@@ -46,6 +56,47 @@ _GENERAL_ANSWER = (
     "but I can tell you about your goals, KPIs, cycle scores, or reviews (within your "
     "access). For example: “how am I doing this cycle?”"
 )
+
+#: Per-search phrasing for the chat surface: (clause, empty-set answer). The count +
+#: subject grammar is composed in :func:`_answer_search`.
+_SEARCH_LABELS = {
+    "employees_missing_goals": (
+        "no active goal set", "Everyone on your team has an active goal set."
+    ),
+    "reports_without_checkin": (
+        "not submitted a check-in this week",
+        "Everyone on your team has submitted a check-in this week.",
+    ),
+}
+
+
+def _answer_search(caller, query: str) -> dict:
+    """Route a TEAM 'find people' query to the deterministic, scope-bound NL search
+    (RW_BUILD_5). Manager/HR only (gated by the caller); the names ride back in
+    ``data`` exactly like a scoped read, so the chat UI renders them with no change."""
+    from apps.ai.agents.nl_search import nl_search
+
+    out = nl_search(caller, query)
+    if out["status"] == "not_configured":
+        return {"status": "not_configured"}
+    if out["status"] == "budget":
+        return {"status": "budget", "errors": out.get("errors")}
+    if out["status"] != "ok":
+        return {"status": "error", "detail": out.get("detail")}
+    if out["search"] == "unknown":
+        return {
+            "status": "ok", "intent": "search", "data": [],
+            "answer": "I couldn't map that to a supported search. Try: “who's missing "
+                      "goals?” or “who hasn't checked in this week?”",
+        }
+    names = [r["employee"] for r in out["results"]]
+    clause, empty = _SEARCH_LABELS[out["search"]]
+    n = len(names)
+    answer = empty if n == 0 else (
+        f"{n} {'person' if n == 1 else 'people'} on your team "
+        f"{'has' if n == 1 else 'have'} {clause}:"
+    )
+    return {"status": "ok", "intent": "search", "answer": answer, "data": names}
 
 
 def _scoped_goal_titles(caller, target):
@@ -101,6 +152,16 @@ def chat_answer(caller, query: str) -> dict:
             "intent": "write",
             "answer": "I'm a read-only assistant — I can't make changes or approvals.",
         }
+    if intent == "search":
+        # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An
+        # employee's search-shaped query falls through to the general redirect — the
+        # feature is never exposed to employees (the deterministic search is also
+        # scope-bound, so it would return nothing anyway — this is belt-and-braces).
+        from apps.rbac.matrix import Capability, role_has_capability
+
+        if role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
+            return _answer_search(caller, query)
+        intent = "general"
     if intent == "capability":
         return {"status": "ok", "intent": "capability", "answer": _CAPABILITY_ANSWER, "data": []}
     if intent not in ("performance", "read"):  # "read" = legacy alias for performance
@@ -155,6 +216,8 @@ def _fake(prompt, model):
         return {"intent": "write"}
     if lowered.strip() in ("help", "?") or any(p in lowered for p in _CAPABILITY_PHRASES):
         return {"intent": "capability"}
+    if any(p in lowered for p in _SEARCH_PHRASES):  # team "find people" — before perf
+        return {"intent": "search"}
     if any(w in lowered for w in _PERF_WORDS):
         return {"intent": "performance"}
     return {"intent": "general"}

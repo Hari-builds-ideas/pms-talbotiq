@@ -536,7 +536,9 @@ export interface ChatProposal {
 export interface ChatActionResult {
   action: string;
   approved?: number;
-  skipped?: { goal_id: string; reason: string }[];
+  // Skipped targets carry a reason; the id key depends on the action
+  // (goal_id for approve_goals, review_id for approve_reviews).
+  skipped?: { reason: string; goal_id?: string; review_id?: string }[];
 }
 export interface ChatResponse {
   status: "ok" | "blocked" | "proposal";

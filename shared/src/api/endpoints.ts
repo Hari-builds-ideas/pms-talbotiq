@@ -40,6 +40,7 @@ import type {
   NineBoxPlacement,
   Nudge,
   ReviewQualityResponse,
+  StaleGoalsResponse,
   RawOrgTree,
   Paginated,
   PerformanceCycle,
@@ -401,6 +402,10 @@ export const aiApi = {
   // (MANAGE_REVIEWS). Never blocks; persists nothing. Same 503/429 error kinds.
   reviewQuality: (text: string) =>
     unwrap<ReviewQualityResponse>(api.post("/ai/review-quality", { text })),
+  // RW_BUILD_5 quick win — stale ACTIVE goals in the caller's scope (VIEW_TEAM_SCORES)
+  // + ONE advisory AI follow-up suggestion. READ-ONLY; the list always returns (the
+  // suggestion is null when the AI is unavailable), so this 200s rather than 503-ing.
+  staleGoals: () => unwrap<StaleGoalsResponse>(api.get("/ai/stale-goals")),
 };
 
 // ---- Async AI jobs (poll surface) ------------------------------------------

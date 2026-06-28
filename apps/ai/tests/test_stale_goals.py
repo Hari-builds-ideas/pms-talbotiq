@@ -81,3 +81,14 @@ def test_endpoint_manager_only(org):
     assert isinstance(body["suggestion"], str)  # drafted (stale present)
     # An employee lacks VIEW_TEAM_SCORES → 403.
     assert _client(org.report).get("/api/ai/stale-goals").status_code == 403
+
+
+def test_system_prompt_encodes_quality_contract():
+    # D37: name the specific goals/people, propose a concrete action, no filler.
+    from apps.ai.agent_config import system_prompt_for
+
+    sysp = system_prompt_for("stale_goal_nudge").lower()
+    assert "name the actual" in sysp     # cite the specific goal(s)/person
+    assert "specific action" in sysp     # concrete, actionable
+    assert "no filler" in sysp
+    assert "advisory only" in sysp       # suggests, never auto-nudges

@@ -7,6 +7,7 @@ import {
   Inbox,
   Lock,
   Sparkles,
+  Target,
   TrendingUp,
 } from "lucide-react";
 import { Panel } from "@/components/Panel";
@@ -126,6 +127,65 @@ export function NudgesTile() {
         </ul>
       ) : (
         <EmptyState compact icon={TrendingUp} title="No nudges" description="No one on your team is flagged at risk this cycle." />
+      )}
+    </Panel>
+  );
+}
+
+// ---- Stale goals (RW_BUILD_5 quick win) ------------------------------------
+
+/**
+ * A manager/HR tile: ACTIVE goals in the caller's scope with no KPI progress in
+ * ~30 days (deterministic, scope-bound) + ONE advisory AI follow-up suggestion.
+ * READ-ONLY — it surfaces and suggests; the manager acts via a check-in. The
+ * endpoint always returns the list (the suggestion degrades to null with no AI),
+ * so there's no AI-unavailable error state to special-case here.
+ */
+export function StaleGoalsTile() {
+  const q = useQuery({ queryKey: ["ai", "stale-goals"], queryFn: aiApi.staleGoals });
+  const stale = q.data?.stale ?? [];
+
+  return (
+    <Panel
+      title="Stale goals"
+      icon={Target}
+      to="/checkins"
+      toLabel="Start a check-in"
+      aside={<Badge variant="ai" className="gap-1"><Sparkles className="h-3 w-3" />AI</Badge>}
+    >
+      {q.isLoading ? (
+        <LinesSkeleton lines={3} />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} compact />
+      ) : stale.length === 0 ? (
+        <EmptyState compact icon={Target} title="No stale goals" description="Your team's active goals all have recent progress." />
+      ) : (
+        <div className="space-y-3">
+          <ul className="space-y-2">
+            {stale.slice(0, 6).map((s, i) => (
+              <li key={`${s.goal}-${i}`} className="rounded-md border-l-2 border-l-warning bg-warning-subtle/40 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{s.goal}</span>
+                  <Badge variant="muted" className="shrink-0">
+                    {s.days_stale != null ? `${s.days_stale}d stale` : "no progress yet"}
+                  </Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{s.employee}</p>
+              </li>
+            ))}
+            {stale.length > 6 && (
+              <li className="text-xs text-muted-foreground">…and {stale.length - 6} more</li>
+            )}
+          </ul>
+          {q.data?.suggestion && (
+            <div className="rounded-md border border-ai/30 bg-ai-subtle/40 p-2.5 text-xs">
+              <p className="flex items-center gap-1.5 font-semibold text-ai">
+                <Sparkles className="h-3 w-3" /> Suggested follow-up
+              </p>
+              <p className="mt-1 text-foreground">{q.data.suggestion}</p>
+            </div>
+          )}
+        </div>
       )}
     </Panel>
   );

@@ -32,6 +32,7 @@ import {
   ApprovalsInboxTile,
   LockedFeaturesTile,
   NudgesTile,
+  StaleGoalsTile,
   SuccessionRiskTile,
 } from "./tiles";
 import {
@@ -127,6 +128,7 @@ function ManagerCockpit() {
         </div>
         <div className="space-y-5">
           <ApprovalsInboxTile />
+          <StaleGoalsTile />
           <LockedFeaturesTile />
         </div>
       </div>
@@ -163,6 +165,7 @@ function HrbpCockpit() {
         <div className="space-y-5">
           <ApprovalsInboxTile />
           <NudgesTile />
+          <StaleGoalsTile />
         </div>
       </div>
     </>

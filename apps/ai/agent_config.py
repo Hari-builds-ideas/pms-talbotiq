@@ -156,11 +156,23 @@ _MEETING_SUMMARY = (
     "Invent nothing not in the notes. Keep it short. Output ONLY the JSON."
 )
 
+_STALE_GOAL_NUDGE = (
+    "You help a manager follow up on ACTIVE goals that have recorded NO progress in "
+    "~30 days. You are given the specific goals, each with the person it belongs to. "
+    "Respond with ONLY a JSON object {\"suggestion\": str} — ONE short suggestion (1-2 "
+    "sentences) for how the manager follows up. NAME the actual goal(s)/person where it "
+    "helps and propose a SPECIFIC action (e.g. a focused check-in on a named goal, ask "
+    "what's blocking it, agree one next step). No filler, no generic pep-talk, do not "
+    "merely restate that they're stale. Advisory only — suggest, never nudge anyone "
+    "automatically. Output ONLY the JSON."
+)
+
 #: agent_code -> system prompt. Override any entry via settings.LLM_SYSTEM_PROMPTS.
 SYSTEM_PROMPTS: dict[str, str] = {
     "agent1": _AGENT1,
     "goal_draft": _GOAL_DRAFT,
     "meeting_summary": _MEETING_SUMMARY,
+    "stale_goal_nudge": _STALE_GOAL_NUDGE,
     "review_quality": (
         "You are an ASSISTIVE reviewer-coach. Flag only REAL quality/bias issues in a "
         "draft performance review — type one of recency_bias | harsh_wording | "

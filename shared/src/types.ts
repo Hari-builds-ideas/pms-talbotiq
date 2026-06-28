@@ -577,6 +577,19 @@ export interface ReviewQualityResponse {
   confidence?: number;
 }
 
+/** RW_BUILD_5 quick win — a manager's ACTIVE goals with no KPI progress in ~30 days
+ *  (deterministic, scope-bound) plus ONE advisory AI follow-up suggestion. READ-ONLY;
+ *  the list always returns, the suggestion is null when the AI is unavailable. */
+export interface StaleGoal {
+  goal: string;
+  employee: string;
+  days_stale: number | null;
+}
+export interface StaleGoalsResponse {
+  stale: StaleGoal[];
+  suggestion: string | null;
+}
+
 // ---- Goals & KPIs (Module 2) -----------------------------------------------
 
 export interface Kpi {

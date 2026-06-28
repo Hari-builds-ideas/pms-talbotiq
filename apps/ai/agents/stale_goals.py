@@ -66,13 +66,11 @@ def suggest_followup(user, stale: list[dict]) -> str | None:
     has the deterministic list)."""
     if not stale:
         return None
+    # The quality contract (name the specific goals/people, concrete action, no filler
+    # — D37) lives in the SYSTEM prompt (agent_config 'stale_goal_nudge'); the user
+    # turn just carries the stale goal list.
     titles = ", ".join(f"{s['goal']} ({s['employee']})" for s in stale[:10])
-    prompt = (
-        "These ACTIVE goals have had no progress recorded in ~30 days: "
-        f"{titles}. Respond with ONLY a JSON object {{\"suggestion\": str}} — one short, "
-        "encouraging suggestion (1-2 sentences) for how the manager could follow up "
-        "(e.g. a focused check-in). Advisory only. No text outside the JSON."
-    )
+    prompt = f"These ACTIVE goals have had no progress recorded in ~30 days: {titles}."
     result = gateway.run(
         tenant=user.tenant_id, agent_code=AGENT_CODE, prompt=prompt, model="default", schema=SCHEMA
     )

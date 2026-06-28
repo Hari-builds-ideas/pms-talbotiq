@@ -47,3 +47,55 @@ def test_endpoint_summarises_and_validates(org):
     # Empty notes → 400.
     bad = _client(org.report).post("/api/ai/meeting-summary", {"notes": "  "}, format="json")
     assert bad.status_code == 400
+
+
+# ── D37 prompt-quality tuning ────────────────────────────────────────────────
+# The fake can't judge LLM output quality, so we test the two things that DO
+# determine it deterministically: (1) the notes reach the model VERBATIM (the
+# precondition for preserving specifics), and (2) the system prompt carries the
+# quality contract (preserve specifics, no filler, assigned action items). The
+# actual output quality is judged by Hari's ONE live call.
+
+EXAMPLES = [
+    ("won: shipped the recognition feed slice; blocked: waiting on a design review for the check-in form",
+     ["recognition feed slice", "design review for the check-in form"]),
+    ("Lin flagged the data export is still flaky; she'll pair with Marco on it Thursday",
+     ["data export", "Lin", "Marco"]),
+    ("1:1 with Sam — happy with onboarding, asked for a stretch goal next quarter",
+     ["Sam", "stretch goal"]),
+]
+
+
+@override_settings(LLM_PROVIDER=FAKE)
+def test_example_notes_reach_model_verbatim_and_summarise_cleanly(org):
+    from apps.ai import providers
+    from apps.ai.agents import meeting_summary as ms
+
+    seen = {}
+
+    def _record(prompt, model):
+        seen["prompt"] = prompt
+        return ms._fake(prompt, model)
+
+    providers.register_fake_output("meeting_summary", _record)
+    try:
+        with tenant_context(org.tenant):
+            for notes, phrases in EXAMPLES:
+                out = summarize_meeting(org.manager, notes)
+                assert out["status"] == "ok"
+                assert out["summary"]["summary"]
+                assert isinstance(out["summary"]["action_items"], list)
+                for phrase in phrases:  # the specific terms survive into the prompt
+                    assert phrase in seen["prompt"], f"{phrase!r} not preserved in prompt"
+    finally:
+        providers.register_fake_output("meeting_summary", ms._fake)  # restore
+
+
+def test_system_prompt_encodes_quality_contract():
+    from apps.ai.agent_config import system_prompt_for
+
+    sysp = system_prompt_for("meeting_summary").lower()
+    assert "verbatim" in sysp            # preserve the specific terms
+    assert "filler" in sysp              # no preamble / mood-setting
+    assert "who does what" in sysp       # action items name WHO + WHAT
+    assert "restating a blocker" in sysp  # not a restatement of the blocker

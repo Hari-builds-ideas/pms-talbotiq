@@ -21,13 +21,11 @@ def summarize_meeting(user, notes: str) -> dict:
     """Summarise ``notes`` into {summary, action_items} for ``user``'s tenant.
     Returns a status dict the view maps to HTTP: ok | not_configured | budget |
     error. Nothing is persisted — it's a draft for the human."""
-    prompt = (
-        "Summarise these 1-on-1 / meeting notes. Respond with ONLY a JSON object: "
-        '{"summary": str, "action_items": [str]}. The summary is 2-4 sentences of '
-        "the key points and decisions; action_items are concrete, owner-implied next "
-        "steps (0-6 items). Invent nothing not in the notes. No text outside the JSON.\n"
-        f"Notes:\n{notes}"
-    )
+    # The quality contract (preserve specifics verbatim, no filler, actionable +
+    # assigned items) lives in the SYSTEM prompt (agent_config._MEETING_SUMMARY) so
+    # it's tunable in one place; the user turn just carries the notes (no duplicate,
+    # possibly-conflicting instructions here).
+    prompt = f"Summarise these 1-on-1 / meeting notes.\n\nNotes:\n{notes}"
     result = gateway.run(
         tenant=user.tenant_id, agent_code=AGENT_CODE, prompt=prompt, model="default", schema=SCHEMA
     )
@@ -41,9 +39,12 @@ def summarize_meeting(user, notes: str) -> dict:
 
 
 def _fake(prompt, model):
+    # Models the quality bar (DECISIONS D37): specifics kept verbatim, no filler
+    # opener, action item moves work forward. Owner-agnostic — these demo notes name
+    # no doer, so the item invents no name (owners are taken from the real notes).
     return {
-        "summary": "Discussed Q3 priorities and the launch blocker; agreed to escalate the design review.",
-        "action_items": ["Escalate the design review by Friday", "Share the updated KPI targets with the team"],
+        "summary": "Shipped the recognition-feed slice; blocked on the design review for the check-in form.",
+        "action_items": ["Follow up on the design review for the check-in form with the design team"],
     }
 
 

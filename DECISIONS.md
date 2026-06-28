@@ -956,3 +956,41 @@ green state, write `BLOCKER_<phase>.md`, and move to the next independent featur
 **Why safe.** The forbidden surfaces (auth/SSO/shared/deploy/nav) are exactly the ones that caused silent
 breakage before; backend-only additive endpoints can't affect them. Reusing capabilities avoids touching
 core RBAC. Every feature is HITL (drafts/proposes, never decides) and scope/tenant-bound.
+
+### D37 (UI #1 follow-up) — AI prompt-quality contract for the human-read quick wins
+
+**Context.** Feature #1 (meeting-summary) was plumbed correctly but its first live OpenAI output was poor:
+it opened with filler ("the week has been strong"), dropped specifics (a "recognition feed" win vanished;
+"design review for the check-in form" was flattened to "the process"), and the action item merely restated
+the blocker ("unblock the design review process"). That's a PROMPT problem, not plumbing.
+
+**Decision.** Every human-read AI quick win obeys this prompt contract, and it lives in the **SYSTEM prompt**
+(`apps/ai/agent_config.py`, one tunable place — never duplicated in the agent's user turn):
+  1. **Preserve specifics verbatim** — keep the names, concrete nouns and numbers from the input in the
+     input's own words; never generalise ('a feature', 'the process') and never silently drop one.
+  2. **No filler / preamble / mood-setting** — lead with substance; ban 'the week was strong', 'overall',
+     'it is worth noting'.
+  3. **Actionable + assigned** — action items / recommendations state WHO does WHAT (and to whom / by when
+     if the input says); a restatement of a problem is NOT an action item.
+  4. **Short** — say it once, no padding to length.
+  5. **Invent nothing** not present in the input; output ONLY the required JSON.
+
+This reinforces the existing `STYLE_SPEC` (already on the review/JD/career agents) and now governs the
+quick wins too. **#2 review-quality, #3 stale-goal suggestion, #4 NL-search, #5 assistant actions inherit
+these principles** as they are tuned/wired.
+
+**Verification of the change.** Deterministic tests can't judge LLM quality, so the suite pins the two
+things that DO determine it: the notes reach the model **verbatim** (recording-fake test over 3 example
+notes) and the system prompt **encodes the contract** (asserted on `system_prompt_for('meeting_summary')`).
+Actual quality is judged by ONE live OpenAI call. Before→after on the same notes:
+  * BEFORE: "The week has been strong… unblocking the design review is a priority" / "Unblock the design
+    review process." (filler; win dropped; blocker flattened; action = restatement).
+  * AFTER: "Shipped the recognition feed slice; currently blocked, waiting on a design review for the
+    check-in form." / "Ada to follow up on the design review for the check-in form with the design team."
+    (no filler; both specifics kept verbatim; action names an owner + target). Prompt-only change — no
+    plumbing touched.
+  * Owner-agnostic refinement (no extra live call): the live AFTER named "Ada" only because the
+    instruction's EXAMPLE used "Ada" — the notes named no doer. The example now shows the owner being
+    COPIED from the notes ('Lin will sort the export' -> 'Lin to fix the export') with an explicit
+    no-named-owner fallback, so the model takes owners ONLY from the notes. The same owner-less note now
+    reads "Follow up on the design review for the check-in form with the design team" (no invented name).

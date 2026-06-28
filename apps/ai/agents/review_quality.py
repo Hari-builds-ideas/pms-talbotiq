@@ -20,15 +20,10 @@ def flag_review_quality(user, text: str) -> dict:
     """Return advisory quality/bias flags for ``text``. Status dict the view maps to
     HTTP: ok | not_configured | budget | error. Assistive only — nothing is saved or
     blocked."""
-    prompt = (
-        "Review this DRAFT performance-review text for quality and bias. Respond with "
-        'ONLY a JSON object {"flags": [{"type": str, "note": str}]} where type is one '
-        "of recency_bias | harsh_wording | missing_evidence | vague | other, and note "
-        "is a short, constructive suggestion. Flag only real issues; return an EMPTY "
-        "list if the text is balanced, specific and professional. This is ASSISTIVE — "
-        "never a verdict. No text outside the JSON.\n"
-        f"Draft review text:\n{text}"
-    )
+    # The quality contract (quote the offending phrase verbatim, concrete fix, no
+    # filler — D37) lives in the SYSTEM prompt (agent_config 'review_quality'); the
+    # user turn just carries the draft text.
+    prompt = f"Review this DRAFT performance-review text for quality and bias.\n\nDraft review text:\n{text}"
     result = gateway.run(
         tenant=user.tenant_id, agent_code=AGENT_CODE, prompt=prompt, model="default", schema=SCHEMA
     )

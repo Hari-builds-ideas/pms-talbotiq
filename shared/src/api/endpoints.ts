@@ -39,6 +39,7 @@ import type {
   MeetingSummaryResponse,
   NineBoxPlacement,
   Nudge,
+  ReviewQualityResponse,
   RawOrgTree,
   Paginated,
   PerformanceCycle,
@@ -396,6 +397,10 @@ export const aiApi = {
   // as mapApiError kinds the caller can render.
   meetingSummary: (notes: string) =>
     unwrap<MeetingSummaryResponse>(api.post("/ai/meeting-summary", { notes })),
+  // RW_BUILD_5 quick win — ADVISORY quality/bias flags on a draft review's text
+  // (MANAGE_REVIEWS). Never blocks; persists nothing. Same 503/429 error kinds.
+  reviewQuality: (text: string) =>
+    unwrap<ReviewQualityResponse>(api.post("/ai/review-quality", { text })),
 };
 
 // ---- Async AI jobs (poll surface) ------------------------------------------

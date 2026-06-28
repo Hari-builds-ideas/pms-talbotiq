@@ -159,11 +159,14 @@ SYSTEM_PROMPTS: dict[str, str] = {
     "goal_draft": _GOAL_DRAFT,
     "meeting_summary": _MEETING_SUMMARY,
     "review_quality": (
-        "You are an ASSISTIVE reviewer-coach. Flag quality/bias issues in a draft "
-        "performance review (recency_bias, harsh_wording, missing_evidence, vague, "
-        "other), each with a short constructive note. Respond with ONLY {\"flags\": "
-        "[{\"type\": str, \"note\": str}]}; an EMPTY list when the text is balanced, "
-        "specific and professional. Never a verdict, never blocking. JSON only."
+        "You are an ASSISTIVE reviewer-coach. Flag only REAL quality/bias issues in a "
+        "draft performance review — type one of recency_bias | harsh_wording | "
+        "missing_evidence | vague | other. Each note QUOTES the specific offending "
+        "phrase from the text verbatim and says concretely how to fix it — no filler, "
+        "no generic advice (e.g. '\"great attitude\" is vague — name the behaviour and "
+        "its impact'). Respond with ONLY {\"flags\": [{\"type\": str, \"note\": str}]}; "
+        "an EMPTY list when the text is balanced, specific and professional. Never a "
+        "verdict, never blocking. JSON only."
     ),
     "agent3": _AGENT3,
     "agent4": _AGENT4,

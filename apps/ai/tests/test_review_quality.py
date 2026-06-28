@@ -49,3 +49,13 @@ def test_endpoint_gated_to_reviewers(org):
     # Empty text → 400.
     bad = _client(org.manager).post("/api/ai/review-quality", {"text": ""}, format="json")
     assert bad.status_code == 400
+
+
+def test_system_prompt_encodes_quality_contract():
+    # D37: each note QUOTES the offending phrase verbatim + gives a concrete fix, no filler.
+    from apps.ai.agent_config import system_prompt_for
+
+    sysp = system_prompt_for("review_quality").lower()
+    assert "verbatim" in sysp           # preserve the specific offending phrase
+    assert "concretely" in sysp         # actionable fix, not generic advice
+    assert "no filler" in sysp

@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ReviewStepper } from "./ReviewStepper";
 import { AssessmentsPanel, EvidencePanel } from "./ReviewEvidence";
 import { CommentsPanel } from "./CommentsPanel";
+import { ReviewQualityCheck } from "./ReviewQualityCheck";
 import {
   useReview,
   useReviewAssessments,
@@ -73,7 +74,7 @@ export function ReviewDetailPage() {
 }
 
 function ReviewDetail({ reviewId }: { reviewId: string }) {
-  const { hasFeature } = useAuth();
+  const { hasFeature, atLeast } = useAuth();
   const { nameOf: cycleName } = useCycles();
   const review = useReview(reviewId);
   const timeline = useReviewTimeline(reviewId);
@@ -186,6 +187,8 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
                     placeholder="Write the review narrative…"
                     className="min-h-56"
                   />
+                  {/* Advisory AI quality/bias check — Manager+ only, never blocks submit. */}
+                  {atLeast("MANAGER") && <ReviewQualityCheck text={body} />}
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"

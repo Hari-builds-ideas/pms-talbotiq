@@ -564,6 +564,19 @@ export interface MeetingSummaryResponse {
   confidence?: number;
 }
 
+/** RW_BUILD_5 quick win — an ADVISORY quality/bias flag on a draft review's text.
+ *  type ∈ recency_bias | harsh_wording | missing_evidence | vague | other. Never
+ *  blocks; persists nothing. An empty list means the text reads clean. */
+export interface ReviewQualityFlag {
+  type: string;
+  note: string;
+}
+export interface ReviewQualityResponse {
+  status: "ok";
+  flags: ReviewQualityFlag[];
+  confidence?: number;
+}
+
 // ---- Goals & KPIs (Module 2) -----------------------------------------------
 
 export interface Kpi {

@@ -98,4 +98,33 @@ def test_system_prompt_encodes_quality_contract():
     assert "verbatim" in sysp            # preserve the specific terms
     assert "filler" in sysp              # no preamble / mood-setting
     assert "who does what" in sysp       # action items name WHO + WHAT
-    assert "restating a blocker" in sysp  # not a restatement of the blocker
+    assert "restating a blocker" in sysp  # not a restatement
+
+
+def test_schema_locks_exact_shape():
+    """Pin the meeting-summary contract so the prompt + schema can't drift apart again
+    (this regression caused a live SCHEMA_INVALID). summary = string >= 12 chars;
+    action_items = NON-EMPTY list of non-blank strings (Finding D)."""
+    from apps.ai.schemas import validate_shape
+    from apps.ai.agents.meeting_summary import SCHEMA, _fake
+
+    # The registered fake itself satisfies the schema (so demos/tests never drift).
+    assert validate_shape(_fake("", "default"), SCHEMA) == (True, [])
+    # A real summary + one concrete action item → valid.
+    assert validate_shape(
+        {"summary": "Shipped the recognition feed slice.", "action_items": ["Marco to write the postmortem"]},
+        SCHEMA,
+    ) == (True, [])
+    # A VALID TERSE answer (short-but-real summary + a single item) is NOT rejected.
+    ok, _ = validate_shape({"summary": "Hired two engineers.", "action_items": ["Send the offer letters"]}, SCHEMA)
+    assert ok
+    # Empty action_items → SCHEMA_INVALID (Finding D — a hollow answer).
+    assert validate_shape({"summary": "Shipped the slice.", "action_items": []}, SCHEMA)[0] is False
+    # Missing action_items key → fails.
+    assert validate_shape({"summary": "Shipped the slice."}, SCHEMA)[0] is False
+    # action_items items that aren't strings (objects) → fails (UI never gets objects).
+    assert validate_shape(
+        {"summary": "Shipped the slice.", "action_items": [{"who": "Marco", "what": "x"}]}, SCHEMA
+    )[0] is False
+    # summary returned as a list (a likely drift) → fails.
+    assert validate_shape({"summary": ["a", "b"], "action_items": ["do x"]}, SCHEMA)[0] is False

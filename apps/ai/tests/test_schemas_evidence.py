@@ -15,7 +15,7 @@ from apps.ai.evidence import (
     review_evidence,
     succession_evidence,
 )
-from apps.ai.schemas import NonEmpty, validate_shape
+from apps.ai.schemas import ListOf, NonEmpty, validate_shape
 from apps.tenancy.context import tenant_context
 from apps.testsupport.factories import (
     CycleFactory,
@@ -51,6 +51,24 @@ def test_nonempty_rejects_blank_and_short():
     assert not ok  # below min_len
     ok, _ = validate_shape({"s": 123}, {"s": NonEmpty()})
     assert not ok  # not a string
+
+
+def test_listof_requires_non_empty_list_of_matching_items():
+    # Finding D: a required list with nothing in it is a hollow answer → fails.
+    schema = {"items": ListOf(NonEmpty(1))}
+    assert validate_shape({"items": ["a", "b"]}, schema) == (True, [])
+    ok, errors = validate_shape({"items": []}, schema)
+    assert not ok and "non-empty list" in errors[0]
+    ok, errors = validate_shape({"items": "nope"}, schema)
+    assert not ok and "non-empty list" in errors[0]  # not a list
+    ok, errors = validate_shape({}, schema)
+    assert not ok and "missing key 'items'" in errors[0]  # absent
+    # Item-shape is enforced: objects where strings are expected fail.
+    ok, errors = validate_shape({"items": [{"who": "x"}]}, schema)
+    assert not ok and "items[0]" in errors[0]
+    # Blank-string items fail too.
+    ok, _ = validate_shape({"items": ["  "]}, schema)
+    assert not ok
 
 
 def test_nested_dict_schema():

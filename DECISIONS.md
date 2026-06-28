@@ -994,3 +994,17 @@ Actual quality is judged by ONE live OpenAI call. Before→after on the same not
     COPIED from the notes ('Lin will sort the export' -> 'Lin to fix the export') with an explicit
     no-named-owner fallback, so the model takes owners ONLY from the notes. The same owner-less note now
     reads "Follow up on the design review for the check-in form with the design team" (no invented name).
+
+**Schema reconciliation (Finding D).** The retune drifted the prompt and the meeting-summary SCHEMA apart:
+the prompt invited an empty `action_items` ("return []") while the model sometimes also omitted the key or
+returned `summary` as a list — the gateway correctly returned `SCHEMA_INVALID` (graceful 503), but valid
+intent was being rejected. Reconciled BOTH sides: (a) added a `ListOf(item_spec)` marker to
+`apps/ai/schemas.py` — a REQUIRED list must be present, non-empty, and item-shaped (Finding D: an empty
+`action_items`/`tiers`/`responsibilities` is a hollow answer, and a list of objects where strings are
+expected fails too); meeting-summary SCHEMA is now `{summary: NonEmpty(12), action_items: ListOf(NonEmpty(1))}`.
+(b) Pinned the prompt to EXACTLY two keys — `summary` a single string, `action_items` a JSON array of
+≥1 strings — and replaced "return []" with "always ≥1 item; if no task, a single 'No action needed' item",
+so a valid TERSE answer is never wrongly rejected. Locked by tests: `validate_shape` unit tests for
+`ListOf` and a meeting-summary shape-lock test (empty/missing/object-item/list-summary all fail; terse
+valid passes). Confirmed live: an action-light note now returns OK with `["No action needed — informational
+catch-up."]` instead of SCHEMA_INVALID. Prompt + schema only — no plumbing changed.

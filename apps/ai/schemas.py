@@ -32,12 +32,39 @@ class NonEmpty:
         return f"NonEmpty(min_len={self.min_len})"
 
 
+class ListOf:
+    """Schema marker: a NON-EMPTY list (>= ``min_len`` items) whose every item matches
+    ``item_spec`` (default: a non-blank string). An empty OR absent list fails — a
+    required list with nothing in it is a hollow answer, not a valid one (audit
+    Finding D), so the gateway returns ``SCHEMA_INVALID`` rather than handing a human
+    e.g. zero ``action_items`` / ``tiers`` / ``responsibilities``. Item-shape is
+    enforced too, so a list of objects where strings are expected also fails."""
+
+    __slots__ = ("item_spec", "min_len")
+
+    def __init__(self, item_spec=None, min_len: int = 1):
+        self.item_spec = item_spec if item_spec is not None else NonEmpty(1)
+        self.min_len = min_len
+
+    def __repr__(self):  # pragma: no cover - debugging aid
+        return f"ListOf({self.item_spec!r}, min_len={self.min_len})"
+
+
 def _check(value, spec, path: str, errors: list) -> None:
     if isinstance(spec, NonEmpty):
         if not isinstance(value, str) or len(value.strip()) < spec.min_len:
             errors.append(
                 f"key '{path}' must be a non-empty string (>= {spec.min_len} chars)"
             )
+        return
+    if isinstance(spec, ListOf):
+        if not isinstance(value, list) or len(value) < spec.min_len:
+            errors.append(
+                f"key '{path}' must be a non-empty list (>= {spec.min_len} items)"
+            )
+            return
+        for i, item in enumerate(value):
+            _check(item, spec.item_spec, f"{path}[{i}]", errors)
         return
     if isinstance(spec, dict):
         if not isinstance(value, dict):

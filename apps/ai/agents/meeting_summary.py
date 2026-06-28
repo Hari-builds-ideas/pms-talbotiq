@@ -10,11 +10,14 @@ from __future__ import annotations
 
 from apps.ai.gateway import gateway
 from apps.ai.providers import register_fake_output
-from apps.ai.schemas import NonEmpty
+from apps.ai.schemas import ListOf, NonEmpty
 
 AGENT_CODE = "meeting_summary"
-#: A real summary + a (possibly empty) list of action items.
-SCHEMA = {"summary": NonEmpty(12), "action_items": list}
+#: A real summary STRING + a NON-EMPTY list of non-blank action-item strings. The
+#: list is required non-empty (Finding D) so a hollow / shape-drifted answer (missing
+#: key, empty list, or items that aren't strings) fails as SCHEMA_INVALID rather than
+#: reaching the human — the prompt always emits >= 1 string item to match.
+SCHEMA = {"summary": NonEmpty(12), "action_items": ListOf(NonEmpty(1))}
 
 
 def summarize_meeting(user, notes: str) -> dict:

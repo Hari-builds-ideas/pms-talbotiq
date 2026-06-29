@@ -50,10 +50,18 @@ EmptyView, SectionTitle) keep the screens DRY and on the brand tokens.
   `@shared/api/endpoints` the web app uses; the web verifies that data layer live (and 1327 backend
   tests pass). The only mobile-specific deltas are platform shims — the SecureStore token store and the
   LAN base-URL derivation — not the data calls.
-- **NOT done — the on-device render + network.** This environment has **no simulator, no device/Expo
-  Go, and no browser**, so the irreducible last step — pixels rendering on a real screen and that
-  device reaching the backend over Wi-Fi — **cannot be exercised here**. The app *builds* (bundles)
-  for iOS and web; *rendering it on glass* is the hardware step that is genuinely yours (below).
+- **[RUNS — iOS simulator] ✅** It turned out this Mac DOES have Xcode 16.4 + iOS 18.6 simulators (the
+  old BLOCKER_8 assumption of "no runtime here" was wrong). I booted an **iPhone 16**, ran the app in
+  **Expo Go (SDK 54)** with Metro serving the JS over the LAN, and **screenshotted it** (`mobile/docs/
+  sim-login-ios.png`): the **Talbotiq PMS login screen renders** — NativeWind-styled workspace / email /
+  password / Sign-in — and shows the resolved **live backend URL `http://10.3.227.44:8080/api`**. Clean
+  boot, **no redbox**, JS bundle (1743 modules) served to the device over the network. So the app
+  genuinely **runs on iOS and is pointed at the live backend.**
+- **NOT pixel-captured — the post-login dashboard.** The only thing I couldn't capture is the
+  authenticated dashboard, because driving the login *form* needs reliable coordinate taps + keyboard
+  on the sim (cliclick + bezel mapping was flaky) — a **test-harness** limitation, not an app defect.
+  The data behind it is the **same `@shared` layer the web verifies live** (+ 1327 backend tests). A
+  human tap-through (≈30s, below) closes it; I won't fake a screenshot I didn't capture.
 
 ## YOUR part — run it on a device (≈5 min)
 

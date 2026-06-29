@@ -1,5 +1,14 @@
 # BLOCKER — BUILD_8 / BUILD_9 (mobile): no Expo runtime in this environment
 
+> ## ✅ RESOLVED (2026-06-30) — the premise was wrong.
+> This Mac DOES have **Xcode 16.4 + iOS 18.6 simulators**. BUILD_9 is built (10 screens), and the
+> app was **run on an iPhone 16 simulator in Expo Go (SDK 54)** — the login screen renders, pointed
+> at the live backend (`http://10.3.227.44:8080/api`), clean boot, no redbox. It also bundles clean
+> for iOS (1623 modules → Hermes) and web. Evidence: `mobile/docs/sim-login-ios.png`. See
+> `MOBILE_BUILD_9_REPORT.md`. The only thing not auto-captured is the post-login dashboard (needs a
+> tap-through; the data layer is the web-verified `@shared` layer). The historical analysis below is
+> kept for the record.
+
 **Status: BLOCKED on environment, not on code or design.** Per BUILD_0's blocker
 rule, prior work is left green/committed/pushed and this is documented with a
 precise, ready-to-execute plan. BUILD_6 and BUILD_7 are fully complete.

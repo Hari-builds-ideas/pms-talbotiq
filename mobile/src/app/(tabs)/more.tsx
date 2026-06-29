@@ -1,13 +1,22 @@
 import * as React from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/auth";
 import { apiBaseUrl } from "@/lib/api";
 
-/** More — the signed-in identity + sign out. Proves the full auth loop
- *  (login → /auth/me → display → logout) end to end. */
+/** More — the signed-in identity, quick links to the non-tab screens (check-ins,
+ *  reviews, recognition, the AI assistant), and sign out. */
+const LINKS: { href: string; label: string; icon: string }[] = [
+  { href: "/checkins", label: "Weekly check-in", icon: "📝" },
+  { href: "/reviews", label: "My reviews", icon: "📄" },
+  { href: "/recognition", label: "Recognition", icon: "🏅" },
+  { href: "/chat", label: "AI assistant", icon: "✨" },
+];
+
 export default function More() {
   const { me, features, logout } = useAuth();
   const [busy, setBusy] = React.useState(false);
+  const router = useRouter();
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerClassName="p-5 gap-4">
@@ -19,6 +28,20 @@ export default function More() {
           <Badge>{me?.tenant_name ?? me?.tenant_slug}</Badge>
           {me?.mfa_enabled ? <Badge>MFA on</Badge> : null}
         </View>
+      </View>
+
+      <View className="overflow-hidden rounded-xl border border-border bg-card">
+        {LINKS.map((l, i) => (
+          <Pressable
+            key={l.href}
+            onPress={() => router.push(l.href as never)}
+            className={`flex-row items-center gap-3 px-4 py-3.5 ${i > 0 ? "border-t border-border" : ""}`}
+          >
+            <Text className="text-lg">{l.icon}</Text>
+            <Text className="flex-1 text-base text-foreground">{l.label}</Text>
+            <Text className="text-muted-foreground">›</Text>
+          </Pressable>
+        ))}
       </View>
 
       <View className="rounded-xl border border-border bg-card p-4">

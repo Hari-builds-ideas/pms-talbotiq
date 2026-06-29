@@ -23,6 +23,11 @@ export default function RootLayout() {
               <Stack.Screen name="index" />
               <Stack.Screen name="login" />
               <Stack.Screen name="(tabs)" />
+              {/* Detail routes reached from the More tab (back + title via the header). */}
+              <Stack.Screen name="checkins" options={{ headerShown: true, title: "Check-ins" }} />
+              <Stack.Screen name="reviews" options={{ headerShown: true, title: "My reviews" }} />
+              <Stack.Screen name="recognition" options={{ headerShown: true, title: "Recognition" }} />
+              <Stack.Screen name="chat" options={{ headerShown: true, title: "AI assistant" }} />
             </Stack>
           </AuthProvider>
         </QueryClientProvider>

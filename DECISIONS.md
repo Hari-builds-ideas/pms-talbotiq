@@ -995,6 +995,28 @@ Actual quality is judged by ONE live OpenAI call. Before→after on the same not
     no-named-owner fallback, so the model takes owners ONLY from the notes. The same owner-less note now
     reads "Follow up on the design review for the check-in form with the design team" (no invented name).
 
+### D38 (AGENTIC_CHAT) — drive-the-app via the existing propose-and-confirm gate (six actions)
+
+**Decision.** Extend the action registry (`apps/ai/actions.py`) with four new write actions
+(`initiate_360`, `draft_review`, `career_enrich`, `succession_enrich`) + one navigate action
+(`create_jd`); read/search stays the existing scope-bound chat path. Each executes ONLY through the
+existing human-approval gate calling the SAME audited service the human UI uses, with capability AND
+object scope re-checked at execute. Two feels per action (registry `feel`):
+  * **confirm-in-chat** — Approve → `execute_action` → the endpoint (the only write path). Used for
+    the four AI-firing / single-write actions.
+  * **navigate-and-prefill** — deep-link the screen with prefill; the human submits via that screen's
+    own audited endpoint (chat never writes). Used for `create_jd` (many fields) and the
+    fallback branches of `draft_review` (no eligible review) and `initiate_360` (unclear subject).
+
+**Safe defaults (options considered).** (a) Param extraction is DETERMINISTIC in Python, resolving
+names/roles only within the caller's visible scope — NOT model-driven — which removes a prompt-
+injection vector entirely (an instruction in a field is data, never a command). The build spec
+floated "the model extracts parameters"; keeping extraction server-side is the stronger gate, so we
+took it. (b) Ambiguous reference → the chat ASKS (`clarify`), never guesses. (c) Out-of-scope name →
+treated as not-found (never reveals the person exists). (d) Employees never see succession — no
+proposal + the endpoint 404s. **Why safe:** nothing executes without an explicit human Approve on a
+specific card; execute re-checks authz server-side; navigate actions don't write from chat at all.
+
 **Schema reconciliation (Finding D).** The retune drifted the prompt and the meeting-summary SCHEMA apart:
 the prompt invited an empty `action_items` ("return []") while the model sometimes also omitted the key or
 returned `summary` as a list — the gateway correctly returned `SCHEMA_INVALID` (graceful 503), but valid

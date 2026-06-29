@@ -525,20 +525,31 @@ export interface TenantIntegration {
 
 // ---- AI --------------------------------------------------------------------
 
-/** A proposed assistant action (RW_BUILD_4) — inert until the human taps Approve,
- *  which calls aiApi.executeAction; the server re-checks permission + scope. */
+/** A proposed assistant action — inert until the human acts (RW_BUILD_4 / AGENTIC_CHAT).
+ *  feel decides HOW the human completes it:
+ *   - "confirm"  → tap Approve → aiApi.executeAction (server re-checks permission + scope);
+ *   - "navigate" → open `deeplink` (with `prefill`) and complete it on that screen's own
+ *     audited endpoint (the chat never writes for these);
+ *   - "clarify"  → the summary is a question; no action until the user rephrases. */
 export interface ChatProposal {
   action: string;
   summary: string;
   preview: Record<string, unknown>[];
-  params: Record<string, unknown>;
+  params?: Record<string, unknown>;
+  feel?: "confirm" | "navigate" | "clarify";
+  deeplink?: string;
+  prefill?: Record<string, unknown>;
 }
 export interface ChatActionResult {
   action: string;
   approved?: number;
-  // Skipped targets carry a reason; the id key depends on the action
-  // (goal_id for approve_goals, review_id for approve_reviews).
+  // Skipped targets carry a reason; the id key depends on the action.
   skipped?: { reason: string; goal_id?: string; review_id?: string }[];
+  // AGENTIC_CHAT confirm results (enqueue / create) carry a human message + ref.
+  ok?: boolean;
+  message?: string;
+  job_id?: string;
+  cycle_id?: string;
 }
 export interface ChatResponse {
   status: "ok" | "blocked" | "proposal";

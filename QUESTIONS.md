@@ -144,3 +144,27 @@ green commit + per-feature `docs/AI_QUICKWIN_*.md`: (1) meeting summary `cc4d3dc
 flag `b253628`, (3) stale-goal nudge `eca8aeb`, (4) NL search `b8b290f`, (5) 2nd assistant action
 `approve_reviews`. **Still open for your call:** (i) the entitlement-pack gating above; (ii) the UI
 wiring for each (specs in the docs — they touch the shared layer / nav, which were off-limits overnight).
+
+### Q11 (AGENTIC_CHAT) — deterministic, not model-driven, parameter extraction
+
+**Default taken:** the chat LLM only CLASSIFIES intent; action parameters (target person/role/title)
+are resolved in Python against the caller's visible scope, not extracted by the model. **Why it
+matters / different choice:** model-driven extraction reads smoother for messy phrasing but reopens a
+prompt-injection vector; keeping it server-side is the stronger gate (D38). If you want richer NL
+phrasing, we can add a constrained extraction step whose output is still re-validated against scope.
+
+### Q12 (AGENTIC_CHAT) — mixed-intent keyword routing
+
+**Default taken:** `propose_action` matches the FIRST registered action by keyword; a message blending
+intents ("draft a review AND approve all goals") routes to one action and the human-approval gate (a
+single specific card) is the safety. **Different choice:** an LLM intent-ranker could pick the
+"primary" action, but routing accuracy isn't a safety property here — nothing executes without the
+explicit approve tap, proven by `test_mixed_intent_message_never_auto_executes`.
+
+### Q13 (AGENTIC_CHAT) — prefill consumption on target screens
+
+**Default taken:** navigate actions deep-link the screen and pass prefill in the query string; whether
+each target screen (JD create, create-review, 360 cycle) READS the prefill is a follow-up. **Why it
+matters / different choice:** consuming the prefill is a nicety; the invariant holds regardless (the
+human completes via the audited endpoint). Wire each screen to read its prefill params when you want
+the smoother hand-off.

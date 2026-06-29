@@ -110,8 +110,10 @@ _CAREER = (
 _CHAT = (
     "You classify a user's message to a read-only HR PERFORMANCE assistant. Respond "
     "with ONLY a JSON object {\"intent\": \"<value>\"} where <value> is exactly one of:\n"
-    "- \"write\": any approval, rejection, create, update, delete, finalize, publish, "
-    "or set-value request (the assistant will refuse these).\n"
+    "- \"write\": any request to CHANGE or START something — approve, reject, create, "
+    "update, delete, finalize, publish, set a value, OR drive an app action: initiate/"
+    "start a 360, draft a review, enrich a roadmap or succession plan, create a JD. "
+    "(The assistant proposes these for human approval; it never executes on its own.)\n"
     "- \"performance\": a question to be answered from performance data — someone's "
     "goals, KPIs, cycle scores, reviews, risk, or progress.\n"
     "- \"search\": a request to FIND the people on the asker's TEAM matching a "

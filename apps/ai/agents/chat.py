@@ -21,7 +21,12 @@ from apps.rbac.scope import actor_can_access
 AGENT_CODE = "chat"
 SCHEMA = {"intent": str}
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
-_WRITE_WORDS = ("approve", "reject", "delete", "change", "update", "finalize", "publish", "set ")
+_WRITE_WORDS = (
+    "approve", "reject", "delete", "change", "update", "finalize", "publish", "set ",
+    # AGENTIC_CHAT verbs — drive an app action (propose-and-confirm); each maps to a
+    # registered action (or, if none matches, the read-only refusal still holds).
+    "draft", "enrich", "initiate", "create",
+)
 #: Keyword cues for the deterministic FakeLLMProvider classifier (tests + the
 #: no-real-key path). The real LLM classifies via the _CHAT system prompt.
 _CAPABILITY_PHRASES = (
@@ -214,6 +219,8 @@ def _fake(prompt, model):
     lowered = (prompt or "").lower()
     if any(w in lowered for w in _WRITE_WORDS):
         return {"intent": "write"}
+    if "360" in lowered and any(v in lowered for v in ("start", "begin", "launch", "set up", "kick off")):
+        return {"intent": "write"}  # "start a 360 for X"
     if lowered.strip() in ("help", "?") or any(p in lowered for p in _CAPABILITY_PHRASES):
         return {"intent": "capability"}
     if any(p in lowered for p in _SEARCH_PHRASES):  # team "find people" — before perf

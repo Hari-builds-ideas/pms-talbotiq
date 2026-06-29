@@ -35,6 +35,19 @@ each; green→commit+push, red→BLOCKER+skip.
 **Overnight batch COMPLETE (all 5 quick wins shipped, each its own green commit). STOPPING per the
 hard limit — not starting mobile (needs Hari's device). Follow-up UI specs are in each `docs/AI_QUICKWIN_*.md`.**
 
+## AGENTIC_CHAT (DONE) — six chat actions on the propose-and-confirm gate (D38)
+
+Extended `apps/ai/actions.py` with `initiate_360`, `draft_review`, `career_enrich`,
+`succession_enrich` (confirm-in-chat) + `create_jd` (navigate-and-prefill); read/search stays the
+existing scope-bound path. Each executes ONLY via the existing audited human-approval gate, capability
++ object scope re-checked at execute, calling the SAME service the human UI uses; deterministic
+scope-resolved params (no model-driven extraction); employees never see succession. Frontend
+`ProposalCard` is feel-aware (confirm / navigate deep-link / clarify). **[test]** `test_actions.py`
+(+21: the 4 invariant tests per action — inert / out-of-scope+wrong-cap refused / enqueues+audits
+once / embedded-instruction-in-param ignored — + mixed-intent-no-auto-exec); FakeLLMProvider, no live
+calls. Full backend suite **1321 passed**; frontend tsc/lint/build green, vitest 106. `AGENTIC_CHAT_REPORT.md`
++ `HARI_ATTENTION_NEEDED_LIVECHECK.md` written. No auth/SSO/shared-contract/Docker/RBAC-matrix change; no new caps.
+
 ## RW_BUILD_5 (DONE) — AI quick wins (the AI goal-writer)
 
 The final re-weighting build. Shipped the highest-value quick win — an AI goal-writer — via the one

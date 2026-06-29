@@ -5,6 +5,7 @@
  * change the preview, the success line, and which query is invalidated. No live calls.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, it, expect, vi } from "vitest";
@@ -19,11 +20,20 @@ beforeEach(() => executeAction.mockClear());
 import { ProposalCard } from "./ProposalCard";
 import type { ChatProposal } from "@/lib/types";
 
+// Surfaces the current URL so the navigate (deep-link) test can assert where it went.
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="loc">{loc.pathname + loc.search}</div>;
+}
+
 function renderCard(proposal: ChatProposal) {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <ProposalCard proposal={proposal} />
+      <MemoryRouter initialEntries={["/"]}>
+        <ProposalCard proposal={proposal} />
+        <Routes><Route path="*" element={<LocationProbe />} /></Routes>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -69,5 +79,21 @@ describe("ProposalCard", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText(/Cancelled — nothing was changed/i)).toBeInTheDocument();
     expect(executeAction).not.toHaveBeenCalled();
+  });
+
+  it("navigate feel → deep-links the screen with prefill and NEVER executes (AGENTIC_CHAT)", async () => {
+    const navProposal: ChatProposal = {
+      action: "create_jd",
+      feel: "navigate",
+      summary: "Open the JD Library to create a JD for “Staff Engineer”.",
+      preview: [{ title: "Staff Engineer" }],
+      deeplink: "/jd",
+      prefill: { title: "Staff Engineer" },
+    };
+    renderCard(navProposal);
+    await userEvent.setup().click(screen.getByRole("button", { name: /Open the screen/i }));
+    expect(screen.getByTestId("loc").textContent).toContain("/jd");
+    expect(screen.getByTestId("loc").textContent).toContain("title=Staff+Engineer");
+    expect(executeAction).not.toHaveBeenCalled(); // navigate never writes from chat
   });
 });

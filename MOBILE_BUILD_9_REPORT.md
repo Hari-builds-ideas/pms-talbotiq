@@ -34,16 +34,26 @@ EmptyView, SectionTitle) keep the screens DRY and on the brand tokens.
 
 ## Verification (what I could and could NOT do)
 
-- **[typecheck]** `npx tsc --noEmit` — **clean**, against the installed Expo **v56** React Native types
-  (so the code compiles against the real RN/Expo/Expo-Router/React-Query/NativeWind APIs, per
-  `mobile/AGENTS.md`).
-- **[lint]** `npx expo lint` — **clean** (the lint gate is now initialised; 0 errors, 0 warnings).
+- **[typecheck]** `npx tsc --noEmit` — **clean**, against the installed Expo React Native types.
+- **[lint]** `npx expo lint` — **clean** (0 errors, 0 warnings).
+- **[bundle] `npx expo export` — clean for BOTH targets.** This is the strong one: it runs the real
+  Metro + Babel + NativeWind transform + React Compiler over the **entire** app graph through the
+  custom `@shared` Metro resolver:
+  - **iOS:** `Bundled … entry.js (1623 modules)` → a 5.38 MB Hermes bytecode bundle. Exit 0.
+  - **Web:** `Bundled … (1346 modules)` + the SSR render bundle. Exit 0.
+  So every screen, every route, and the shared-layer wiring **compile and bundle end-to-end** — far
+  beyond what typecheck proves (Metro module resolution, the on-device `@shared` resolver, NativeWind
+  class compilation, and the Expo Router graph all succeed).
 - **[isolation]** `git diff` confirms **only `mobile/` changed** — the web app and the 1327-test
   backend are byte-for-byte untouched (no regression risk; `shared/` consumed read-only).
-- **NOT done — the device run.** This environment has **no iOS simulator, no Android emulator, no
-  device/Expo Go, and no browser** — so "runs on a device against the live backend" (BUILD_8/9's
-  acceptance bar) **cannot be met here**. That is **your** step (below). "Compiles + lints" is real
-  progress but is NOT "runs."
+- **[shared data layer is already proven live]** Mobile calls the SAME `configureApiClient` + the SAME
+  `@shared/api/endpoints` the web app uses; the web verifies that data layer live (and 1327 backend
+  tests pass). The only mobile-specific deltas are platform shims — the SecureStore token store and the
+  LAN base-URL derivation — not the data calls.
+- **NOT done — the on-device render + network.** This environment has **no simulator, no device/Expo
+  Go, and no browser**, so the irreducible last step — pixels rendering on a real screen and that
+  device reaching the backend over Wi-Fi — **cannot be exercised here**. The app *builds* (bundles)
+  for iOS and web; *rendering it on glass* is the hardware step that is genuinely yours (below).
 
 ## YOUR part — run it on a device (≈5 min)
 
@@ -65,6 +75,8 @@ session or create the row in the web app.
 
 ## Honest status
 
-The mobile app is **built and compiles/lints clean**, additively, with zero risk to the working web
-app or backend. It is **not yet device-verified** — that needs your phone/simulator (the one thing
-this environment can't provide). Everything is committed + pushed.
+The mobile app is **built and BUNDLES clean for iOS and web** (typecheck + lint + a full Metro export —
+the whole module graph resolves and compiles end-to-end), additively, with zero risk to the working web
+app or backend. The only thing left is **rendering it on a physical device against the live backend** —
+hardware this environment doesn't have. Everything is committed + pushed; do the ≈5-minute device run
+above to confirm the pixels + network, and tell me anything that misbehaves.

@@ -44,6 +44,24 @@ dashboard **"Ask AI"** button. Each chat send = ~1 OpenAI call (the classifier).
 
 If any refusal test lets something through, STOP and tell me — that's the gate failing.
 
+## Re-check after the two live-test fixes (Issue 1 + Issue 2)
+
+Recreate first: `docker compose up -d --build --force-recreate frontend web celery-worker`.
+
+- **Issue 1 — live update, no reload:** open the **360 Feedback → Cycles** tab as `ada@acme.test`,
+  then from the chat run **initiate-360** ("start a 360 for Vera") and **Approve**. The new DRAFT
+  cycle should appear in the Cycles list **immediately, without reloading**. (Same for career-enrich
+  on the Career screen and approve-goals on Goals — the chat now invalidates the right query prefix.)
+- **Issue 2 — precise refusals (not a blanket "read-only"):**
+  - `ada@acme.test` (MANAGER), "create a JD for Staff Engineer" → now replies *"You don't have
+    permission to create a JD — reserved for a higher role"* (JD is **HRBP+**; this refusal is
+    CORRECT for a manager). Then as **`priya@acme.test` (HRBP)** the SAME ask → the **navigate**
+    card ("Open the screen" → /jd). ✅
+  - `ada@acme.test`, "now make the draft" (vague follow-up) → now ASKS *"I can help you start a 360,
+    draft a review, … which would you like, and who for?"* instead of dead-ending. ✅
+  - `reza@acme.test` (EMPLOYEE), "enrich the succession plan for VP Engineering" → still the generic
+    read-only refusal that **never names succession** (stays a 404). ✅
+
 ## Backend proof already in place (no live call)
 
 `apps/ai/tests/test_actions.py` asserts, for every action: proposal is inert, out-of-scope /

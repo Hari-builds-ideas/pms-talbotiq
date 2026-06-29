@@ -81,6 +81,30 @@ describe("ProposalCard", () => {
     expect(executeAction).not.toHaveBeenCalled();
   });
 
+  it("a chat-initiated action invalidates the right query prefix so the screen refetches (Issue 1)", async () => {
+    executeAction.mockResolvedValue({ action: "initiate_360", ok: true, message: "360 cycle created for Rhea (draft)." });
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <ProposalCard
+            proposal={{
+              action: "initiate_360",
+              feel: "confirm",
+              summary: "Start a 360 for Rhea?",
+              preview: [{ employee: "Rhea" }],
+              params: { subject_id: "u1" },
+            }}
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByText(/360 cycle created/i)).toBeInTheDocument(); // backend message shown
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["feedback"] }); // the 360 screen refetches — no reload
+  });
+
   it("navigate feel → deep-links the screen with prefill and NEVER executes (AGENTIC_CHAT)", async () => {
     const navProposal: ChatProposal = {
       action: "create_jd",

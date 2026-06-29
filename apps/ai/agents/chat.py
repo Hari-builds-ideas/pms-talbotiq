@@ -142,7 +142,7 @@ def chat_answer(caller, query: str) -> dict:
         # the caller is allowed to perform, return an inert PROPOSAL for the UI to
         # confirm (nothing executes here). Otherwise the read-only refusal holds —
         # the assistant never writes on its own say-so.
-        from apps.ai.actions import propose_action
+        from apps.ai.actions import propose_action, write_refusal
 
         proposal = propose_action(caller, query)
         if proposal is not None:
@@ -152,10 +152,14 @@ def chat_answer(caller, query: str) -> dict:
                 "proposal": proposal,
                 "answer": proposal["summary"],
             }
+        # No proposal: give a PRECISE reason (capability refusal / "what would you like")
+        # instead of a blanket read-only line — but keep genuine refusals refusing, and
+        # never reveal a sensitive feature (succession) the caller can't see.
         return {
             "status": "blocked",
             "intent": "write",
-            "answer": "I'm a read-only assistant — I can't make changes or approvals.",
+            "answer": write_refusal(caller, query)
+            or "I'm a read-only assistant — I can't make changes or approvals.",
         }
     if intent == "search":
         # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An

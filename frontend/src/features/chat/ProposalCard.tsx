@@ -20,9 +20,17 @@ import type { ChatProposal } from "@/lib/types";
  * Action-aware: noun / success line / which query to invalidate are keyed off
  * `proposal.action`; an unknown action falls back to a generic message.
  */
-const ACTION_META: Record<string, { noun: string; invalidate: string }> = {
-  approve_goals: { noun: "goal", invalidate: "goals" },
-  approve_reviews: { noun: "review", invalidate: "reviews" },
+// Per action: the success noun + which query PREFIXES to invalidate so the open screen
+// refetches immediately (the prefix pattern from BUG 1). Every confirm action MUST list
+// its prefixes — a missing entry was why chat-initiated 360 / enrich / draft didn't
+// update live until reload.
+const ACTION_META: Record<string, { noun: string; invalidate: string[] }> = {
+  approve_goals: { noun: "goal", invalidate: ["goals", "cycles"] },
+  approve_reviews: { noun: "review", invalidate: ["reviews"] },
+  draft_review: { noun: "review", invalidate: ["reviews"] },
+  initiate_360: { noun: "360 cycle", invalidate: ["feedback"] },
+  career_enrich: { noun: "roadmap", invalidate: ["career"] },
+  succession_enrich: { noun: "plan", invalidate: ["succession"] },
 };
 
 function prefillQuery(prefill?: Record<string, unknown>): string {
@@ -64,13 +72,14 @@ export function ProposalCard({ proposal }: { proposal: ChatProposal }) {
   }
 
   // "confirm" — Approve → execute (the only write path).
-  const meta = ACTION_META[proposal.action] ?? { noun: "item", invalidate: "" };
+  const meta = ACTION_META[proposal.action] ?? { noun: "item", invalidate: [] as string[] };
 
   async function approve() {
     setPhase("running");
     try {
       const r = await aiApi.executeAction(proposal.action, proposal.params ?? {});
-      if (meta.invalidate) void qc.invalidateQueries({ queryKey: [meta.invalidate] });
+      // Refetch every affected screen immediately (prefix invalidation — BUG 1 pattern).
+      meta.invalidate.forEach((k) => void qc.invalidateQueries({ queryKey: [k] }));
       if (r.message) {
         setResult(r.message); // AGENTIC_CHAT confirm actions report their own line
       } else {

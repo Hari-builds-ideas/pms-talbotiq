@@ -10,7 +10,7 @@ import pytest
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.test import APIClient
 
-from apps.ai.actions import execute_action, propose_action
+from apps.ai.actions import execute_action, propose_action, write_refusal
 from apps.ai.models import AIJob
 from apps.audit.models import AuditLog
 from apps.feedback.models import FeedbackCycle
@@ -396,3 +396,30 @@ def test_mixed_intent_message_never_auto_executes(org):
         GoalFactory(employee=org.report, cycle=_active_cycle(org), status="ACTIVE")  # an approvable goal exists
         propose_action(org.manager, "draft a review for my report and also approve all goals")
         assert AuditLog.objects.filter(action="goal.approved").count() == 0  # proposing executed nothing
+
+
+# ── ISSUE 2: precise write-refusal (capability vs ask vs sensitive) ─────────────
+
+
+def test_write_refusal_capability_is_explicit_for_jd(org):
+    # A manager genuinely lacks the JD capability (HRBP+) — a CORRECT refusal, but it
+    # must say WHY (capability), not the blanket "read-only" line.
+    with tenant_context(org.tenant):
+        msg = write_refusal(org.manager, "create a JD for Staff Engineer")
+        assert "permission" in msg.lower() and "jd" in msg.lower()
+        # …and the capable role gets a proposal instead of a refusal.
+        assert propose_action(org.hrbp, "create a JD for Staff Engineer") is not None
+
+
+def test_write_refusal_vague_followup_asks_not_dead_ends(org):
+    # "now make the draft" references a prior turn — we ASK rather than guess context.
+    with tenant_context(org.tenant):
+        msg = write_refusal(org.manager, "now make the draft")
+        assert "which would you like" in msg.lower() or "tell me" in msg.lower()
+
+
+def test_write_refusal_never_reveals_succession_to_employee(org):
+    # Succession is sensitive — an employee's refusal must NOT name it (stays a 404).
+    with tenant_context(org.tenant):
+        msg = write_refusal(org.report, "enrich the succession plan for VP Engineering")
+        assert "succession" not in msg.lower()  # generic ("" → caller uses the read-only line)

@@ -72,3 +72,22 @@ green, vitest **106 passed** (incl. the navigate deep-link test).
   regardless (the human completes via the audited endpoint). [Q13]
 - **Live verification** is in `HARI_ATTENTION_NEEDED_LIVECHECK.md` (per-action click-list + the
   refusal tests) — recreate `web` + run those.
+
+## Post-live-test fixes (Hari's 2 issues)
+
+- **Issue 1 (cache invalidation):** the chat `ProposalCard` only invalidated goals/reviews, so
+  chat-initiated `initiate_360` / `career_enrich` / `succession_enrich` / `draft_review` refetched
+  nothing → the screen updated only on reload. Fixed: `ACTION_META` now lists each action's query
+  PREFIXES (`feedback` / `career` / `succession` / `reviews` / `goals`+`cycles`) and the approve
+  handler invalidates all of them (the BUG-1 prefix pattern). The screen-level hooks (useFeedback,
+  useSuccession, useCareer, useReviews, useGoals, …) were audited and already invalidate correctly.
+  Test: `ProposalCard.test.tsx` asserts an approved `initiate_360` calls `invalidateQueries(["feedback"])`.
+- **Issue 2 (refusal misrouting / message):** diagnosis — "create a JD" as a MANAGER is a CORRECT
+  capability refusal (JD is HRBP+), but the blanket "I'm read-only" line hid that; "now make the
+  draft" is a vague follow-up that should ask. Fixed: `actions.write_refusal()` distinguishes a
+  CAPABILITY refusal (names the action, e.g. "you don't have permission to create a JD") from an ASK
+  ("I can start a 360, draft a review, … which would you like?") when nothing is recognised — and
+  for the SENSITIVE succession action returns the generic line (never reveals it to an employee).
+  Safe default for follow-ups: ASK, don't carry the prior turn's context (D38 / Q12). Tests in
+  `test_actions.py` (`write_refusal`) + `test_chat.py` (endpoint-level). Backend 1327 passed;
+  frontend tsc/lint/build green, vitest 107.

@@ -110,6 +110,34 @@ def test_employee_team_search_is_not_exposed(org):
     assert body["data"] == []
 
 
+# ── ISSUE 2: precise write-refusals over the chat endpoint (not a blanket "read-only") ──
+
+
+@override_settings(**FAKE)
+def test_manager_jd_refusal_explains_capability(org):
+    # A manager lacks the JD capability (HRBP+) — correct refusal, but it says why.
+    resp = _client_for(org.manager).post(CHAT, {"query": "create a JD for Staff Engineer"}, format="json")
+    assert resp.status_code == 200 and resp.json()["status"] == "blocked"
+    assert "permission" in resp.json()["answer"].lower()
+
+
+@override_settings(**FAKE)
+def test_vague_followup_asks_rather_than_dead_ending(org):
+    resp = _client_for(org.manager).post(CHAT, {"query": "now make the draft"}, format="json")
+    assert resp.status_code == 200 and resp.json()["status"] == "blocked"
+    ans = resp.json()["answer"].lower()
+    assert "which would you like" in ans or "tell me" in ans
+
+
+@override_settings(**FAKE)
+def test_employee_succession_refusal_does_not_reveal_it(org):
+    resp = _client_for(org.report).post(
+        CHAT, {"query": "enrich the succession plan for VP Engineering"}, format="json"
+    )
+    assert resp.status_code == 200 and resp.json()["status"] == "blocked"
+    assert "succession" not in resp.json()["answer"].lower()  # never reveal the sensitive feature
+
+
 # ── BUG 4: intent is honoured — general/capability questions don't dump metrics ──
 
 

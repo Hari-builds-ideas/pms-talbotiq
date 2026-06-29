@@ -463,42 +463,59 @@ ACTIONS: dict[str, dict] = {
         "feel": "confirm",
         "propose": _propose_approve_goals,
         "execute": _execute_approve_goals,
+        "capability": Capability.APPROVE_GOALS,
+        "label": "approve goals",
         "match": lambda m: "approve" in m and "goal" in m,
     },
     "approve_reviews": {
         "feel": "confirm",
         "propose": _propose_approve_reviews,
         "execute": _execute_approve_reviews,
+        "capability": Capability.APPROVE_REVIEW,
+        "label": "approve reviews",
         "match": lambda m: "approve" in m and "review" in m,
     },
     "draft_review": {
         "feel": "confirm",  # may downgrade to navigate inside propose when nothing is eligible
         "propose": _propose_draft_review,
         "execute": _execute_draft_review,
+        "capability": Capability.RUN_AI_REVIEW_DRAFT,
+        "label": "draft a review",
         "match": lambda m: "review" in m and ("draft" in m or "create" in m or "write" in m) and "approve" not in m and "360" not in m,
     },
     "career_enrich": {
         "feel": "confirm",
         "propose": _propose_career_enrich,
         "execute": _execute_career_enrich,
+        "capability": Capability.MANAGE_CAREER_ROADMAP,
+        "label": "enrich a development roadmap",
         "match": lambda m: "enrich" in m and ("roadmap" in m or "career" in m),
     },
     "succession_enrich": {
         "feel": "confirm",
         "propose": _propose_succession_enrich,
         "execute": _execute_succession_enrich,
+        "capability": Capability.GENERATE_SUCCESSION_ANALYSIS,
+        # SENSITIVE: never name succession in a refusal — an employee must not learn it
+        # exists (succession stays a 404 for them). Falls back to the generic refusal.
+        "sensitive": True,
+        "label": "enrich a succession plan",
         "match": lambda m: "enrich" in m and ("succession" in m or "plan" in m),
     },
     "initiate_360": {
         "feel": "confirm",  # may downgrade to navigate inside propose when the subject is unclear
         "propose": _propose_initiate_360,
         "execute": _execute_initiate_360,
+        "capability": Capability.MANAGE_FEEDBACK_CYCLE,
+        "label": "start a 360",
         "match": lambda m: "360" in m,
     },
     "create_jd": {
         "feel": "navigate",
         "propose": _propose_create_jd,
         # no execute — navigate-and-prefill; the human submits via the JD endpoint
+        "capability": Capability.MANAGE_JD_LIBRARY,
+        "label": "create a JD",
         "match": lambda m: ("jd" in m or "job description" in m),
     },
 }
@@ -514,6 +531,35 @@ def propose_action(user, message: str):
         if spec["match"](m):
             return spec["propose"](user, message)
     return None
+
+
+def write_refusal(user, message: str) -> str:
+    """A PRECISE message when a write-intent query yields no proposal — so a capable
+    user isn't fobbed off with a blanket "read-only" line (the misrouting bug). Returns:
+      * a CAPABILITY refusal when the message matched a known action the caller can't
+        perform (e.g. a manager asking for a JD — that's HRBP+), naming the action —
+        EXCEPT for ``sensitive`` actions (succession), which never reveal they exist;
+      * a "what would you like" ASK when nothing was recognised (a vague follow-up like
+        "now make the draft" — we ask rather than guess the prior turn's context);
+      * "" when an action matched and the caller IS capable but there was nothing to act
+        on (e.g. no eligible review) — the caller's normal/gentle reply stands.
+    """
+    m = (message or "").lower()
+    for spec in ACTIONS.values():
+        if spec["match"](m):
+            cap = spec.get("capability")
+            if cap is not None and not role_has_capability(user.role, cap):
+                if spec.get("sensitive"):
+                    return ""  # don't name it — falls back to the generic refusal
+                return (
+                    f"You don't have permission to {spec['label']} — that's reserved for a "
+                    "higher role here, so I can't propose it."
+                )
+            return ""  # recognised + capable, just nothing actionable right now
+    return (
+        "I can help you start a 360, draft a review, enrich a roadmap or succession plan, "
+        "or create a JD — tell me which, and who or what it's for."
+    )
 
 
 def execute_action(user, action: str, params: dict) -> dict:

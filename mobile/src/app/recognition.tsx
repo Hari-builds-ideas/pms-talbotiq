@@ -1,33 +1,143 @@
 import * as React from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { recognitionApi } from "@shared/api/endpoints";
-import type { RecognitionCard as Card_ } from "@shared/types";
-import { Badge, Card, EmptyView, ErrorView, Loading } from "@/components/ui";
+import { orgApi, recognitionApi } from "@shared/api/endpoints";
+import type { PersonRef, RecognitionCard as Card_, RecognitionVisibility } from "@shared/types";
+import { Badge, Button, Card, EmptyView, ErrorView, Loading } from "@/components/ui";
 
 const EMOJI = ["👏", "❤️", "🎉"];
 
-/** Recognition feed — the kudos the caller is permitted to see (visibility enforced
- *  server-side), with one-tap reactions (the same react endpoint the web uses). */
+/** Recognition — give kudos (recipient resolved within your visible org, value + message +
+ *  visibility) and browse the feed you're permitted to see, with one-tap reactions. All via
+ *  the same audited endpoints + server-side visibility/scope the web uses. */
 export default function Recognition() {
   const q = useQuery({ queryKey: ["recognition", "feed"], queryFn: recognitionApi.feed });
   const feed = q.data ?? [];
-
-  if (q.isLoading) return <Loading label="Loading recognition…" />;
-  if (q.isError) return <ErrorView error={q.error} onRetry={() => q.refetch()} />;
 
   return (
     <ScrollView
       className="flex-1 bg-background"
       contentContainerClassName="p-5 gap-4"
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#5B5BD6" />}
     >
-      {feed.length === 0 ? (
-        <EmptyView title="No recognition yet" description="Kudos shared across your team will show up here." />
+      <GiveRecognition />
+      {q.isLoading ? (
+        <Loading label="Loading recognition…" />
+      ) : q.isError ? (
+        <ErrorView error={q.error} onRetry={() => q.refetch()} />
+      ) : feed.length === 0 ? (
+        <EmptyView title="No recognition yet" description="Be the first to give kudos to a teammate." />
       ) : (
         feed.map((c) => <KudoCard key={c.id} card={c} />)
       )}
     </ScrollView>
+  );
+}
+
+function GiveRecognition() {
+  const qc = useQueryClient();
+  const [open, setOpen] = React.useState(false);
+  const [term, setTerm] = React.useState("");
+  const [recipient, setRecipient] = React.useState<PersonRef | null>(null);
+  const [value, setValue] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [visibility, setVisibility] = React.useState<RecognitionVisibility>("TEAM");
+
+  const meta = useQuery({ queryKey: ["recognition", "meta"], queryFn: recognitionApi.meta, enabled: open });
+  const results = useQuery({
+    queryKey: ["org", "search", term],
+    queryFn: () => orgApi.search(term),
+    enabled: open && !recipient && term.trim().length >= 2,
+  });
+
+  const give = useMutation({
+    mutationFn: () =>
+      recognitionApi.give({ recipient: recipient!.id, value, message: message.trim(), visibility }),
+    onSuccess: () => {
+      setOpen(false);
+      setRecipient(null);
+      setTerm("");
+      setValue("");
+      setMessage("");
+      void qc.invalidateQueries({ queryKey: ["recognition"] });
+    },
+  });
+
+  if (!open) {
+    return <Button title="＋ Give recognition" variant="outline" onPress={() => setOpen(true)} />;
+  }
+
+  const canSend = recipient && value && message.trim().length > 0;
+  return (
+    <Card>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-base font-semibold text-foreground">Give recognition</Text>
+        <Pressable onPress={() => setOpen(false)}><Text className="text-muted-foreground">✕</Text></Pressable>
+      </View>
+
+      {/* Recipient — resolved only within what you can see (server-scoped search). */}
+      {recipient ? (
+        <View className="mt-2 flex-row items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2">
+          <Text className="text-sm font-medium text-foreground">{recipient.display}</Text>
+          <Pressable onPress={() => setRecipient(null)}><Text className="text-2xs text-primary">change</Text></Pressable>
+        </View>
+      ) : (
+        <View className="mt-2">
+          <TextInput
+            value={term}
+            onChangeText={setTerm}
+            placeholder="Search a teammate by name…"
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
+          />
+          {results.data?.results.slice(0, 6).map((p) => (
+            <Pressable key={p.id} onPress={() => setRecipient(p)} className="border-b border-border px-1 py-2">
+              <Text className="text-sm text-foreground">{p.display}</Text>
+              {p.title ? <Text className="text-2xs text-muted-foreground">{p.title}</Text> : null}
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* Value */}
+      <Text className="mt-3 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Value</Text>
+      <View className="mt-1 flex-row flex-wrap gap-2">
+        {(meta.data?.values ?? []).map((v) => (
+          <Chip key={v} on={value === v} label={v} onPress={() => setValue(v)} />
+        ))}
+      </View>
+
+      {/* Message */}
+      <TextInput
+        value={message}
+        onChangeText={setMessage}
+        placeholder="What did they do? Be specific."
+        multiline
+        className="mt-3 min-h-16 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
+        textAlignVertical="top"
+      />
+
+      {/* Visibility */}
+      <Text className="mt-3 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Visibility</Text>
+      <View className="mt-1 flex-row flex-wrap gap-2">
+        {(meta.data?.visibilities ?? []).map((vis) => (
+          <Chip key={vis.value} on={visibility === vis.value} label={vis.label} onPress={() => setVisibility(vis.value)} />
+        ))}
+      </View>
+
+      {give.isError ? <Text className="mt-2 text-2xs text-danger">Could not send — check the fields.</Text> : null}
+      <View className="mt-3">
+        <Button title="Send recognition" onPress={() => canSend && give.mutate()} loading={give.isPending} disabled={!canSend} />
+      </View>
+    </Card>
+  );
+}
+
+function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} className={`rounded-full border px-3 py-1.5 ${on ? "border-primary bg-primary/10" : "border-border bg-muted"}`}>
+      <Text className={`text-xs font-medium ${on ? "text-primary" : "text-muted-foreground"}`}>{label}</Text>
+    </Pressable>
   );
 }
 

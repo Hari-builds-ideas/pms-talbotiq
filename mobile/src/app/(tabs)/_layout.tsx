@@ -3,11 +3,12 @@ import { ActivityIndicator, Text, View } from "react-native";
 import { Redirect, Tabs } from "expo-router";
 import { useAuth } from "@/lib/auth";
 
-const tabIcon =
-  (emoji: string) =>
-  ({ focused }: { focused: boolean }) => (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{emoji}</Text>
-  );
+const tabIcon = (emoji: string) => {
+  function TabIcon({ focused }: { focused: boolean }) {
+    return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{emoji}</Text>;
+  }
+  return TabIcon;
+};
 
 export default function TabsLayout() {
   const { status } = useAuth();

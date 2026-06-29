@@ -75,7 +75,7 @@ function GiveCard({ request }: { request: FeedbackRequestItem }) {
         className="mt-2 min-h-24 rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
         textAlignVertical="top"
       />
-      {m.isError ? <Text className="mt-1 text-2xs text-danger">Couldn't submit — try again.</Text> : null}
+      {m.isError ? <Text className="mt-1 text-2xs text-danger">Could not submit — try again.</Text> : null}
       <View className="mt-2">
         <Button title="Submit feedback" onPress={() => body.trim() && m.mutate()} loading={m.isPending} disabled={!body.trim()} />
       </View>

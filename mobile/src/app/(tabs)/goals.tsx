@@ -87,7 +87,7 @@ function KpiRow({ kpi }: { kpi: Kpi }) {
             keyboardType="numeric"
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
           />
-          {m.isError ? <Text className="text-2xs text-danger">Couldn't save — check the value.</Text> : null}
+          {m.isError ? <Text className="text-2xs text-danger">Could not save — check the value.</Text> : null}
           <View className="flex-row gap-2">
             <Button title="Save" onPress={() => value.trim() && m.mutate(value.trim())} loading={m.isPending} className="flex-1" />
             <Button title="Cancel" variant="outline" onPress={() => setEditing(false)} className="flex-1" />

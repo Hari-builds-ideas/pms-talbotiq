@@ -3,7 +3,18 @@
 > Append-only log. Verification honesty: **[test]** asserted by a test ·
 > **[live]** exercised over real HTTP · **[build]** build/typecheck/lint only.
 
-## Current: OVERNIGHT — AI quick wins (Q9/Q10), backend-only + additive (D36)
+## Current: MOBILE BUILD_9 — real Expo screens (10), shared-layer-backed
+
+Built the mobile app from the foundation shell into 10 real screens consuming the existing
+`shared/` layer: tabs (Dashboard cockpit, Goals+KPIs with record-actual, 360 Feedback give+summary,
+Career roadmap, More) + routes (Check-ins, My reviews, Recognition+react, AI chat read-only) +
+manager routes (Approvals inbox, Team check-ins), gated `atLeast("MANAGER")` + server-scoped.
+`src/components/ui.tsx` primitives. **[build]** `tsc --noEmit` clean (Expo v56 RN types) + `expo lint`
+clean; `git diff` shows ONLY `mobile/` changed (web + 1327-test backend untouched). **NOT device-run**
+(no simulator/device/browser here) — that's Hari's step, see `MOBILE_BUILD_9_REPORT.md`. Commits
+`01febbc`, `dc3d655`, `6d8df2a`, `663d6ab`, `4c81f4e`.
+
+## OVERNIGHT — AI quick wins (Q9/Q10), backend-only + additive (D36)
 
 Unattended overnight: the remaining AI quick wins, each a backend-only additive feature in `apps/ai`
 (new agent + endpoint + tests via the LLMGateway; existing models read-only; existing capabilities

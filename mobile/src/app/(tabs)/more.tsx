@@ -13,10 +13,16 @@ const LINKS: { href: string; label: string; icon: string }[] = [
   { href: "/chat", label: "AI assistant", icon: "✨" },
 ];
 
+const MANAGER_LINKS: { href: string; label: string; icon: string }[] = [
+  { href: "/approvals", label: "Approvals inbox", icon: "✅" },
+  { href: "/team-checkins", label: "Team check-ins", icon: "👥" },
+];
+
 export default function More() {
-  const { me, features, logout } = useAuth();
+  const { me, features, logout, atLeast } = useAuth();
   const [busy, setBusy] = React.useState(false);
   const router = useRouter();
+  const isManager = atLeast("MANAGER");
 
   return (
     <ScrollView className="flex-1 bg-background" contentContainerClassName="p-5 gap-4">
@@ -43,6 +49,25 @@ export default function More() {
           </Pressable>
         ))}
       </View>
+
+      {isManager ? (
+        <View>
+          <Text className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">For your team</Text>
+          <View className="overflow-hidden rounded-xl border border-border bg-card">
+            {MANAGER_LINKS.map((l, i) => (
+              <Pressable
+                key={l.href}
+                onPress={() => router.push(l.href as never)}
+                className={`flex-row items-center gap-3 px-4 py-3.5 ${i > 0 ? "border-t border-border" : ""}`}
+              >
+                <Text className="text-lg">{l.icon}</Text>
+                <Text className="flex-1 text-base text-foreground">{l.label}</Text>
+                <Text className="text-muted-foreground">›</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
 
       <View className="rounded-xl border border-border bg-card p-4">
         <Text className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan features</Text>

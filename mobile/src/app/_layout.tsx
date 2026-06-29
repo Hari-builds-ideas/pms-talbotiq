@@ -28,6 +28,8 @@ export default function RootLayout() {
               <Stack.Screen name="reviews" options={{ headerShown: true, title: "My reviews" }} />
               <Stack.Screen name="recognition" options={{ headerShown: true, title: "Recognition" }} />
               <Stack.Screen name="chat" options={{ headerShown: true, title: "AI assistant" }} />
+              <Stack.Screen name="approvals" options={{ headerShown: true, title: "Approvals" }} />
+              <Stack.Screen name="team-checkins" options={{ headerShown: true, title: "Team check-ins" }} />
             </Stack>
           </AuthProvider>
         </QueryClientProvider>

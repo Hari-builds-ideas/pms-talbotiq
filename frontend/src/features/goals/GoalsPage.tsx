@@ -62,7 +62,8 @@ export function GoalsPage() {
   return (
     <div>
       <PageHeader
-        title="Goals & KPIs"
+        eyebrow="Performance"
+        title="Goals & OKRs"
         description="Weighted goals with KPI attainment. Weights must sum to exactly 100. Record actuals, recompute scores, and approve."
         actions={
           atLeast("MANAGER") ? (

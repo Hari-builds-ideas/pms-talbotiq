@@ -1,7 +1,8 @@
-import { LogOut, Search, Sparkles, UserCog } from "lucide-react";
+import { Bell, HelpCircle, LogOut, Menu, Search, UserCog } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +18,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useChatPanel } from "@/features/chat/ChatPanel";
-import { ROLE_LABEL, type Role } from "@/lib/enums";
+import { approvalsApi, feedbackApi } from "@/lib/api/endpoints";
+import { ROLE_LABEL, ROLE_RANK, type Role } from "@/lib/enums";
 import { initials } from "@/lib/format";
 
 const USING_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
@@ -29,37 +31,71 @@ const DEV_IDENTITIES: Array<{ id: string; label: string }> = [
   { id: "u-1", label: "Manager" },
 ];
 
-export function Topbar() {
+/** Real pending-actions count (N5): feedback requests for everyone + the approval
+ *  inbox for managers+. Same query keys as the dashboard cockpits, so it shares the
+ *  react-query cache (no extra network). */
+function usePendingCount(): number {
+  const { me } = useAuth();
+  const isManagerPlus = me ? ROLE_RANK[me.role as Role] >= ROLE_RANK["MANAGER"] : false;
+  const requests = useQuery({
+    queryKey: ["feedback", "requests", "mine"],
+    queryFn: feedbackApi.requestsMine,
+  });
+  const inbox = useQuery({
+    queryKey: ["approvals", "inbox"],
+    queryFn: approvalsApi.inbox,
+    enabled: isManagerPlus,
+  });
+  const pendingRequests = (requests.data ?? []).filter((r) => r.status === "PENDING").length;
+  const pendingApprovals = inbox.data?.length ?? 0;
+  return pendingRequests + pendingApprovals;
+}
+
+function openCommandPalette() {
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true }),
+  );
+}
+
+export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
   const { me, logout, completeLogin } = useAuth();
   const chat = useChatPanel();
+  const navigate = useNavigate();
+  const pending = usePendingCount();
+  const isManagerPlus = me ? ROLE_RANK[me.role as Role] >= ROLE_RANK["MANAGER"] : false;
 
   function switchTo(id: string) {
     void completeLogin({ access: `mock.${id}`, refresh: `mockr.${id}` });
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/80 px-5 backdrop-blur">
-      <div className="flex items-center gap-2 text-sm">
-        <span className="font-medium text-foreground">{me?.tenant_name ?? "—"}</span>
-        <Badge variant="muted" className="hidden sm:inline-flex">
-          Tenant
-        </Badge>
-      </div>
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-5">
+      {/* Left: collapse toggle */}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={onToggleNav}
+        aria-label="Toggle navigation"
+        className="text-muted-foreground"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
 
-      <div className="flex items-center gap-2">
-        {/* Opens the ⌘K command palette (re-uses its global keydown listener). */}
-        <button
-          type="button"
-          onClick={() =>
-            document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true }))
-          }
-          className="hidden items-center gap-2 rounded-md border border-input bg-input-background px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary md:flex"
-        >
-          <Search className="h-3.5 w-3.5" />
-          <span>Search…</span>
-          <kbd className="ml-2 rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
-        </button>
+      {/* Center: global search */}
+      <button
+        type="button"
+        onClick={openCommandPalette}
+        className="flex h-10 max-w-xl flex-1 items-center gap-2.5 rounded-xl border border-input bg-input-background px-3.5 text-sm text-muted-foreground transition-colors hover:bg-secondary"
+      >
+        <Search className="h-4 w-4" />
+        <span className="truncate">Search employees, OKRs, goals…</span>
+        <kbd className="ml-auto rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          ⌘K
+        </kbd>
+      </button>
 
+      {/* Right: dev switcher · notifications · help/AI · identity */}
+      <div className="flex items-center gap-1.5">
         {USING_MOCKS && (
           <DropdownMenu>
             <Tooltip>
@@ -85,30 +121,51 @@ export function Topbar() {
           </DropdownMenu>
         )}
 
+        {/* Notifications — real pending-actions count; opens the relevant queue. */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={chat.toggle}
-              aria-label="Open the AI assistant"
+            <button
+              type="button"
+              onClick={() => navigate(isManagerPlus ? "/approvals" : "/feedback")}
+              aria-label={`Pending actions: ${pending}`}
+              className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
-              <Sparkles className="h-4 w-4 text-ai" />
-              <span className="hidden md:inline">Ask AI</span>
-            </Button>
+              <Bell className="h-[18px] w-[18px]" />
+              {pending > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-danger-foreground">
+                  {pending > 9 ? "9+" : pending}
+                </span>
+              )}
+            </button>
           </TooltipTrigger>
-          <TooltipContent>Open the AI assistant</TooltipContent>
+          <TooltipContent>{pending > 0 ? `${pending} pending action${pending === 1 ? "" : "s"}` : "No pending actions"}</TooltipContent>
         </Tooltip>
+
+        {/* Help & AI assistant */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={chat.toggle}
+              aria-label="Help and AI assistant"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <HelpCircle className="h-[18px] w-[18px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Help &amp; AI assistant</TooltipContent>
+        </Tooltip>
+
+        <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button aria-label="Open account menu" className="flex items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-secondary">
+            <button aria-label="Open account menu" className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-secondary">
               <Avatar>
                 <AvatarFallback>{initials(me?.display)}</AvatarFallback>
               </Avatar>
               <div className="hidden text-left leading-tight sm:block">
-                <div className="max-w-[12rem] truncate text-sm font-medium text-foreground">
+                <div className="max-w-[12rem] truncate text-sm font-semibold text-foreground">
                   {me?.display ?? "—"}
                 </div>
                 <div className="text-2xs text-muted-foreground">

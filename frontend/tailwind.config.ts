@@ -116,7 +116,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
-          "Plus Jakarta Sans",
+          "Inter",
           "ui-sans-serif",
           "system-ui",
           "-apple-system",
@@ -126,7 +126,7 @@ const config: Config = {
           "Arial",
           "sans-serif",
         ],
-        mono: ["DM Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       fontSize: {
         // Compact enterprise scale
@@ -140,11 +140,17 @@ const config: Config = {
         "2xl": ["1.375rem", { lineHeight: "1.875rem" }],
         "3xl": ["1.75rem", { lineHeight: "2.125rem" }],
       },
+      // TalbotIQ soft shadow ladder (feather-soft card rest → md hover → xl modals)
+      // + brand-green button-hover glows.
       boxShadow: {
-        xs: "0 1px 2px 0 rgb(15 23 42 / 0.04)",
-        sm: "0 1px 3px 0 rgb(15 23 42 / 0.06), 0 1px 2px -1px rgb(15 23 42 / 0.06)",
-        md: "0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.05)",
-        lg: "0 12px 32px -8px rgb(15 23 42 / 0.12)",
+        xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        sm: "0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.05)",
+        DEFAULT: "0 2px 8px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05)",
+        md: "0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 6px -2px rgb(0 0 0 / 0.05)",
+        lg: "0 8px 24px -4px rgb(0 0 0 / 0.10), 0 4px 10px -4px rgb(0 0 0 / 0.06)",
+        xl: "0 16px 40px -8px rgb(0 0 0 / 0.12), 0 8px 16px -8px rgb(0 0 0 / 0.08)",
+        "primary-sm": "0 2px 8px -2px rgb(13 92 58 / 0.30)",
+        "primary-md": "0 4px 16px -4px rgb(13 92 58 / 0.35)",
         focus: "0 0 0 3px hsl(var(--ring) / 0.35)",
       },
       keyframes: {

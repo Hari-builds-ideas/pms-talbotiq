@@ -1,73 +1,93 @@
 import { NavLink } from "react-router-dom";
+import { PlusCircle } from "lucide-react";
 import { navForRole, APP_ICON } from "@/app/nav";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
 
-/** Fixed dark sidebar with role-filtered, grouped navigation. */
+/** Opens the ⌘K command palette (reuses its global keydown listener) — the
+ *  "Quick Actions" surface (jump to any destination / search people / Ask AI). */
+function openCommandPalette() {
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true }),
+  );
+}
+
+/** Light sidebar with the TalbotIQ brand lockup, sectioned role-filtered nav
+ *  (brand-green active state), and Quick Actions pinned bottom-left. */
 export function Sidebar() {
   const { me } = useAuth();
-  // Visibility is a pure function of role (navForRole) — the same source the
-  // nav tests assert. A role only ever sees the sections/items it can use.
+  // Visibility is a pure function of role (navForRole) — the same source the nav
+  // tests assert. A role only ever sees the sections/items it can use.
   const sections = navForRole(me?.role ?? "EMPLOYEE");
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center gap-2.5 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-accent text-white">
-          <APP_ICON className="h-4 w-4" />
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+      {/* Brand lockup */}
+      <div className="flex h-16 items-center gap-2.5 px-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <APP_ICON className="h-5 w-5" />
         </div>
         <div className="leading-tight">
-          <div className="text-sm font-semibold text-white">Talbotiq</div>
-          <div className="text-2xs text-sidebar-muted">PMS Admin Hub</div>
+          <div className="text-base font-bold tracking-tight text-foreground">TalbotIQ</div>
+          <div className="text-[11px] text-sidebar-muted">Performance Management System</div>
         </div>
       </div>
 
-      <nav aria-label="Primary" className="flex-1 space-y-5 overflow-y-auto scrollbar-thin px-3 py-4">
-        {sections.map((section) => {
-          return (
-            <div key={section.title}>
-              <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-muted">
+      <nav aria-label="Primary" className="flex-1 space-y-6 overflow-y-auto scrollbar-thin px-3 py-3">
+        {sections.map((section, i) => (
+          <div key={section.title || `section-${i}`}>
+            {section.title ? (
+              <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
                 {section.title}
               </div>
-              <ul className="space-y-0.5">
-                {section.items.map((item) => (
-                  <li key={item.to}>
-                    <NavLink
-                      to={item.to}
-                      end={item.end}
-                      className={({ isActive }) =>
-                        cn(
-                          "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-sidebar-accent/15 text-white before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-sidebar-accent"
-                            : "text-sidebar-foreground/80 hover:bg-white/5 hover:text-white",
-                        )
-                      }
-                    >
-                      {({ isActive }) => (
-                        <>
-                          <item.icon
-                            className={cn(
-                              "h-4 w-4 shrink-0",
-                              isActive
-                                ? "text-sidebar-accent"
-                                : "text-sidebar-muted group-hover:text-white",
-                            )}
-                          />
-                          <span className="truncate">{item.label}</span>
-                        </>
-                      )}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+            ) : null}
+            <ul className="space-y-0.5">
+              {section.items.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      cn(
+                        "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        isActive
+                          ? "bg-primary/10 text-primary before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-full before:bg-primary"
+                          : "text-sidebar-foreground hover:bg-secondary hover:text-foreground",
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <item.icon
+                          className={cn(
+                            "h-[18px] w-[18px] shrink-0",
+                            isActive ? "text-primary" : "text-sidebar-muted group-hover:text-foreground",
+                          )}
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </nav>
 
-      <div className="border-t border-sidebar-border px-5 py-3 text-2xs text-sidebar-muted">
-        v1 · {me?.tenant_name ?? "Talbotiq"}
+      {/* Quick Actions — pinned bottom-left */}
+      <div className="border-t border-sidebar-border p-3">
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-sidebar-border bg-card px-3 py-2.5 text-sm font-semibold text-foreground shadow-xs transition-colors hover:bg-secondary"
+        >
+          <PlusCircle className="h-4 w-4 text-primary" />
+          Quick Actions
+        </button>
+        <div className="mt-2 truncate px-1 text-[11px] text-sidebar-muted">
+          {me?.tenant_name ?? "Talbotiq"}
+        </div>
       </div>
     </aside>
   );

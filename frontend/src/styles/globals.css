@@ -1,92 +1,93 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * Design tokens — Talbotiq PMS Admin Hub.
- * Skinned to the "Enterprise AI Performance Management" Figma system:
- *   Indigo #5B5BD6 primary · near-black #0C0C14 sidebar · Plus Jakarta Sans + DM Mono.
+ * Design tokens — Talbotiq PMS, TalbotIQ design system (mockup north star).
+ *   Brand green #0d5c3a primary · light canvas #eff5f0 · WHITE light sidebar ·
+ *   Inter + JetBrains Mono · white 16px cards · soft shadow ladder.
  * Domain semantic palette (ai/premium/success/warning/info/danger + -subtle) is
- * PRESERVED (token names unchanged) and retuned to harmonise with the indigo system,
- * so every existing component + screen keeps working — only the look changes.
+ * PRESERVED (token names unchanged) and retuned to the green/light system, so every
+ * existing component + screen keeps working — only the look changes. AI tokens are
+ * retuned to a QUIET on-brand green (both the spec + Constitution: AI is invisible).
  * Values are HSL channels (no hsl() wrapper) for Tailwind's hsl(var(--x)).
+ * Semantic TEXT tones are kept dark enough that `text-<tone>` on `bg-<tone>-subtle`
+ * (the Badge pattern, small text) clears WCAG AA 4.5:1 (see test/a11y/contrast.test.ts).
  */
 @layer base {
   :root {
-    --background: 240 20% 96%; /* #F1F1F6 */
-    --foreground: 240 25% 6%; /* #0C0C14 */
+    --background: 138 24% 95%; /* #eff5f0 green-tinted canvas */
+    --foreground: 222 47% 11%; /* #0f172a slate-900 */
 
     --card: 0 0% 100%;
-    --card-foreground: 240 25% 6%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 25% 6%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 240 60% 60%; /* indigo #5B5BD6 */
+    --primary: 154 75% 21%; /* brand green #0d5c3a */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 22% 95%; /* #EDEDF5 */
-    --secondary-foreground: 240 25% 10%;
+    --secondary: 150 24% 96%; /* soft green surface (hover/secondary) */
+    --secondary-foreground: 222 32% 18%;
 
-    --muted: 240 22% 95%;
-    --muted-foreground: 240 10% 47%; /* darkened for 4.5:1 on background (WCAG AA) */
+    --muted: 150 20% 96%;
+    --muted-foreground: 215 18% 40%; /* AA-safe slate on light canvas + card */
 
-    --accent: 240 60% 97%; /* light indigo tint (hover) */
-    --accent-foreground: 240 60% 55%;
+    --accent: 150 50% 96%; /* #f0faf5 light green tint (hover) */
+    --accent-foreground: 154 75% 21%;
 
-    --destructive: 0 84% 60%; /* #EF4444 */
+    --destructive: 0 72% 42%; /* red */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 240 14% 90%; /* hairline neutral */
-    --input: 240 14% 88%;
-    --input-background: 240 18% 96%; /* #F4F4F8 — filled field surface */
-    --switch-background: 240 20% 81%; /* #C5C5D8 */
-    --ring: 240 60% 60%;
+    --border: 140 16% 88%; /* #dde8e0 brand hairline */
+    --input: 140 16% 86%;
+    --input-background: 0 0% 100%; /* white fields (spec) */
+    --switch-background: 150 12% 82%;
+    --ring: 154 75% 21%; /* brand-green focus */
 
-    --radius: 0.75rem;
+    --radius: 0.625rem; /* 10px controls; cards use rounded-2xl = 16px */
 
-    /* Chart palette (recharts) — from the Figma chart-1..5 */
-    --chart-1: 240 60% 60%; /* indigo */
-    --chart-2: 160 100% 36%; /* emerald #00B87C */
-    --chart-3: 38 92% 50%; /* amber #F59E0B */
-    --chart-4: 189 80% 43%; /* cyan #06B6D4 */
-    --chart-5: 258 90% 66%; /* violet #8B5CF6 */
+    /* Chart palette (recharts) — brand green primary + quiet on-brand support */
+    --chart-1: 154 75% 21%; /* brand green */
+    --chart-2: 152 52% 42%; /* lighter green */
+    --chart-3: 32 92% 40%; /* amber accent */
+    --chart-4: 215 22% 52%; /* slate */
+    --chart-5: 154 38% 68%; /* pale green */
 
-    /* App shell — near-black sidebar with indigo accent */
-    --sidebar: 240 25% 6%; /* #0C0C14 */
-    --sidebar-foreground: 240 12% 78%;
-    --sidebar-muted: 240 8% 52%;
-    --sidebar-accent: 240 60% 62%; /* indigo active */
-    --sidebar-border: 240 18% 16%;
+    /* App shell — LIGHT sidebar with brand-green active (mockup) */
+    --sidebar: 0 0% 100%; /* white */
+    --sidebar-foreground: 222 30% 22%;
+    --sidebar-muted: 215 16% 42%;
+    --sidebar-accent: 154 75% 21%; /* brand green active */
+    --sidebar-border: 140 16% 90%;
 
-    /* Domain semantic palette (names kept; retuned to the indigo system).
-       Tone L darkened so `text-<tone>` on `bg-<tone>-subtle` (the Badge pattern)
-       clears 4.5:1 AA; white-on-solid `bg-<tone>` usages only gain contrast. */
-    --success: 160 95% 25%; /* emerald (AA: 4.8:1 on success-subtle) */
+    /* Domain semantic palette (names kept; retuned green/light, AA-safe text tones). */
+    --success: 142 70% 26%; /* green-700 family */
     --success-foreground: 0 0% 100%;
-    --success-subtle: 160 60% 94%;
+    --success-subtle: 142 55% 95%;
 
-    --warning: 32 92% 33%; /* amber (AA: 4.8:1 on warning-subtle) */
+    --warning: 32 92% 31%; /* amber #b45309 family */
     --warning-foreground: 0 0% 100%;
-    --warning-subtle: 38 92% 93%;
+    --warning-subtle: 38 92% 92%;
 
-    --danger: 0 84% 45%; /* red (AA: 4.8:1 on danger-subtle) */
+    --danger: 0 72% 42%; /* red */
     --danger-foreground: 0 0% 100%;
-    --danger-subtle: 0 86% 96%;
+    --danger-subtle: 0 78% 96%;
 
-    --info: 189 80% 30%; /* cyan (AA: 4.7:1 on info-subtle) */
+    --info: 221 75% 42%; /* blue #2563eb family */
     --info-foreground: 0 0% 100%;
-    --info-subtle: 189 70% 94%;
+    --info-subtle: 221 70% 94%;
 
-    --ai: 258 90% 60%; /* violet — AI states (AA: 4.9:1 on ai-subtle) */
+    --ai: 154 58% 26%; /* QUIET on-brand green (was loud violet) */
     --ai-foreground: 0 0% 100%;
-    --ai-subtle: 258 90% 96%;
+    --ai-subtle: 152 45% 93%;
 
-    --premium: 38 92% 31%; /* gold/amber — premium-locked (AA: 4.7:1 on premium-subtle) */
+    --premium: 32 92% 31%; /* amber accent (#d97706 family) */
     --premium-foreground: 0 0% 100%;
-    --premium-subtle: 42 92% 93%;
+    --premium-subtle: 38 92% 92%;
   }
 
   * {
@@ -146,7 +147,7 @@
     height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(240 12% 80%);
+    background-color: hsl(150 10% 80%);
     border-radius: 9999px;
   }
   .scrollbar-thin::-webkit-scrollbar-track {

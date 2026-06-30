@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChatProvider } from "@/features/chat/ChatPanel";
@@ -6,11 +7,12 @@ import { CommandPalette } from "@/features/command/CommandPalette";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
-/** The authenticated app shell: dark sidebar + topbar + scrollable content.
- * A render error in any screen is caught by the boundary (the shell stays
- * usable); navigating to a new route clears it. */
+/** The authenticated app shell: light sidebar + topbar + scrollable content.
+ * The topbar's menu button collapses the sidebar. A render error in any screen is
+ * caught by the boundary (the shell stays usable); navigating clears it. */
 export function AppLayout() {
   const location = useLocation();
+  const [navOpen, setNavOpen] = useState(true);
   return (
     <TooltipProvider delayDuration={200}>
       <ChatProvider>
@@ -23,15 +25,15 @@ export function AppLayout() {
         </a>
         <CommandPalette />
         <div className="flex h-screen overflow-hidden bg-background">
-          <Sidebar />
+          {navOpen && <Sidebar />}
           <div className="flex min-w-0 flex-1 flex-col">
-            <Topbar />
+            <Topbar onToggleNav={() => setNavOpen((v) => !v)} />
             <main
               id="main-content"
               tabIndex={-1}
               className="flex-1 overflow-y-auto scrollbar-thin focus:outline-none"
             >
-              <div className="mx-auto w-full max-w-[1400px] px-6 py-6">
+              <div className="mx-auto w-full max-w-[1440px] px-6 py-8">
                 <ErrorBoundary resetKey={location.pathname}>
                   <Outlet />
                 </ErrorBoundary>

@@ -1,10 +1,19 @@
 import * as React from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { mapApiError } from "@shared/errors";
 
 /** Shared mobile UI primitives — the SAME brand tokens as web, as NativeWind classes.
  *  Keeps the screens DRY + consistent (card surfaces, loading / error / empty states,
  *  pills, buttons). Read-only presentational helpers; no data logic here. */
+
+/** A real icon (Feather — the lucide-equivalent the web uses) instead of emoji.
+ *  Defaults to the muted slate token; pass a brand hex for emphasis. */
+export type IconName = React.ComponentProps<typeof Feather>["name"];
+export function Icon({ name, size = 18, color = "#64748b" }: { name: IconName; size?: number; color?: string }) {
+  return <Feather name={name} size={size} color={color} />;
+}
+export const ICON = { primary: "#0d5c3a", muted: "#64748b", danger: "#dc2626", success: "#16a34a", white: "#FFFFFF" } as const;
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <View className={`rounded-xl border border-border bg-card p-4 ${className}`}>{children}</View>;

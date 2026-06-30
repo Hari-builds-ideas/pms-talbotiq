@@ -3,7 +3,7 @@ import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "re
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orgApi, recognitionApi } from "@shared/api/endpoints";
 import type { PersonRef, RecognitionCard as Card_, RecognitionVisibility } from "@shared/types";
-import { Badge, Button, Card, EmptyView, ErrorView, Loading } from "@/components/ui";
+import { Badge, Button, Card, EmptyView, ErrorView, Icon, Loading } from "@/components/ui";
 
 const EMOJI = ["👏", "❤️", "🎉"];
 
@@ -65,7 +65,7 @@ function GiveRecognition() {
   });
 
   if (!open) {
-    return <Button title="＋ Give recognition" variant="outline" onPress={() => setOpen(true)} />;
+    return <Button title="Give recognition" variant="outline" onPress={() => setOpen(true)} />;
   }
 
   const canSend = recipient && value && message.trim().length > 0;
@@ -73,7 +73,7 @@ function GiveRecognition() {
     <Card>
       <View className="flex-row items-center justify-between">
         <Text className="text-base font-semibold text-foreground">Give recognition</Text>
-        <Pressable onPress={() => setOpen(false)}><Text className="text-muted-foreground">✕</Text></Pressable>
+        <Pressable onPress={() => setOpen(false)} hitSlop={8}><Icon name="x" size={20} /></Pressable>
       </View>
 
       {/* Recipient — resolved only within what you can see (server-scoped search). */}
@@ -150,9 +150,11 @@ function KudoCard({ card }: { card: Card_ }) {
   return (
     <Card>
       <View className="flex-row items-center justify-between gap-2">
-        <Text className="flex-1 text-sm font-medium text-foreground">
-          {card.sender.display} → {card.recipient.display}
-        </Text>
+        <View className="flex-1 flex-row items-center gap-1.5">
+          <Text className="text-sm font-medium text-foreground" numberOfLines={1}>{card.sender.display}</Text>
+          <Icon name="arrow-right" size={13} />
+          <Text className="text-sm font-medium text-foreground" numberOfLines={1}>{card.recipient.display}</Text>
+        </View>
         <Badge tone="primary">{card.value}</Badge>
       </View>
       <Text className="mt-1.5 text-sm text-foreground">{card.message}</Text>

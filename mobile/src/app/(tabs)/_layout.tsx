@@ -1,11 +1,15 @@
 import * as React from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { Redirect, Tabs } from "expo-router";
+import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/lib/auth";
 
-const tabIcon = (emoji: string) => {
-  function TabIcon({ focused }: { focused: boolean }) {
-    return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{emoji}</Text>;
+type FeatherName = React.ComponentProps<typeof Feather>["name"];
+/** Real (Feather) tab icons — the lucide-equivalent the web uses; no emoji. The
+ *  navigator passes the active/inactive tint as `color`. */
+const tabIcon = (name: FeatherName) => {
+  function TabIcon({ color, size }: { color: string; size: number }) {
+    return <Feather name={name} size={size ?? 22} color={color} />;
   }
   return TabIcon;
 };
@@ -30,11 +34,11 @@ export default function TabsLayout() {
         headerShown: true,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Dashboard", tabBarIcon: tabIcon("🏠") }} />
-      <Tabs.Screen name="goals" options={{ title: "Goals", tabBarIcon: tabIcon("🎯") }} />
-      <Tabs.Screen name="feedback" options={{ title: "Feedback", tabBarIcon: tabIcon("💬") }} />
-      <Tabs.Screen name="career" options={{ title: "Career", tabBarIcon: tabIcon("🚀") }} />
-      <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: tabIcon("☰") }} />
+      <Tabs.Screen name="index" options={{ title: "Dashboard", tabBarIcon: tabIcon("home") }} />
+      <Tabs.Screen name="goals" options={{ title: "Goals", tabBarIcon: tabIcon("target") }} />
+      <Tabs.Screen name="feedback" options={{ title: "Feedback", tabBarIcon: tabIcon("message-square") }} />
+      <Tabs.Screen name="career" options={{ title: "Career", tabBarIcon: tabIcon("trending-up") }} />
+      <Tabs.Screen name="more" options={{ title: "More", tabBarIcon: tabIcon("menu") }} />
     </Tabs>
   );
 }

@@ -1,10 +1,11 @@
 import * as React from "react";
-import { Check, Plus, RefreshCw, Sparkles, Target, Trash2 } from "lucide-react";
+import { Check, Info, Plus, RefreshCw, Sparkles, Target, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Field } from "@/components/Field";
 import {
   Dialog,
@@ -40,6 +41,40 @@ import { notifyError, notifySuccess } from "@/lib/toast";
 import { activeWeightTotal, useCycleScores, useGoalMutations, useGoals } from "./useGoals";
 import type { CycleScore, Goal } from "@/lib/types";
 
+// Plain-language explanations (copy only — no behavior/data change).
+const T_SCORE_HINT =
+  "A T-score is a statistical score centered on 50 — 50 is the cohort average. It's not a percentage or a 1–5 rating; higher is better.";
+const WEIGHT_HINT =
+  "Weight is how much an item counts toward the score. A person's active goal weights must total 100.";
+const RECOMPUTE_HINT =
+  "Turns the latest recorded KPI actuals into each person's performance score (T-score).";
+
+/** Small info affordance: an (i) icon with a one-line plain-language tooltip. */
+function InfoHint({ label, text }: { label: string; text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" aria-label={label} className="inline-flex text-muted-foreground hover:text-foreground">
+          <Info className="h-3 w-3" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[16rem] text-xs leading-relaxed">{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The person's active goal-weight state, as plain guidance (not a glitch). */
+function WeightSummary({ total }: { total: number }) {
+  const ok = Math.abs(total - 100) < 0.005;
+  if (ok) return <Badge variant="success">Goal weights 100 / 100</Badge>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <Badge variant="warning">Goal weights {total.toFixed(0)} / 100</Badge>
+      <span className="text-2xs text-warning">should total 100 — adjust this person's goal weights</span>
+    </span>
+  );
+}
+
 export function GoalsPage() {
   // Managers can't list cycles (HRBP+ only), so resolve the working cycle from
   // the active cycle when available, else from the scope's own goals.
@@ -64,23 +99,28 @@ export function GoalsPage() {
       <PageHeader
         eyebrow="Performance"
         title="Goals & OKRs"
-        description="Weighted goals with KPI attainment. Weights must sum to exactly 100. Record actuals, recompute scores, and approve."
+        description="Weighted goals and KPIs for the cycle, rolled up into each person's performance score."
         actions={
           atLeast("MANAGER") ? (
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  m.recompute
-                    .mutateAsync(cycle)
-                    .then(() => notifySuccess("Scores recomputed"))
-                    .catch(notifyError)
-                }
-                loading={m.recompute.isPending}
-                disabled={!cycle}
-              >
-                <RefreshCw className="h-4 w-4" /> Recompute scores
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      m.recompute
+                        .mutateAsync(cycle)
+                        .then(() => notifySuccess("Scores recomputed"))
+                        .catch(notifyError)
+                    }
+                    loading={m.recompute.isPending}
+                    disabled={!cycle}
+                  >
+                    <RefreshCw className="h-4 w-4" /> Recompute scores
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[18rem] text-xs leading-relaxed">{RECOMPUTE_HINT}</TooltipContent>
+              </Tooltip>
               <Button onClick={() => setCreateOpen(true)} disabled={!cycle}>
                 <Plus className="h-4 w-4" /> New goal
               </Button>
@@ -88,6 +128,16 @@ export function GoalsPage() {
           ) : undefined
         }
       />
+
+      {/* Plain-language model explainer (copy only — no behavior/data change). */}
+      <div className="mb-4 rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
+        Each person commits to <span className="font-medium text-foreground">weighted goals</span> for the
+        cycle; each goal has measurable <span className="font-medium text-foreground">KPIs</span> with
+        targets. As actuals are recorded,{" "}
+        <span className="font-medium text-foreground">Recompute scores</span> rolls them into one
+        performance score — a <span className="font-medium text-foreground">T-score</span> (centered on 50,
+        where 50 is the cohort average).
+      </div>
 
       <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium">Cycle:</span>
@@ -108,15 +158,23 @@ export function GoalsPage() {
             const score = scoreByEmp.get(emp);
             return (
               <div key={emp} className="space-y-3">
-                <div className="flex flex-wrap items-center gap-3">
+                {/* PERSON — the top level: who the goals belong to + their score. */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border pb-2">
                   <PersonName id={emp} withAvatar className="text-sm font-semibold" />
                   {score && <StatusBadge status={score.risk_status} dot />}
-                  {score && <span className="text-2xs text-muted-foreground">T-score {formatScore(score.t_score)}</span>}
-                  <Badge variant={Math.abs(total - 100) < 0.005 ? "success" : "warning"}>
-                    Active goal weight: {total.toFixed(2)} / 100
-                  </Badge>
+                  {score && (
+                    <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
+                      T-score <span className="font-medium tabular-nums text-foreground">{formatScore(score.t_score)}</span>
+                      <InfoHint label="What is a T-score?" text={T_SCORE_HINT} />
+                    </span>
+                  )}
+                  <span className="inline-flex flex-wrap items-center gap-1">
+                    <WeightSummary total={total} />
+                    <InfoHint label="What is weight?" text={WEIGHT_HINT} />
+                  </span>
                 </div>
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* GOALS — belong to the person above (indented under them). */}
+                <div className="grid grid-cols-1 gap-4 border-l-2 border-border/60 pl-3 lg:grid-cols-2 lg:pl-4">
                   {empGoals.map((g) => (
                     <GoalCard key={g.id} goal={g} mutations={m} />
                   ))}
@@ -151,16 +209,20 @@ function GoalCard({ goal, mutations }: { goal: Goal; mutations: ReturnType<typeo
             {goal.objective && <p className="text-2xs text-muted-foreground">{goal.objective}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Badge variant="muted">weight {goal.weight}</Badge>
+            <Badge variant="muted">Goal weight {goal.weight}</Badge>
             <StatusBadge status={goal.status} />
           </div>
         </div>
 
-        <ul className="space-y-2">
-          {goal.kpis.map((k) => (
-            <KpiRow key={k.id} kpi={k} mutation={mutations.recordActual} canRecord={isOwn} />
-          ))}
-        </ul>
+        {/* KPIs — belong to this goal (measurable targets that roll up to the score). */}
+        <div className="space-y-1.5">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">KPIs</p>
+          <ul className="space-y-2">
+            {goal.kpis.map((k) => (
+              <KpiRow key={k.id} kpi={k} mutation={mutations.recordActual} canRecord={isOwn} />
+            ))}
+          </ul>
+        </div>
 
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-2xs text-muted-foreground">
@@ -197,44 +259,57 @@ function KpiRow({
   canRecord: boolean;
 }) {
   const [value, setValue] = React.useState("");
+  const notRecorded =
+    kpi.latest_actual === null || kpi.latest_actual === undefined || kpi.latest_actual === "";
   return (
-    <li className="flex items-center justify-between gap-3 rounded-md bg-secondary/40 px-2.5 py-1.5">
-      <div className="min-w-0 flex-1 space-y-1">
-        <div>
+    <li className="rounded-md bg-secondary/40 px-2.5 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <span className="text-sm font-medium">{kpi.name}</span>
-          <span className="ml-2 text-2xs text-muted-foreground">
-            weight {kpi.weight} · target {formatScore(kpi.target_value)} {kpi.unit} · {humanize(kpi.direction)}
-          </span>
+          {/* The three things a KPI carries: weight · target · actual. */}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-muted-foreground">
+            <span>weight <span className="tabular-nums text-foreground">{kpi.weight}</span></span>
+            <span>target <span className="tabular-nums text-foreground">{formatScore(kpi.target_value)}</span> {kpi.unit}</span>
+            <span>{humanize(kpi.direction)} is better</span>
+            <span>
+              actual{" "}
+              {notRecorded ? (
+                <span className="italic">not recorded yet</span>
+              ) : (
+                <span className="tabular-nums text-foreground">{formatScore(kpi.latest_actual)}</span>
+              )}
+            </span>
+          </div>
         </div>
-        {/* Attainment: latest actual vs target, direction-aware (BUILD_5 5.2). */}
-        <AttainmentBar actual={kpi.latest_actual} target={kpi.target_value} direction={kpi.direction} className="max-w-xs" />
+        {/* Actuals are own-only (update_own_actuals) — managers don't record for reports. */}
+        {canRecord && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="actual"
+              className="h-7 w-20 text-xs"
+              inputMode="decimal"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!value.trim()}
+              loading={mutation.isPending}
+              onClick={() =>
+                mutation
+                  .mutateAsync({ kpiId: kpi.id, value: value.trim() })
+                  .then(() => { setValue(""); notifySuccess("Actual recorded"); })
+                  .catch(notifyError)
+              }
+            >
+              Record
+            </Button>
+          </div>
+        )}
       </div>
-      {/* Actuals are own-only (update_own_actuals) — managers don't record for reports. */}
-      {canRecord && (
-        <div className="flex shrink-0 items-center gap-1.5">
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="actual"
-            className="h-7 w-20 text-xs"
-            inputMode="decimal"
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={!value.trim()}
-            loading={mutation.isPending}
-            onClick={() =>
-              mutation
-                .mutateAsync({ kpiId: kpi.id, value: value.trim() })
-                .then(() => { setValue(""); notifySuccess("Actual recorded"); })
-                .catch(notifyError)
-            }
-          >
-            Record
-          </Button>
-        </div>
-      )}
+      {/* Attainment: latest actual vs target, direction-aware (BUILD_5 5.2). */}
+      <AttainmentBar actual={kpi.latest_actual} target={kpi.target_value} direction={kpi.direction} className="mt-2 max-w-xs" />
     </li>
   );
 }

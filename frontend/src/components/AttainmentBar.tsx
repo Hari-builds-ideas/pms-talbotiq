@@ -22,7 +22,7 @@ export function AttainmentBar({
     return (
       <div className={cn("flex items-center gap-2 text-2xs text-muted-foreground", className)}>
         <div className="h-1.5 flex-1 rounded-full bg-secondary" />
-        <span>not recorded</span>
+        <span>not recorded yet</span>
       </div>
     );
   }

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { checkinsApi } from "@shared/api/endpoints";
 import type { CheckIn } from "@shared/types";
@@ -9,12 +9,13 @@ import { Badge, Button, Card, ErrorView, Loading, SectionTitle } from "@/compone
  *  priorities (edit in place), plus earlier weeks with the manager's response. Same
  *  upsert endpoint the web uses; scope is server-side (you see only your own). */
 const MOODS = [
-  { v: 1, e: "😞" },
-  { v: 2, e: "😕" },
-  { v: 3, e: "😐" },
-  { v: 4, e: "🙂" },
-  { v: 5, e: "😄" },
+  { v: 1, label: "Tough" },
+  { v: 2, label: "Low" },
+  { v: 3, label: "Okay" },
+  { v: 4, label: "Good" },
+  { v: 5, label: "Great" },
 ];
+const moodLabel = (v: number) => MOODS.find((m) => m.v === v)?.label ?? "—";
 
 function mondayOf(d = new Date()): string {
   const diff = (d.getDay() + 6) % 7; // days since Monday
@@ -75,19 +76,26 @@ export default function Checkins() {
       refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#0d5c3a" />}
     >
       <Card>
-        <Text className="text-sm font-semibold text-foreground">This week ({week})</Text>
-        <Text className="mt-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">How was your week?</Text>
-        <View className="mt-1 flex-row gap-2">
-          {MOODS.map((x) => (
-            <Text
-              key={x.v}
-              onPress={() => setMood(x.v)}
-              className={`rounded-md border px-2.5 py-1.5 text-lg ${mood === x.v ? "border-primary bg-primary/10" : "border-border"}`}
-            >
-              {x.e}
-            </Text>
-          ))}
+        <Text className="text-base font-semibold text-foreground">This week</Text>
+        <Text className="text-2xs text-muted-foreground">Week of {week} · a quick pulse your manager sees and can respond to.</Text>
+
+        <Text className="mt-3 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">How was your week?</Text>
+        <View className="mt-1.5 flex-row gap-2">
+          {MOODS.map((x) => {
+            const on = mood === x.v;
+            return (
+              <Pressable
+                key={x.v}
+                onPress={() => setMood(x.v)}
+                className={`flex-1 items-center rounded-lg border py-2 ${on ? "border-primary bg-primary/10" : "border-border bg-card"}`}
+              >
+                <Text className={`text-base font-bold ${on ? "text-primary" : "text-foreground"}`}>{x.v}</Text>
+                <Text className={`text-2xs ${on ? "text-primary" : "text-muted-foreground"}`}>{x.label}</Text>
+              </Pressable>
+            );
+          })}
         </View>
+
         <Field label="Wins" value={wins} onChange={setWins} placeholder="What went well?" />
         <Field label="Blockers" value={blockers} onChange={setBlockers} placeholder="What's in your way?" />
         <Field label="Learning" value={learning} onChange={setLearning} placeholder="Anything you learned?" />
@@ -129,12 +137,11 @@ function Field({ label, value, onChange, placeholder }: { label: string; value: 
 }
 
 function PastCard({ c }: { c: CheckIn }) {
-  const mood = MOODS.find((m) => m.v === c.mood)?.e ?? "·";
   return (
     <Card>
       <View className="flex-row items-center justify-between">
         <Text className="text-sm font-medium text-foreground">Week of {c.week_of}</Text>
-        <Text className="text-lg">{mood}</Text>
+        <Text className="text-sm font-semibold text-muted-foreground tabular-nums">{c.mood} · {moodLabel(c.mood)}</Text>
       </View>
       {c.wins ? <Text className="mt-1 text-sm text-foreground"><Text className="text-muted-foreground">Wins: </Text>{c.wins}</Text> : null}
       {c.blockers ? <Text className="mt-0.5 text-sm text-foreground"><Text className="text-muted-foreground">Blockers: </Text>{c.blockers}</Text> : null}

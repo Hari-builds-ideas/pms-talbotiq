@@ -5,7 +5,7 @@ import { checkinsApi } from "@shared/api/endpoints";
 import type { CheckIn } from "@shared/types";
 import { Button, Card, EmptyView, ErrorView, Loading } from "@/components/ui";
 
-const MOOD: Record<number, string> = { 1: "😞", 2: "😕", 3: "😐", 4: "🙂", 5: "😄" };
+const MOOD: Record<number, string> = { 1: "Tough", 2: "Low", 3: "Okay", 4: "Good", 5: "Great" };
 
 /** Team check-ins (manager) — read your reports' weekly check-ins and respond
  *  (comment + follow-up / add-to-1-on-1) via the same audited endpoint the web uses.
@@ -48,7 +48,7 @@ function TeamCard({ c }: { c: CheckIn }) {
     <Card>
       <View className="flex-row items-center justify-between">
         <Text className="text-sm font-semibold text-foreground">{c.author.display}</Text>
-        <Text className="text-2xs text-muted-foreground">Week of {c.week_of} · {MOOD[c.mood] ?? "·"}</Text>
+        <Text className="text-2xs text-muted-foreground">Week of {c.week_of} · {c.mood} · {MOOD[c.mood] ?? "—"}</Text>
       </View>
       {c.wins ? <Text className="mt-1 text-sm text-foreground"><Text className="text-muted-foreground">Wins: </Text>{c.wins}</Text> : null}
       {c.blockers ? <Text className="mt-0.5 text-sm text-foreground"><Text className="text-muted-foreground">Blockers: </Text>{c.blockers}</Text> : null}

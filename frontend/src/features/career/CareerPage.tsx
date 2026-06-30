@@ -61,7 +61,7 @@ export function CareerPage() {
   return (
     <div>
       <PageHeader
-        title="Career Development"
+        eyebrow="Talent" title="Career Paths"
         description="Advisory development roadmaps toward a target role — grounded in performance data, never auto-promotion. AI enrichment is human-reviewed; you decide what to act on."
       />
       {canManage ? (

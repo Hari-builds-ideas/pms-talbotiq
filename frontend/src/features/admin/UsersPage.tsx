@@ -173,7 +173,7 @@ export function UsersPage() {
   return (
     <div>
       <PageHeader
-        title="Users & Roles"
+        eyebrow="Settings" title="Users & Roles"
         description="Manage tenant users, roles and reporting lines. Names fall back to email until a display name is set."
         actions={
           <Button onClick={() => setCreateOpen(true)}>

@@ -35,7 +35,7 @@ export function JdListPage() {
   return (
     <div>
       <PageHeader
-        title="JD Library"
+        eyebrow="Talent" title="JD Library"
         description="Versioned job descriptions with a human-gated lifecycle. Non-managers see published JDs only."
       />
       <Tabs defaultValue="library">

@@ -87,7 +87,7 @@ export function ReviewsListPage() {
   return (
     <div>
       <PageHeader
-        title="Reviews"
+        eyebrow="Performance" title="Reviews"
         description="Performance reviews for your scope. Every AI draft passes a human approval gate before it's finalized."
         actions={
           atLeast("MANAGER") ? (

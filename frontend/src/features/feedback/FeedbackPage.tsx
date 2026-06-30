@@ -55,7 +55,7 @@ export function FeedbackPage() {
   return (
     <div>
       <PageHeader
-        title="360 Feedback"
+        eyebrow="Performance" title="360 Feedback"
         description="Request, give and summarise multi-rater feedback. Responses are anonymised and threshold-gated; every AI summary passes a human gate before release."
       />
       <Tabs defaultValue="inbox">

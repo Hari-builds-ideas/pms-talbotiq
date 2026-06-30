@@ -15,6 +15,7 @@ import { SuccessionPage } from "@/features/succession/SuccessionPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { JdRoutes } from "@/features/jd/JdRoutes";
 import { CareerPage } from "@/features/career/CareerPage";
+import { ProfilePage } from "@/features/people/ProfilePage";
 import { RecognitionPage } from "@/features/recognition/RecognitionPage";
 import { CheckInsPage } from "@/features/checkins/CheckInsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
@@ -79,6 +80,10 @@ export function AppRouter() {
               the dashboard advertises this tile to employees, so it must not 403
               the person who clicks it (BUG 3). Scope is enforced server-side. */}
           <Route path="career/*" element={<CareerPage />} />
+          {/* Employee profile — read-only growth narrative composed from existing
+              scope-bound endpoints; no RoleGate (each section's endpoint enforces
+              scope, 404 → friendly empty state, same D31 pattern as career/goals). */}
+          <Route path="people/:id" element={<ProfilePage />} />
           {/* Recognition (RW_BUILD_2) — everyday surface for ALL roles; the feed's
               row visibility is enforced server-side, so no RoleGate. */}
           <Route path="recognition/*" element={<RecognitionPage />} />

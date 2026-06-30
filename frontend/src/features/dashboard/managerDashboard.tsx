@@ -217,7 +217,7 @@ export function ManagerDashboard() {
                     return (
                       <tr key={s.employee} className="border-b border-border last:border-0 hover:bg-secondary/40">
                         <td className="py-2.5 pr-3">
-                          <Link to={`/org?person=${s.employee}`} className="hover:underline">
+                          <Link to={`/people/${s.employee}`} className="hover:underline">
                             <PersonName id={s.employee} withAvatar className="font-medium" />
                           </Link>
                         </td>

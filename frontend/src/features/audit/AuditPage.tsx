@@ -109,7 +109,7 @@ export function AuditPage() {
   return (
     <div>
       <PageHeader
-        title="Audit Console"
+        eyebrow="Insights" title="Audit Console"
         description="A read-only, immutable record of every action in the tenant. Filter and review — nothing here can be edited or deleted."
       />
 

@@ -51,7 +51,7 @@ export function RecognitionPage() {
   return (
     <div>
       <PageHeader
-        title="Recognition"
+        eyebrow="Performance" title="Recognition"
         description="Celebrate great work. Recognitions are shared at the visibility you choose — private, manager-only, team, or company-wide."
         actions={
           <Button onClick={() => setGiveOpen(true)}>

@@ -32,7 +32,7 @@ export function IntegrationsPage() {
   return (
     <div>
       <PageHeader
-        title="Integrations"
+        eyebrow="Settings" title="Integrations"
         description="Connect Jira and Slack. Secrets are managed out-of-band — you provide the NAME of an environment variable, never the token itself."
       />
 

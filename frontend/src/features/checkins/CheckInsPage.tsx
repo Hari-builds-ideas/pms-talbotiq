@@ -40,7 +40,7 @@ export function CheckInsPage() {
   return (
     <div>
       <PageHeader
-        title="Check-ins"
+        eyebrow="Performance" title="Check-ins"
         description="A quick weekly pulse — your mood, wins, blockers and priorities. Your manager reads and responds."
       />
       <Tabs defaultValue="mine">

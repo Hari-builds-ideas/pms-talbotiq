@@ -70,7 +70,7 @@ export function OrgPage() {
   return (
     <div>
       <PageHeader
-        title="Org Chart"
+        eyebrow="Talent" title="Org Chart"
         description="Your reporting tree with headcount and vacancy rollups. Open a person for their profile and reporting line."
       />
 

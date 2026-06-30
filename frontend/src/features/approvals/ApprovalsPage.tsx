@@ -33,7 +33,7 @@ export function ApprovalsPage() {
   return (
     <div>
       <PageHeader
-        title="Approvals"
+        eyebrow="Performance" title="Approvals"
         description="Act on steps assigned to you, track routes, and (HRBP+) design approval workflows."
       />
 

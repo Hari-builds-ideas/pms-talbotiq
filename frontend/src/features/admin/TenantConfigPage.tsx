@@ -70,7 +70,7 @@ export function TenantConfigPage() {
   return (
     <div>
       <PageHeader
-        title="Tenant Config"
+        eyebrow="Settings" title="Tenant Config"
         description="Tenant-level settings as a free-form JSON object (locale, fiscal year, feature toggles…)."
       />
 

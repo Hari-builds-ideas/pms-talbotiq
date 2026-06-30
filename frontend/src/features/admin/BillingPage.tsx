@@ -49,7 +49,7 @@ export function BillingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Entitlements"
+        eyebrow="Settings" title="Entitlements"
         description="Your plan, seats and feature packs. Upgrading to Full AI unlocks every premium capability instantly — seats are unchanged."
         actions={
           !isFullAi ? (
@@ -333,7 +333,7 @@ function UpgradeModal({
 function ErrorWrap({ error, retry }: { error: unknown; retry: () => void }) {
   return (
     <div className="space-y-6">
-      <PageHeader title="Entitlements" />
+      <PageHeader eyebrow="Settings" title="Entitlements" />
       <ErrorState error={error} onRetry={retry} />
     </div>
   );

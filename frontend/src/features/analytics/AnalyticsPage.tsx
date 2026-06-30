@@ -39,7 +39,7 @@ export function AnalyticsPage() {
   return (
     <div>
       <PageHeader
-        title="Analytics"
+        eyebrow="Insights" title="Analytics"
         description="Performance trends, department cohorts and the calibration grid. Small cohorts are aggregated for privacy."
       />
       <Tabs defaultValue="individual">

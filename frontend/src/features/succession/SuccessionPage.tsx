@@ -51,7 +51,7 @@ export function SuccessionPage() {
   return (
     <div>
       <PageHeader
-        title="Succession"
+        eyebrow="Talent" title="Succession"
         description="Critical-role coverage, the talent grid and successor bench. Every plan is a draft until a human publishes it."
         actions={
           canManageRoles ? (

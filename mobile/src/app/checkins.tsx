@@ -72,7 +72,7 @@ export default function Checkins() {
       className="flex-1 bg-background"
       contentContainerClassName="p-5 gap-4"
       keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#5B5BD6" />}
+      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#0d5c3a" />}
     >
       <Card>
         <Text className="text-sm font-semibold text-foreground">This week ({week})</Text>

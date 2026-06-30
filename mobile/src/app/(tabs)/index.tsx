@@ -40,7 +40,7 @@ export default function Dashboard() {
     <ScrollView
       className="flex-1 bg-background"
       contentContainerClassName="p-5 gap-4"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor="#5B5BD6" />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor="#0d5c3a" />}
     >
       <View>
         <Text className="text-2xl font-bold text-foreground">Good to see you, {first}</Text>

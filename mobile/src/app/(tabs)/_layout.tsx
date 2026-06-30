@@ -16,7 +16,7 @@ export default function TabsLayout() {
   if (status === "loading") {
     return (
       <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator color="#5B5BD6" />
+        <ActivityIndicator color="#0d5c3a" />
       </View>
     );
   }
@@ -25,8 +25,8 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#5B5BD6",
-        tabBarInactiveTintColor: "#71718A",
+        tabBarActiveTintColor: "#0d5c3a",
+        tabBarInactiveTintColor: "#64748b",
         headerShown: true,
       }}
     >

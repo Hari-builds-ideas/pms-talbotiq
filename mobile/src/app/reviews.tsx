@@ -30,7 +30,7 @@ export default function Reviews() {
     <ScrollView
       className="flex-1 bg-background"
       contentContainerClassName="p-5 gap-4"
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#5B5BD6" />}
+      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#0d5c3a" />}
     >
       {reviews.length === 0 ? (
         <EmptyView title="No reviews yet" description="Your performance reviews will appear here." />

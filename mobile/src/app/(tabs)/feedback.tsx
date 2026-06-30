@@ -28,7 +28,7 @@ export default function Feedback() {
     <ScrollView
       className="flex-1 bg-background"
       contentContainerClassName="p-5 gap-4"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor="#5B5BD6" />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor="#0d5c3a" />}
     >
       <SectionTitle>Feedback requested from you</SectionTitle>
       {requests.isError ? (

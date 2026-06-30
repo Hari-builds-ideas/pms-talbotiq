@@ -137,7 +137,7 @@ function Field({
             onChangeText={onChange}
             onBlur={onBlur}
             className="rounded-lg border border-border bg-card px-3 py-3 text-base text-foreground"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor="#94a3b8"
             {...input}
           />
           {fieldState.error ? <Text className="text-xs text-danger">{fieldState.error.message}</Text> : null}

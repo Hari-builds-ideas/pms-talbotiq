@@ -81,7 +81,7 @@ export default function More() {
         disabled={busy}
         className="items-center rounded-lg border border-danger/30 bg-danger-subtle py-3.5"
       >
-        {busy ? <ActivityIndicator color="#EF4444" /> : <Text className="text-base font-semibold text-danger">Sign out</Text>}
+        {busy ? <ActivityIndicator color="#dc2626" /> : <Text className="text-base font-semibold text-danger">Sign out</Text>}
       </Pressable>
 
       <Text className="text-center text-2xs text-muted-foreground">Backend: {apiBaseUrl}</Text>

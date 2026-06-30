@@ -38,7 +38,7 @@ const BADGE_TONE: Record<BadgeTone, { bg: string; fg: string }> = {
 export function Loading({ label }: { label?: string }) {
   return (
     <View className="flex-1 items-center justify-center gap-3 p-8">
-      <ActivityIndicator color="#5B5BD6" />
+      <ActivityIndicator color="#0d5c3a" />
       {label ? <Text className="text-sm text-muted-foreground">{label}</Text> : null}
     </View>
   );
@@ -100,6 +100,6 @@ export function Button({
 
 const BUTTON_VARIANT: Record<ButtonVariant, { bg: string; fg: string; spinner: string }> = {
   primary: { bg: "bg-primary", fg: "text-primary-foreground", spinner: "#FFFFFF" },
-  outline: { bg: "border border-border bg-card", fg: "text-foreground", spinner: "#5B5BD6" },
-  danger: { bg: "border border-danger/30 bg-danger-subtle", fg: "text-danger", spinner: "#EF4444" },
+  outline: { bg: "border border-border bg-card", fg: "text-foreground", spinner: "#0d5c3a" },
+  danger: { bg: "border border-danger/30 bg-danger-subtle", fg: "text-danger", spinner: "#dc2626" },
 };

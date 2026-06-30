@@ -21,7 +21,7 @@ export default function Approvals() {
       className="flex-1 bg-background"
       contentContainerClassName="p-5 gap-4"
       keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#5B5BD6" />}
+      refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor="#0d5c3a" />}
     >
       {items.length === 0 ? (
         <EmptyView title="Inbox zero" description="No approvals are awaiting your decision." />

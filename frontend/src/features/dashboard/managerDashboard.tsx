@@ -74,14 +74,21 @@ export function ManagerDashboard() {
   const atRisk = hasFeature("agent2") ? (nudgesQ.data ?? []).filter((n) => n.level !== "SUPPRESSED").length : null;
   const pendingReqs = (reqsQ.data ?? []).filter((r) => r.status === "PENDING").length;
 
-  // Per-employee goal achieved/total (real; achieved vs in-flight).
-  const goalsByEmp = new Map<string, { achieved: number; total: number }>();
+  // Per-employee KPI attainment (REAL recorded progress): how many of their KPIs
+  // meet target (direction-aware) over total KPIs. Reflects recorded actuals, not
+  // goal status — so it shows real numbers, never 0/N for people with progress.
+  const kpiByEmp = new Map<string, { onTarget: number; total: number }>();
   for (const g of allGoals) {
-    if (!["ACTIVE", "ACHIEVED", "MISSED"].includes(g.status)) continue;
-    const e = goalsByEmp.get(g.employee) ?? { achieved: 0, total: 0 };
-    e.total += 1;
-    if (g.status === "ACHIEVED") e.achieved += 1;
-    goalsByEmp.set(g.employee, e);
+    for (const k of g.kpis ?? []) {
+      const e = kpiByEmp.get(g.employee) ?? { onTarget: 0, total: 0 };
+      e.total += 1;
+      const actual = k.latest_actual == null ? null : Number(k.latest_actual);
+      const target = Number(k.target_value);
+      if (actual != null && (k.direction === "DECREASING" ? actual <= target : actual >= target)) {
+        e.onTarget += 1;
+      }
+      kpiByEmp.set(g.employee, e);
+    }
   }
 
   const bands: DonutBand[] = [
@@ -207,12 +214,12 @@ export function ManagerDashboard() {
                     <th className="pb-2 pr-3 font-semibold">Role</th>
                     <th className="pb-2 pr-3 text-right font-semibold">T-score</th>
                     <th className="pb-2 pr-3 font-semibold">Status</th>
-                    <th className="pb-2 text-right font-semibold">Goals</th>
+                    <th className="pb-2 text-right font-semibold">KPIs on target</th>
                   </tr>
                 </thead>
                 <tbody>
                   {team.map((s) => {
-                    const g = goalsByEmp.get(s.employee);
+                    const kp = kpiByEmp.get(s.employee);
                     const role = roleOf(s.employee);
                     return (
                       <tr key={s.employee} className="border-b border-border last:border-0 hover:bg-secondary/40">
@@ -224,7 +231,7 @@ export function ManagerDashboard() {
                         <td className="py-2.5 pr-3 text-muted-foreground">{role ? ROLE_LABEL[role as Role] : "—"}</td>
                         <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{Number(s.t_score).toFixed(1)}</td>
                         <td className="py-2.5 pr-3"><StatusBadge status={s.risk_status} dot /></td>
-                        <td className="py-2.5 text-right tabular-nums text-muted-foreground">{g ? `${g.achieved}/${g.total}` : "—"}</td>
+                        <td className="py-2.5 text-right tabular-nums text-muted-foreground">{kp ? `${kp.onTarget}/${kp.total}` : "—"}</td>
                       </tr>
                     );
                   })}

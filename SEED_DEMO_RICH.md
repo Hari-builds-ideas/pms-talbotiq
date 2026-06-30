@@ -33,8 +33,11 @@ Demo login (unchanged): any seeded email + **`Passw0rd!demo`**. Primary demo man
   a PENDING request to Ada), 1 draft.
 - **366 weekly check-ins** across the last 4 weeks (many employees) + a manager response.
 - **28 recognitions** across all visibility levels.
-- Pending work for **Ada**: **3 pending approvals** (real approval routes/steps assigned to her),
-  **2 feedback asks**, **10 reports with reviews**, **17 reports** (13 on-track / 4 at-risk scored).
+- A clean **showcase employee — Akhil Menon (`akhil@acme.test`)** reporting to Ada: 100/100 goal
+  weights, recorded actuals → **T-score 65.8, On Track**, weekly check-ins, and recognition.
+- Pending work for **Ada**: **6 pending approvals** (real approval routes/steps assigned to her),
+  **6 stale goals** (drives the stale-goal nudge + "My Tasks"), **2 feedback asks**, reports with
+  reviews, and **18 reports** scored with a believable on-track / at-risk spread.
 - **Succession**: 3 critical roles + bench + a 9-box grid + a PENDING plan. **JD library**: 6 JDs
   (4 published). FULL_AI entitlement (250 seats).
 
@@ -48,9 +51,10 @@ Demo login (unchanged): any seeded email + **`Passw0rd!demo`**. Primary demo man
 ## Ada's dashboard will be full
 
 Logged in as `ada@acme.test`, the manager cockpit has real data in: **Reviews to action**, **At-risk
-reports** (KPI Intelligence nudges — FULL_AI), **Pending approvals** (3), the team performance table
-(17 reports with T-scores), and **feedback asks** (2). The recompose's "Needs you" / Quick-access
-surfaces are populated too.
+reports** (KPI Intelligence nudges — FULL_AI), **Pending approvals** (6), **My Tasks** (review actions +
+a stale-goal nudge), and **feedback asks** (2). The **Team performance** table shows each report's
+T-score, risk band, and **KPIs-on-target** (real recorded attainment — never 0/N), so it never looks
+empty. Open **Akhil Menon** for a clean, strong record.
 
 ## Verification done
 

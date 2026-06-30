@@ -79,6 +79,7 @@ class Command(BaseCommand):
                 people = self._people(tenant)
                 cycle = self._cycle(tenant)
                 self._goals_and_scores(tenant, cycle, people)
+                self._make_some_stale(tenant, cycle, people)
                 self._reviews(tenant, cycle, people)
                 self._recognitions(tenant, people)
                 self._checkins(tenant, people)
@@ -174,13 +175,17 @@ class Command(BaseCommand):
                 employees.append(emp)
                 ei += 1
 
-        managers = [d for d, _ in directors] + [l for l, _ in leads]
         ada = leads[0][0]
+        # A clean, showcase employee reporting to Ada — a good-looking record to open
+        # in the demo (forced high attainment → On Track; check-ins + recognition below).
+        akhil = self._user(tenant, "akhil", "Akhil Menon", "EMPLOYEE", manager=ada, department=leads[0][1])
+        employees.append(akhil)
+        managers = [d for d, _ in directors] + [l for l, _ in leads]
         ada_reports = [e for e in employees if e.manager_id == ada.id]
         return {
             "admin": admin, "hrbps": hrbps, "directors": [d for d, _ in directors],
             "managers": managers, "leads": [l for l, _ in leads], "employees": employees,
-            "ada": ada, "ada_reports": ada_reports,
+            "ada": ada, "ada_reports": ada_reports, "akhil": akhil,
             "all": [admin, *hrbps, *managers, *employees],
         }
 
@@ -216,7 +221,8 @@ class Command(BaseCommand):
         # sessions) gets this clean setup; deterministic order keeps scores stable.
         subjects = list(User.objects.filter(tenant_id=tenant.id).exclude(role="ADMIN").order_by("email"))
         for i, emp in enumerate(subjects):
-            attain = ATTAINMENT[i % len(ATTAINMENT)]
+            # Akhil is the showcase record → force strong (On Track) attainment.
+            attain = 0.96 if emp.email == "akhil@acme.test" else ATTAINMENT[i % len(ATTAINMENT)]
             for gi, (title, gweight, kpis) in enumerate(goal_specs):
                 goal, _ = self._ensure(
                     Goal, tenant_id=tenant.id, employee=emp, cycle=cycle, title=title,
@@ -248,6 +254,19 @@ class Command(BaseCommand):
                 tenant_id=tenant.id, employee=emp, cycle=cycle, status="ACTIVE",
             ).exclude(title__in=spec_titles).update(status="ARCHIVED")
         compute_cycle_scores(tenant.id, cycle.id)
+
+    # ── make a few of Ada's reports "stale" (no recent KPI measurement) so the
+    #    stale-goal nudge + Ada's "My Tasks" populate. Backdates measurement dates
+    #    only — the already-computed scores are unaffected. ──────────────────────
+    def _make_some_stale(self, tenant, cycle, people):
+        from apps.goals.models import KpiMeasurement
+
+        old = timezone.now() - datetime.timedelta(days=45)
+        reports = [r for r in people["ada_reports"] if r.email != "akhil@acme.test"]
+        for emp in reports[6:9]:
+            KpiMeasurement.objects.filter(
+                tenant_id=tenant.id, kpi__goal__employee=emp, kpi__goal__cycle=cycle,
+            ).update(recorded_at=old)
 
     # ── reviews (varied states across many employees) ──────────────────────────
     def _reviews(self, tenant, cycle, people):
@@ -338,6 +357,16 @@ class Command(BaseCommand):
                 Recognition, sender=sender, recipient=recipient, message=msgs[k % len(msgs)],
                 defaults={"value": values[k % len(values)], "visibility": vis[k % len(vis)]},
             )
+        # A couple of kudos featuring Akhil (showcase) so his profile + the feed shine.
+        akhil = people.get("akhil")
+        if akhil is not None:
+            self._ensure(Recognition, sender=ada, recipient=akhil,
+                         message="Owned the API migration end to end — exactly the leadership we want to see.",
+                         defaults={"value": "Leadership", "visibility": V.COMPANY})
+            other = emps[1] if len(emps) > 1 else ada
+            self._ensure(Recognition, sender=akhil, recipient=other,
+                         message="Thanks for the thorough review — caught two issues before release.",
+                         defaults={"value": "Helping Others", "visibility": V.TEAM})
 
     # ── weekly check-ins across recent weeks (many employees) ───────────────────
     def _checkins(self, tenant, people):
@@ -363,6 +392,20 @@ class Command(BaseCommand):
                 )
                 self._ensure(CheckInPriority, check_in=ci, text="Advance my top KPI",
                              defaults={"status": "ACTIVE", "order": 0})
+        # Akhil (showcase) checks in every recent week with an upbeat, specific log.
+        akhil = people.get("akhil")
+        if akhil is not None:
+            akhil_logs = [
+                ("Drove the API ownership work forward; shipped the v2 endpoints.", 5),
+                ("Paired with two teammates on the migration — unblocked both.", 4),
+                ("Closed the last reliability gap; the dashboards are green.", 5),
+                ("Wrote the platform runbook the team had been missing.", 4),
+            ]
+            for wi, week in enumerate(weeks):
+                win, mood = akhil_logs[wi % len(akhil_logs)]
+                self._ensure(CheckIn, author=akhil, week_of=week,
+                             defaults={"mood": mood, "wins": win, "blockers": "",
+                                       "learning": "Levelled up on the platform internals."})
         # A manager response on a recent Ada-report check-in so the team view + the
         # responded-state are demoable.
         ada_report = people["ada_reports"][0] if people["ada_reports"] else None
@@ -438,7 +481,8 @@ class Command(BaseCommand):
         from apps.reviews.models import Review
 
         ada = people["ada"]
-        reports = people["ada_reports"]
+        # Exclude Akhil so the showcase record stays clean (no pending approval on him).
+        reports = [r for r in people["ada_reports"] if r.email != "akhil@acme.test"]
         if not reports:
             return
         wf, created = self._ensure(
@@ -450,9 +494,9 @@ class Command(BaseCommand):
                                         approver_kind="ROLE", approver_role="MANAGER", required=True)
             ApprovalStep.objects.create(tenant_id=tenant.id, workflow=wf, order=2,
                                         approver_kind="ROLE", approver_role="HRBP", required=True)
-        # 3 of Ada's reports: a PENDING_HUMAN_REVIEW review + a PENDING approval step
+        # 6 of Ada's reports: a PENDING_HUMAN_REVIEW review + a PENDING approval step
         # resolved to Ada → her approvals inbox + "Reviews to action" tiles are full.
-        for emp in reports[:3]:
+        for emp in reports[:6]:
             review, _ = self._ensure(
                 Review, tenant_id=tenant.id, employee=emp, cycle=cycle,
                 defaults={"reviewer": ada, "state": "PENDING_HUMAN_REVIEW", "source": "MANUAL",

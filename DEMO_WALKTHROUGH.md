@@ -29,9 +29,9 @@ stable. Three steps make **one live OpenAI call each** (3, 4, 5) — see the pre
   the panels. (Numbers like score/goals are real cohort data.)
 
 ## 2. Goals & OKRs — the model, made legible
-- **Click:** left nav **Goals & OKRs** (`/goals`). Scroll to **Aisha Walsh** (`emp005@acme.test`).
-- **Record:** Aisha Walsh — **100 / 100 goal weight**, KPIs with recorded actuals, **T-score 57.5,
-  On Track**. (Contrast: **Ethan Nguyen** `emp006` — **T-score 39.5, At Risk**.)
+- **Click:** left nav **Goals & OKRs** (`/goals`). Open **Akhil Menon** (`akhil@acme.test`, an Ada report).
+- **Record:** Akhil Menon — the clean showcase: **100 / 100 goal weight**, KPIs with recorded actuals,
+  **T-score 65.8, On Track**. (Contrast: **Ethan Nguyen** `emp006` — **T-score ~39, At Risk**.)
 - **Say:** *"Each person commits to weighted goals that sum to 100; each goal has measurable KPIs; the
   recorded actuals roll up into one performance score — a **T-score centred on 50**, where 50 is the
   team average. It's a fair, relative measure, not a vanity percentage."*

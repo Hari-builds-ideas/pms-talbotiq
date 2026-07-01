@@ -25,9 +25,14 @@ Demo login (unchanged): any seeded email + **`Passw0rd!demo`**. Primary demo man
   (KPIs within each goal also sum to 100), recorded actuals on a deterministic spread → **233 cycle
   scores** that vary believably (**181 ON_TRACK / 52 AT_RISK**). **Stray goals from old sessions are
   archived**, so **no person shows 200/100** (verified: 0 employees with active-goal weight ≠ 100).
-- **72 reviews** across all states (DRAFT / PENDING_HUMAN_REVIEW / APPROVED / FINALIZED / REJECTED /
-  EDITING) so the Reviews list is full. A **guaranteed DRAFT review for `emp009@acme.test`** (an Ada
-  report, with a self-assessment, reset on every run) keeps the "Request AI draft" demo reliable.
+- **A review for EVERY non-admin (~234)** across all states (DRAFT / PENDING_HUMAN_REVIEW / APPROVED /
+  FINALIZED / REJECTED) so both the Reviews list AND each person's **"My review"** tile are populated.
+  A **guaranteed DRAFT review for `emp009@acme.test`** (an Ada report, with a self-assessment, reset on
+  every run) keeps the "Request AI draft" demo reliable.
+- **No empty personal surfaces:** every non-admin also gets a **development roadmap** (~245 → "My career
+  roadmap") and a **pending 360 feedback ask** (~236 → "Feedback requests"). So whatever account you log
+  into, its self-service tiles show real data, not empty states. (Creation survives a pre-existing
+  scope-hidden review row via a savepoint, so the seed never aborts.)
 - **10 × 360 feedback cycles** — **6 CLOSED + summarizable** (≥3 PEER responses; a PENDING summary
   artifact exists, AI theme text intentionally left ungenerated), **3 COLLECTING** (in progress, incl.
   a PENDING request to Ada), 1 draft.

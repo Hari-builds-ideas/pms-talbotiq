@@ -69,6 +69,37 @@ class Command(BaseCommand):
             return obj, False
         return model.objects.create(**lookup, **(defaults or {})), True
 
+    @staticmethod
+    def _subjects(tenant):
+        """All non-admin users in the tenant, DEDUPED by id (the tenant-scoped
+        manager can emit duplicate rows via joins, which would double-create
+        per-person rows) and ordered deterministically by email."""
+        from apps.identity.models import User
+
+        seen, out = set(), []
+        for u in User.objects.filter(tenant_id=tenant.id).exclude(role="ADMIN").order_by("email"):
+            if u.id not in seen:
+                seen.add(u.id)
+                out.append(u)
+        return out
+
+    @staticmethod
+    def _review(tenant, emp, cycle, defaults):
+        """Reuse-or-create a review for (emp, cycle), SURVIVING a unique collision
+        (the row already exists) with a savepoint instead of aborting the whole seed
+        transaction. Returns the review, or None if it truly can't be resolved."""
+        from django.db import IntegrityError, transaction as _txn
+        from apps.reviews.models import Review
+
+        existing = Review.objects.filter(tenant_id=tenant.id, employee=emp, cycle=cycle).first()
+        if existing is not None:
+            return existing
+        try:
+            with _txn.atomic():
+                return Review.objects.create(tenant_id=tenant.id, employee=emp, cycle=cycle, **defaults)
+        except IntegrityError:
+            return Review.objects.filter(tenant_id=tenant.id, employee=emp, cycle=cycle).first()
+
     def handle(self, *args, **options):
         tenant, _ = Tenant.objects.get_or_create(
             slug="acme", defaults={"name": "Acme Corporation", "status": "ACTIVE"}
@@ -87,6 +118,8 @@ class Command(BaseCommand):
                 self._approvals_for_ada(tenant, cycle, people)
                 self._jds(tenant, people)
                 self._succession(tenant, cycle, people)
+                self._career_for_all(tenant, people)
+                self._feedback_asks(tenant, people)
         n = len(people["all"])
         self.stdout.write(self.style.SUCCESS(
             f"seed_demo_rich complete: ACME populated with {n} people. "
@@ -219,7 +252,7 @@ class Command(BaseCommand):
         spec_titles = [s[0] for s in goal_specs]
         # EVERY non-admin in ACME (including accounts seeded by earlier commands /
         # sessions) gets this clean setup; deterministic order keeps scores stable.
-        subjects = list(User.objects.filter(tenant_id=tenant.id).exclude(role="ADMIN").order_by("email"))
+        subjects = self._subjects(tenant)
         for i, emp in enumerate(subjects):
             # Akhil is the showcase record → force strong (On Track) attainment.
             attain = 0.96 if emp.email == "akhil@acme.test" else ATTAINMENT[i % len(ATTAINMENT)]
@@ -270,17 +303,18 @@ class Command(BaseCommand):
 
     # ── reviews (varied states across many employees) ──────────────────────────
     def _reviews(self, tenant, cycle, people):
+        from apps.identity.models import User
         from apps.reviews.models import Review, ReviewAssessment
 
-        emps = people["employees"]
+        # EVERY non-admin gets a review for the cycle (so each person's "My review"
+        # is populated), cycling through states so the Reviews list is full + varied.
+        subjects = self._subjects(tenant)
         states = ["FINALIZED", "APPROVED", "PENDING_HUMAN_REVIEW", "DRAFT", "REJECTED"]
-        # Give a healthy fraction of employees a review, cycling through states so
-        # the Reviews list is full and varied. Every 3rd employee gets one.
-        for i, emp in enumerate(emps):
-            if i % 3 != 0:
-                continue
-            state = states[(i // 3) % len(states)]
+        for i, emp in enumerate(subjects):
             reviewer = emp.manager
+            if reviewer is None:
+                continue
+            state = states[i % len(states)]
             defaults = {"reviewer": reviewer, "state": state, "source": "MANUAL",
                         "draft_body": "Strong, consistent delivery this cycle with clear growth areas."}
             if state in ("APPROVED", "FINALIZED"):
@@ -288,7 +322,9 @@ class Command(BaseCommand):
                                 final_body="## Summary\nEndorsed: a solid half with room to stretch next cycle.\n\n## Strengths\n- Reliable delivery\n- Strong collaboration\n\n## Growth\n- Take on broader scope")
             if state == "REJECTED":
                 defaults.update(rejected_reason="Needs concrete KPI evidence before approval.")
-            review, _ = self._ensure(Review, tenant_id=tenant.id, employee=emp, cycle=cycle, defaults=defaults)
+            review = self._review(tenant, emp, cycle, defaults)
+            if review is None:
+                continue
             self._ensure(
                 ReviewAssessment, tenant_id=tenant.id, review=review, assessment_type="SELF",
                 defaults={"assessor": emp, "body": "Proud of my delivery; want to grow in communication.",
@@ -309,11 +345,13 @@ class Command(BaseCommand):
         ada = people["ada"]
         target = _User.objects.filter(tenant_id=tenant.id, email="emp009@acme.test").first()
         if target is not None and target.manager_id == ada.id:
-            review, _ = self._ensure(
-                Review, tenant_id=tenant.id, employee=target, cycle=cycle,
-                defaults={"reviewer": ada, "state": "DRAFT", "source": "MANUAL",
-                          "draft_body": "Strong, consistent delivery this cycle with clear growth areas."},
+            review = self._review(
+                tenant, target, cycle,
+                {"reviewer": ada, "state": "DRAFT", "source": "MANUAL",
+                 "draft_body": "Strong, consistent delivery this cycle with clear growth areas."},
             )
+            if review is None:
+                return
             if review.state != "DRAFT":
                 review.state = "DRAFT"
                 review.human_reviewer = None
@@ -497,11 +535,23 @@ class Command(BaseCommand):
         # 6 of Ada's reports: a PENDING_HUMAN_REVIEW review + a PENDING approval step
         # resolved to Ada → her approvals inbox + "Reviews to action" tiles are full.
         for emp in reports[:6]:
-            review, _ = self._ensure(
-                Review, tenant_id=tenant.id, employee=emp, cycle=cycle,
-                defaults={"reviewer": ada, "state": "PENDING_HUMAN_REVIEW", "source": "MANUAL",
-                          "draft_body": "Strong, consistent delivery this cycle with clear growth areas."},
+            review = self._review(
+                tenant, emp, cycle,
+                {"reviewer": ada, "state": "PENDING_HUMAN_REVIEW", "source": "MANUAL",
+                 "draft_body": "Strong, consistent delivery this cycle with clear growth areas."},
             )
+            if review is None:
+                continue
+            # _reviews may have set another state — force PENDING so it's a real
+            # waiting-on-Ada approval (and "Reviews to action" counts it).
+            if review.state != "PENDING_HUMAN_REVIEW":
+                review.state = "PENDING_HUMAN_REVIEW"
+                review.reviewer = ada
+                review.human_reviewer = None
+                review.approved_at = None
+                review.final_body = ""
+                review.save(update_fields=["state", "reviewer", "human_reviewer",
+                                           "approved_at", "final_body", "updated_at"])
             route, _ = self._ensure(
                 ApprovalRoute, tenant_id=tenant.id, artifact_type="review", artifact_id=review.id,
                 defaults={"workflow": wf, "mode": "SEQUENTIAL", "status": "IN_PROGRESS",
@@ -592,3 +642,72 @@ class Command(BaseCommand):
                       "red_flags": [], "action_items": [{"text": "Pair successor with incumbent for one quarter."}],
                       "generated_at": timezone.now()},
         )
+
+    # ── a development roadmap for EVERY non-admin (so "My career roadmap" is full) ─
+    def _career_for_all(self, tenant, people):
+        from apps.identity.models import User
+        from apps.jd.models import JobDescription
+        from apps.career.models import DevelopmentRoadmap
+
+        published = JobDescription.objects.filter(tenant_id=tenant.id, status="PUBLISHED").order_by("title").first()
+        tiers_variants = [
+            [{"index": 0, "title": "Reach sustained High performance", "detail": "Close the gap on your quality KPIs.", "basis": "deterministic"},
+             {"index": 1, "title": "Lead a cross-team initiative", "detail": "Demonstrate scope beyond your team.", "basis": "deterministic"}],
+            [{"index": 0, "title": "Deepen domain expertise", "detail": "Own a core area end to end.", "basis": "deterministic"},
+             {"index": 1, "title": "Mentor a teammate", "detail": "Grow others as you grow.", "basis": "deterministic"}],
+            [{"index": 0, "title": "Broaden stakeholder influence", "detail": "Partner across functions on a shared goal.", "basis": "deterministic"},
+             {"index": 1, "title": "Drive a measurable outcome", "detail": "Own a KPI from plan to result.", "basis": "deterministic"}],
+        ]
+        subjects = self._subjects(tenant)
+        for i, emp in enumerate(subjects):
+            self._ensure(
+                DevelopmentRoadmap, tenant_id=tenant.id, employee=emp,
+                defaults={"status": "ACTIVE", "source": "DETERMINISTIC", "advisory": True,
+                          "target_jd": published, "generated_at": timezone.now(),
+                          "tiers": tiers_variants[i % len(tiers_variants)],
+                          "skill_gap": {"current_performance_band": "MEDIUM", "required_performance_band": "HIGH",
+                                        "performance_band_gap": 1, "weak_categories": ["Quality"]}},
+            )
+
+    # ── a PENDING "give feedback" ask for EVERY non-admin (so "Feedback requests"
+    #    / "For me" is never empty) — each person is asked to give UPWARD feedback on
+    #    their manager. One COLLECTING cycle per manager (reused). ─────────────────
+    def _feedback_asks(self, tenant, people):
+        from apps.identity.models import User
+        from apps.feedback.models import FeedbackCycle, FeedbackRequest
+
+        users = self._subjects(tenant)
+        cycle_for: dict = {}
+        for u in users:
+            mgr = u.manager
+            if mgr is None or mgr.role == "ADMIN":
+                continue
+            fc = cycle_for.get(mgr.id)
+            if fc is None:
+                fc, _ = self._ensure(
+                    FeedbackCycle, tenant_id=tenant.id, subject=mgr,
+                    defaults={"opened_by": mgr.manager or mgr, "status": "COLLECTING", "min_volume": 3},
+                )
+                cycle_for[mgr.id] = fc
+            self._ensure(
+                FeedbackRequest, tenant_id=tenant.id, cycle=fc, giver=u,
+                defaults={"relationship": "UPWARD", "status": "PENDING"},
+            )
+        # HRBPs report to the admin (skipped above) — give them a PEER ask on a
+        # manager so their personal "Feedback requests" isn't empty either.
+        managers = people["managers"]
+        for i, h in enumerate(people["hrbps"]):
+            if not managers:
+                break
+            subj = managers[i % len(managers)]
+            fc = cycle_for.get(subj.id)
+            if fc is None:
+                fc, _ = self._ensure(
+                    FeedbackCycle, tenant_id=tenant.id, subject=subj,
+                    defaults={"opened_by": subj.manager or subj, "status": "COLLECTING", "min_volume": 3},
+                )
+                cycle_for[subj.id] = fc
+            self._ensure(
+                FeedbackRequest, tenant_id=tenant.id, cycle=fc, giver=h,
+                defaults={"relationship": "PEER", "status": "PENDING"},
+            )

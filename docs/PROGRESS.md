@@ -5,6 +5,20 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File B — Chat safety matrix ✅ LANDED on `main` (auto-merge, green)
+
+**Shipped:** `apps/ai/tests/test_agent_safety_matrix.py` — `TestAgentSafetyMatrix`, **24 tests**:
+capability refusals (7), scope refusals (5), injection resistance (5), plan-level safety (5), session
+isolation (2). Every write row asserts on the audit log; a distinct-tenant fixture covers cross-tenant
+isolation; a `_planner_returns` helper forces malicious raw plans to prove `build_plan` sanitizes them
+(unknown action dropped, LLM-supplied params ignored, >5 truncated).
+
+**Result:** all green — **no row surfaced a real agent bug** (nothing xfail'd, no
+`HARI_ATTENTION_NEEDED_safety_*`). Full suite **1375 passed, 6 deselected**. `SAFETY_MATRIX_REPORT.md`
+lists each row + assertion. Live rows = `test_planner_live.py` (4 passed, ≤ cap).
+
+---
+
 ## File A — Agentic chat V2 ✅ backend LANDED on `main` (auto-merge, green)
 
 **Commits:** `25be24b` (backend + unit tests), `527d2db` (live gpt-4o-mini tests + `live_ai` marker).

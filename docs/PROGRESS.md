@@ -5,6 +5,30 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File G — Mobile parity (no pixels) ⚠️ 2 review branches (green, DO NOT merge)
+
+Both structurally testable (routing + API wiring, not visual composition), so shipped
+green without a device pass:
+
+- **`hari/mobile-tab-ia`** (G1) — tab IA recut to mirror the web sidebar: **Home ·
+  Goals · Reviews · Recognition · You** (Reviews/Recognition promoted from More;
+  Feedback/Career → "You" overflow; route paths unchanged → no deep-link breaks). Tab
+  set is pure data in `shared/src/nav/mobileTabs.ts`, unit-tested by
+  `frontend/src/test/mobileTabs.test.ts` (web vitest). Green: mobile tsc, expo lint,
+  `expo export --platform ios`, vitest (4).
+- **`hari/mobile-chat-agent-v2`** (G2) — mobile chat consumes the agent V2
+  plan/step endpoints (Ask/Plan modes; inert checklist w/ Approve·Skip·Explain;
+  session id in `expo-secure-store`). Added the shared ChatPlan types + aiApi.plan/
+  approveStep/listSessions/getSession (same surface the web uses). Contract test
+  `frontend/src/test/chatPlanApi.test.ts`. Green: mobile+web tsc, expo lint,
+  `expo export` (iOS + web), vitest (3).
+
+Overview + review order in `HARI_ATTENTION_NEEDED_mobile_no_pixel.md` (tab-IA first,
+then agent-v2). No RBAC change, no new endpoint, no fabricated data; web invariants
+transfer verbatim. Both DO NOT merge — the device/visual pass is Hari's.
+
+---
+
 ## File F — Agent actions expansion ✅ LANDED on `main` (auto-merge, green)
 
 **Shipped 5 of 7 new agent actions** (each reuses the SAME audited endpoint a human

@@ -58,9 +58,12 @@ x-app-build: &app_build
 
 services:
   # ── one-shot migration (the SINGLE place migrations run in prod) ────────────
+  # deploy_migrate (E2) wraps `migrate` in a MySQL advisory lock: even if this job
+  # is ever run more than once concurrently, only one session migrates; the rest
+  # exit 0 as a no-op. Idempotent. Workers/web boot WITHOUT migrating (below).
   migrate:
     <<: *app_build
-    command: python manage.py migrate --noinput
+    command: python manage.py deploy_migrate
     environment: *app_environment
     restart: "no"
 

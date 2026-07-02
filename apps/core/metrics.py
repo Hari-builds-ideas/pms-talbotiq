@@ -27,6 +27,8 @@ logger = logging.getLogger("pms.metrics")
 _REQ_PREFIX = "metrics:req"  # metrics:req:<route>:<status_class>
 _REQ_TTL = 7 * 24 * 3600  # a week — counters are cumulative within that window
 
+_BUDGET_PREFIX = "metrics:budget"  # metrics:budget:<outcome> — reserved|over|redis_down
+
 
 def route_class(path: str) -> str:
     """Coarse, low-cardinality bucket for a request path: the first segment after
@@ -54,6 +56,32 @@ def record_request(path: str, status_code: int) -> None:
         cache.incr(key)
     except Exception:  # noqa: BLE001 — metrics must never affect the request
         logger.debug("metrics: failed to record request for %s", key, exc_info=True)
+
+
+def record_budget_outcome(outcome: str) -> None:
+    """Increment the cross-worker AI-budget outcome counter (E3): ``reserved`` (an
+    atomic reservation succeeded), ``over`` (at/over the cap), or ``redis_down`` (the
+    atomic path degraded to the soft fallback — the alert signal). Best-effort: a
+    cache hiccup must never affect the request that emits it."""
+    key = f"{_BUDGET_PREFIX}:{outcome}"
+    try:
+        cache.add(key, 0, _REQ_TTL)
+        cache.incr(key)
+    except Exception:  # noqa: BLE001 — metrics must never affect the request
+        logger.debug("metrics: failed to record budget outcome %s", outcome, exc_info=True)
+
+
+def _lines_for_budget() -> list[str]:
+    out = []
+    try:
+        keys = cache.keys(f"{_BUDGET_PREFIX}:*")
+    except Exception:  # noqa: BLE001
+        keys = []
+    for full in sorted(keys):
+        outcome = full.split(":")[-1]
+        val = cache.get(f"{_BUDGET_PREFIX}:{outcome}") or 0
+        out.append(f'pms_ai_budget_total{{outcome="{outcome}"}} {int(val)}')
+    return out
 
 
 def _unscoped(model) -> QuerySet:
@@ -104,6 +132,10 @@ def render() -> str:
     lines.append("# TYPE pms_requests_total counter")
     req = _lines_for_requests()
     lines.extend(req or ['pms_requests_total{route="none",status="none"} 0'])
+
+    lines.append("# HELP pms_ai_budget_total AI-budget reservation outcomes (all tenants).")
+    lines.append("# TYPE pms_ai_budget_total counter")
+    lines.extend(_lines_for_budget())
 
     lines.append("# HELP pms_celery_queue_depth Tasks waiting in the default Celery queue.")
     lines.append("# TYPE pms_celery_queue_depth gauge")

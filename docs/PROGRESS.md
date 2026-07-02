@@ -5,6 +5,25 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File I — Backend hardening E2/E3 ✅ LANDED on `main` (auto-merge, green)
+
+The two items File E deferred, done as a dedicated pass.
+- **E2 — controlled migration:** `manage.py deploy_migrate` — wraps `migrate` in a
+  MySQL advisory lock (`GET_LOCK`); a concurrent racer exits 0 (no-op). Prod compose
+  `migrate` service now runs it; web/workers boot without migrating. Tests (5):
+  lock/skip/release control flow, real GET_LOCK round-trip, real idempotent double-run.
+- **E3 — atomic budget:** the Lua reserve gained **EVALSHA + EVAL/NOSCRIPT recovery**
+  (survives Redis restart / `SCRIPT FLUSH`), a **soft fail-open fallback** on Redis
+  outage (no 500), and a `pms_ai_budget_total{outcome}` metric. Tests (+4): 100
+  concurrent vs a 20-cap → exactly 20; EVALSHA recovery; redis-down soft-degrade +
+  metric; over-cap metric.
+
+`HARI_ATTENTION_NEEDED_hardening.md` marked RESOLVED;
+`docs/SYSTEM_DESIGN_AND_READINESS.md` §3.1 + Deploys row updated to BUILT. No invariant
+weakened (fail-open on Redis-down is documented soft behavior + an alert metric).
+
+---
+
 ## File H — Reviews AI-body → section cards ✅ review branch `hari/reviews-sections`
 
 The one blind-shippable Reviews sub-win (web↔mobile parity): the AI review body now

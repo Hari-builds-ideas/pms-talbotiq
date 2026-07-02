@@ -102,10 +102,17 @@ across replicas** (`apps/billing/services.py:379`).
   `BudgetExceeded` when hit; and a process-wide **global call ceiling**
   (`LLM_MAX_CALLS`, default 60) counted in Redis (`apps/ai/groq.py` `_reserve_global`).
   Groq 429 → honour `Retry-After`, back off, retry ×3 (`groq.py` `_post_with_backoff`).
-- **Missing:** throttling is a DRF rolling-window over the cache; check-then-reserve
-  for budgets is **not strictly atomic across replicas** (documented, `services.py:379`)
-  — two replicas can both pass the check at the limit edge. The fix (a Redis Lua
-  `INCR/EXPIRE`) is noted in the code as the upgrade path. No edge/nginx rate limit.
+- **AI budget — ATOMIC (E3, DONE).** The per-tenant budget reserve is a single Redis
+  **Lua** step (read+compare+incr+TTL in one server-side op) via `billing/atomic.py`
+  (`reserve`), called by `check_and_reserve_budget` — so N replicas can no longer both
+  pass at the cap edge (proven: 100 concurrent vs a 20-cap → exactly 20 succeed,
+  `test_atomic_budget.py`). Calls use **EVALSHA** with an **EVAL/NOSCRIPT** fallback,
+  so the counters survive a Redis restart / `SCRIPT FLUSH` with no boot-time load. If
+  Redis is unavailable the check **degrades soft** (fail-open + a `redis_down` metric,
+  `pms_ai_budget_total`) rather than 500-ing a request.
+- **Still open:** throttling is a DRF rolling-window over the cache (adequate for the
+  MVP; the same atomic primitive is available if it needs tightening). No edge/nginx
+  rate limit.
 
 ### 3.2 Database — **BUILT** (single node, well-indexed) / read replicas **NOT-BUILT**
 - MySQL 8, `django.db.backends.mysql`, **`CONN_MAX_AGE=60` + `CONN_HEALTH_CHECKS=True`**
@@ -192,7 +199,7 @@ sizing/Lua before high replica counts.
 | Object storage | none needed (exports are text/JSON) | only if file uploads/PDF land later | **N/A today** |
 | CDN | none | CDN for the SPA static assets | **NOT-STARTED** |
 | Health checks | `/healthz` (liveness) + `/readyz` (DB/Redis/broker) | wire to LB + orchestrator probes | **BUILT** (`apps/core/health.py`, `views`) |
-| Deploys | `compose up --build` | rolling/blue-green; migrations are `--noinput` on boot (⚠ couple to a controlled migrate step, not every replica boot) | **NOT-STARTED** |
+| Deploys | dev: `compose up` auto-migrates; **prod: a one-shot `deploy_migrate` job (advisory-locked) migrates once, then N web/workers boot without migrating** (`docker-compose.prod.yml`) | rolling/blue-green on top of the controlled migrate step | **BUILT (controlled migrate — E2)** / blue-green NOT-STARTED |
 | Backups / DR | mysql_data volume only | managed backups + tested restore + RPO/RTO | **NOT-STARTED** |
 
 ---

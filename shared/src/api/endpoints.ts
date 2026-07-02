@@ -10,7 +10,11 @@ import type {
   BenchCandidate,
   CalibrationGrid,
   ChatActionResult,
+  ChatPlanResponse,
   ChatResponse,
+  ChatSessionDetail,
+  ChatSessionSummary,
+  ChatStepApproveResult,
   CheckIn,
   CheckInPriorityStatus,
   CriticalRole,
@@ -406,6 +410,16 @@ export const aiApi = {
   // + ONE advisory AI follow-up suggestion. READ-ONLY; the list always returns (the
   // suggestion is null when the AI is unavailable), so this 200s rather than 503-ing.
   staleGoals: () => unwrap<StaleGoalsResponse>(api.get("/ai/stale-goals")),
+  // OVERNIGHT_A — the AGENT surface: plan a (multi-step) request into an INERT
+  // checklist; nothing runs until a per-step approve. Optionally resumes a session.
+  plan: (query: string, sessionId?: string) =>
+    unwrap<ChatPlanResponse>(api.post("/ai/chat/plan", { query, session_id: sessionId })),
+  // Approve + run EXACTLY ONE step (server re-checks capability + scope, audits).
+  approveStep: (planId: string, stepId: string) =>
+    unwrap<ChatStepApproveResult>(api.post(`/ai/chat/plan/${planId}/step/${stepId}/approve`, {})),
+  // Recent, non-expired chat sessions (the resume picker) + one session's turns.
+  listSessions: () => unwrap<ChatSessionSummary[]>(api.get("/ai/chat/sessions")),
+  getSession: (id: string) => unwrap<ChatSessionDetail>(api.get(`/ai/chat/sessions/${id}`)),
 };
 
 // ---- Async AI jobs (poll surface) ------------------------------------------

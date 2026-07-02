@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, Send, Sparkles, User as UserIcon } from "lucide-react";
+import { Bot, ListChecks, Send, Sparkles, User as UserIcon } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -17,8 +17,9 @@ import { mapApiError } from "@/lib/errors";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { cn } from "@/lib/utils";
-import type { ChatProposal } from "@/lib/types";
+import type { ChatPlan, ChatProposal } from "@/lib/types";
 import { ProposalCard } from "./ProposalCard";
+import { PlanChecklist } from "./PlanChecklist";
 
 interface ChatContextValue {
   open: boolean;
@@ -39,6 +40,7 @@ interface Turn {
   status?: "ok" | "blocked" | "proposal";
   data?: unknown;
   proposal?: ChatProposal;
+  plan?: ChatPlan;
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
@@ -61,6 +63,7 @@ function ChatSheet() {
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [input, setInput] = React.useState("");
   const [unavailable, setUnavailable] = React.useState(false);
+  const sessionId = React.useRef<string | undefined>(undefined);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const mutation = useMutation({
@@ -83,6 +86,30 @@ function ChatSheet() {
       }
     },
   });
+
+  // OVERNIGHT_A — the AGENT path: plan a (possibly multi-step) request into an inert
+  // checklist. Session id is threaded across turns for short-term memory.
+  const planMutation = useMutation({
+    mutationFn: (q: string) => aiApi.plan(q, sessionId.current),
+    onSuccess: (res) => {
+      sessionId.current = res.session_id;
+      setTurns((t) => [...t, { role: "assistant", text: res.plan.summary, plan: res.plan }]);
+    },
+    onError: (err) => {
+      const mapped = mapApiError(err);
+      if (mapped.kind === "ai_unavailable") setUnavailable(true);
+      else setTurns((t) => [...t, { role: "assistant", text: mapped.message, status: "blocked" }]);
+    },
+  });
+  const busy = mutation.isPending || planMutation.isPending;
+
+  function planIt() {
+    const q = input.trim();
+    if (!q) return;
+    setTurns((t) => [...t, { role: "user", text: q }]);
+    setInput("");
+    planMutation.mutate(q);
+  }
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -162,7 +189,7 @@ function ChatSheet() {
                 <ChatBubble key={i} turn={turn} />
               ))}
 
-              {mutation.isPending && (
+              {busy && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Bot className="h-4 w-4 text-ai" />
                   <span className="flex gap-1">
@@ -176,10 +203,21 @@ function ChatSheet() {
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask a question…"
+                placeholder="Ask, or plan a multi-step task…"
                 disabled={unavailable}
                 aria-label="Chat message"
               />
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={planIt}
+                disabled={unavailable || !input.trim()}
+                title="Plan this as step-by-step actions you approve"
+                aria-label="Plan as steps"
+              >
+                <ListChecks className="h-4 w-4" />
+              </Button>
               <Button type="submit" size="icon" disabled={unavailable || !input.trim()}>
                 <Send className="h-4 w-4" />
               </Button>
@@ -214,6 +252,7 @@ function ChatBubble({ turn }: { turn: Turn }) {
         )}
         <p className="whitespace-pre-wrap">{turn.text}</p>
         {turn.proposal && <ProposalCard proposal={turn.proposal} />}
+        {turn.plan && <PlanChecklist plan={turn.plan} />}
         {Array.isArray(turn.data) && turn.data.length > 0 && (
           <ul className="list-disc space-y-0.5 pl-4 text-xs opacity-90">
             {(turn.data as string[]).map((d, i) => (

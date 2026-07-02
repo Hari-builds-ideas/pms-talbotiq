@@ -5,6 +5,25 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File H — Reviews AI-body → section cards ✅ review branch `hari/reviews-sections`
+
+The one blind-shippable Reviews sub-win (web↔mobile parity): the AI review body now
+renders as designed **section cards** instead of raw markdown.
+- `reviewBody.ts` — pure `parseReviewBody(md)` → typed `ReviewSection[]`
+  (heading/kind/body/items; robust to `##`/`###`/`#` + whole-line `**bold**`; total,
+  never throws).
+- `ReviewBodySections.tsx` — a Card per section (green kicker + prose + list) + a
+  "View raw" toggle (off by default); falls back to raw text on any parse error.
+- `ReviewDetailPage.tsx` — one-line swap of the raw `<p>` for the sectioned render
+  (AI-body only; state machine / HITL / layout untouched).
+- Tests: `reviewBody.test.ts` (8) + `ReviewBodySections.test.tsx` (3).
+
+Green: tsc, lint, **vitest 118**, build. Structurally testable → low-risk cherry-pick
+after Hari's eyeball. The fuller recompose stays flagged
+(`HARI_ATTENTION_NEEDED_screen_reviews.md`). Branch `REVIEW_NOTES.md` has before/after.
+
+---
+
 ## File G — Mobile parity (no pixels) ⚠️ 2 review branches (green, DO NOT merge)
 
 Both structurally testable (routing + API wiring, not visual composition), so shipped

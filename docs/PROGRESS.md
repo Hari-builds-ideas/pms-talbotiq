@@ -5,6 +5,26 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File J — Branch tests + E2E smoke ✅ (J2/J3 on `main`; J1 on branches)
+
+- **J2 — agent V2 E2E smoke (on `main`):** extended `scripts/smoke.py` with a
+  provider-agnostic agent-V2 section — actions schema, plan create (all steps are
+  registered actions, no fabrication), session memory + **session isolation**
+  (emp→404), a real per-step approve when a confirm step exists, and the **refusal
+  beat** (an injection plans only real actions and executes NOTHING — `goal.approved`
+  audit unchanged). **Verified LIVE: 55/55** (was 48/48) against the running stack on
+  real gpt-4o-mini.
+- **J3 — demo-ready script (on `main`):** `scripts/demo_ready.sh` (recreate web+worker
+  → `seed_demo_rich` → wait healthy → full smoke → green/red verdict) + `docs/DEMO_READY.md`.
+  **Ran end-to-end: ✓ DEMO READY.**
+- **J1 — per-branch composition tests:** `hari/agent-ui-v2` (`PlanChecklist.test.tsx`)
+  and `hari/profile-signoff` (`ProfilePage.test.tsx`) already carry theirs; added a
+  cockpit RTL test to each of `hari/dash-hrbp` / `dash-admin` / `dash-employee`.
+
+No invariant weakened; the HITL refusal invariant is now proven live in the smoke.
+
+---
+
 ## File I — Backend hardening E2/E3 ✅ LANDED on `main` (auto-merge, green)
 
 The two items File E deferred, done as a dedicated pass.

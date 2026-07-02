@@ -5,6 +5,26 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File D — High-impact screens ⚠️ PARTIAL (1 branch + 3 speced flags)
+
+- **`hari/profile-signoff`** ✅ — added `ProfilePage.test.tsx` (3 RTL): section order locked, honest
+  empty states / no fabricated numbers, real goals+reviews in-section. No component change (already
+  composed from existing endpoints); reachability from the team table verified. Green, vitest 110.
+- **Reviews / Recognition / Feedback recompose** — NOT blind-shipped. A deep visual recompose of three
+  working, shipped screens needs Hari's eyes in the loop (standing rule: the agent can't see pixels).
+  Each has a concrete, executable plan: `HARI_ATTENTION_NEEDED_screen_{reviews,recognition,feedback}.md`
+  (target composition from the spec + the one testable sub-win each + files to touch). Do them as
+  one-screen-with-approval passes.
+
+## File C — Dashboard role parity ✅ 3 review branches (green)
+
+- **`hari/dash-hrbp`**, **`hari/dash-admin`**, **`hari/dash-employee`** — each swaps the role's
+  `StatCard` grid for the mockup's `DashboardKpiCard` hero row (real data, honest empties, no new
+  endpoints), killing the StatCard cliff. Each green (tsc/lint/build/vitest 107) + `REVIEW_NOTES.md`.
+  Cherry-pick order in `HARI_ATTENTION_NEEDED_dashboard_role_parity.md`. Not visually verified.
+
+---
+
 ## File E — Backend hardening + tests ⚠️ PARTIAL on `main` (auto-merge, green)
 
 **Done:** E4 (tests for flagged-untested code) — `apps/core/tests/test_seed_demo_rich.py` (3):

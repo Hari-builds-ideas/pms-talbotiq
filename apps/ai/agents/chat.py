@@ -26,6 +26,8 @@ _WRITE_WORDS = (
     # AGENTIC_CHAT verbs — drive an app action (propose-and-confirm); each maps to a
     # registered action (or, if none matches, the read-only refusal still holds).
     "draft", "enrich", "initiate", "create",
+    # OVERNIGHT_A verbs — record a KPI actual; give recognition / kudos.
+    "record", "recogni", "kudos",
 )
 #: Keyword cues for the deterministic FakeLLMProvider classifier (tests + the
 #: no-real-key path). The real LLM classifies via the _CHAT system prompt.

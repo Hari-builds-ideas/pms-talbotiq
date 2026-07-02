@@ -453,6 +453,164 @@ def _propose_create_jd(user, message):
     }
 
 
+# ── record_actual (OVERNIGHT_A) — confirm → mirrors KpiActualsView (OWN only) ────
+#     UPDATE_OWN_ACTUALS + the KPI must belong to the CALLER (goal.employee_id == self,
+#     exactly like the view — a manager can't use this path) + record_actual service +
+#     the `actual.recorded` audit. Params (kpi + value) resolve deterministically from
+#     the caller's OWN active KPIs; ambiguous / no number → the chat ASKS.
+
+_NUM_RE = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _extract_number(message: str):
+    m = _NUM_RE.search(message or "")
+    return m.group(0) if m else None
+
+
+def _own_active_kpis(user):
+    from apps.goals.models import Goal, Kpi
+
+    return list(
+        Kpi.objects.filter(goal__employee_id=user.id, goal__status=Goal.Status.ACTIVE)
+        .select_related("goal")[:_MAX_TARGETS]
+    )
+
+
+def _propose_record_actual(user, message):
+    if not role_has_capability(user.role, Capability.UPDATE_OWN_ACTUALS):
+        return None
+    kpis = _own_active_kpis(user)
+    if not kpis:
+        return None  # nothing of the caller's own to record against → chat replies normally
+    m = (message or "").lower()
+    matched = [k for k in kpis if k.name and k.name.lower() in m]  # OWN KPIs only, by name
+    value = _extract_number(message)
+    if len(matched) != 1 or value is None:
+        # never guess WHICH KPI or WHAT number — ask (deterministic-params rule).
+        return _clarify("Which KPI, and what value? e.g. “record 85 for <KPI name>”.")
+    k = matched[0]
+    unit = f" {k.unit}" if k.unit else ""
+    return {
+        "action": "record_actual",
+        "feel": "confirm",
+        "summary": f"Record {value}{unit} for your KPI “{k.name}”? It updates your progress.",
+        "preview": [{"kpi": k.name, "value": value}],
+        "params": {"kpi_id": str(k.id), "value": value},
+    }
+
+
+def _execute_record_actual(user, params) -> dict:
+    from decimal import Decimal, InvalidOperation
+
+    from apps.goals.models import Kpi
+    from apps.goals.services import record_actual as record_actual_svc
+
+    if not role_has_capability(user.role, Capability.UPDATE_OWN_ACTUALS):
+        raise PermissionDenied("You don't have permission to record actuals.")
+    kpi = Kpi.objects.filter(id=params.get("kpi_id")).select_related("goal").first()
+    if kpi is None:
+        raise ValidationError({"kpi_id": "No such KPI."})
+    # OWN-only — EXACTLY the KpiActualsView check (a manager must NOT pass here).
+    if kpi.goal.employee_id != user.id:
+        raise PermissionDenied("You can only record actuals on your own KPIs.")
+    try:
+        value = Decimal(str(params.get("value")))  # junk / injected text → rejected, no write
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError({"value": "Enter a number."})
+    audit_record(
+        action="actual.recorded", actor=user, target_type="kpi", target_id=kpi.id,
+        metadata={"value": str(value)},
+    )
+    measurement = record_actual_svc(kpi, value, recorded_by=user)  # SAME single write path
+    return {
+        "action": "record_actual", "ok": True, "measurement_id": str(measurement.id),
+        "message": f"Recorded {value} for “{kpi.name}”.",
+    }
+
+
+# ── give_recognition (OVERNIGHT_A) — confirm → mirrors create_recognition ────────
+#     GIVE_RECOGNITION (everyone) + create_recognition service (recipient must be a
+#     same-tenant active user, self-recognition blocked, value ∈ COMPANY_VALUES) +
+#     the `recognition.created` audit. Recognition is TENANT-WIDE by design (anyone
+#     recognises anyone in-tenant), so the recipient resolves across the tenant — but
+#     tenant isolation still rides on the scoped manager (a cross-tenant name never
+#     resolves). The note is DATA — stored verbatim, never parsed as a command.
+
+
+def _resolve_recipient_in_tenant(user, message: str):
+    """Resolve a recognition RECIPIENT named in the message within the caller's
+    TENANT (recognition's real scope), excluding self. Returns a User, ``None`` or
+    :data:`AMBIGUOUS`. Tenant-scoped manager bounds it to the caller's tenant."""
+    from apps.identity.models import User
+
+    m = (message or "").lower()
+    hits = []
+    for u in User.objects.filter(is_active=True).exclude(id=user.id):
+        name = (u.display_name or "").strip().lower()
+        if not name:
+            continue
+        first = name.split()[0]
+        if name in m or (len(first) >= 3 and re.search(rf"\b{re.escape(first)}\b", m)):
+            hits.append(u)
+    if not hits:
+        return None
+    if len(hits) > 1:
+        return AMBIGUOUS
+    return hits[0]
+
+
+def _extract_company_value(message: str):
+    from apps.recognition.models import COMPANY_VALUES
+
+    m = (message or "").lower()
+    for v in COMPANY_VALUES:
+        if v.lower() in m:
+            return v
+    return None
+
+
+def _propose_give_recognition(user, message):
+    if not role_has_capability(user.role, Capability.GIVE_RECOGNITION):
+        return None
+    recipient = _resolve_recipient_in_tenant(user, message)
+    if recipient is AMBIGUOUS:
+        return _clarify("Who would you like to recognise? Please name one colleague.")
+    if recipient is None:
+        return _clarify("Who would you like to recognise, and what for? Name a colleague.")
+    value = _extract_company_value(message) or "Teamwork"  # a default the human can change
+    return {
+        "action": "give_recognition",
+        "feel": "confirm",
+        "summary": f"Give {_display(recipient)} recognition for {value}? It posts to your team feed — edit the note first if you like.",
+        "preview": [{"recipient": _display(recipient), "value": value}],
+        "params": {
+            "recipient_user_id": str(recipient.id),
+            "category": value,
+            "note": f"Recognised for {value}.",  # a clean default note; the human edits/approves
+        },
+    }
+
+
+def _execute_give_recognition(user, params) -> dict:
+    from apps.recognition.services import create_recognition
+
+    if not role_has_capability(user.role, Capability.GIVE_RECOGNITION):
+        raise PermissionDenied("You don't have permission to give recognition.")
+    # create_recognition validates value/visibility/message, blocks self, resolves the
+    # recipient tenant-scoped (cross-tenant → NotFound), and audits `recognition.created`.
+    rec = create_recognition(
+        user,
+        recipient_id=params.get("recipient_user_id"),
+        value=params.get("category") or "",
+        message=params.get("note") or "",  # DATA — stored verbatim, never a command
+        visibility="TEAM",
+    )
+    return {
+        "action": "give_recognition", "ok": True, "recognition_id": str(rec.id),
+        "message": f"Recognition posted for {_display(rec.recipient)}.",
+    }
+
+
 # ── registry ──────────────────────────────────────────────────────────────────
 # Order matters: the first match wins. Specific matches precede general ones. Each
 # entry declares its `feel`; confirm actions have an `execute`, navigate actions do
@@ -517,6 +675,23 @@ ACTIONS: dict[str, dict] = {
         "capability": Capability.MANAGE_JD_LIBRARY,
         "label": "create a JD",
         "match": lambda m: ("jd" in m or "job description" in m),
+    },
+    "record_actual": {
+        "feel": "confirm",
+        "propose": _propose_record_actual,
+        "execute": _execute_record_actual,
+        "capability": Capability.UPDATE_OWN_ACTUALS,
+        "label": "record a KPI actual",
+        "match": lambda m: "record" in m
+        and ("actual" in m or "kpi" in m or "progress" in m or any(c.isdigit() for c in m)),
+    },
+    "give_recognition": {
+        "feel": "confirm",
+        "propose": _propose_give_recognition,
+        "execute": _execute_give_recognition,
+        "capability": Capability.GIVE_RECOGNITION,
+        "label": "give recognition",
+        "match": lambda m: ("recogni" in m or "kudos" in m) and "approve" not in m,
     },
 }
 

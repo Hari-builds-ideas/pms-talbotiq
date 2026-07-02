@@ -20,3 +20,6 @@ class AiConfig(AppConfig):
         # Import the agent modules so their FakeLLMProvider output builders register
         # (the seam providers are pointed at these via settings at go-live).
         from .agents import career, feedback, jd, review, succession  # noqa: F401
+
+        # OVERNIGHT_A: import the planner so its fake output builder registers too.
+        from . import planner  # noqa: F401

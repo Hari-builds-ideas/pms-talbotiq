@@ -6,6 +6,7 @@ from .views import (
     AIJobDetailView,
     AIJobListView,
     ChatActionExecuteView,
+    ChatActionsSchemaView,
     ChatPlanCreateView,
     ChatPlanStepApproveView,
     ChatSessionDetailView,
@@ -23,6 +24,7 @@ app_name = "ai"
 urlpatterns = [
     path("chat", ChatView.as_view(), name="chat"),
     path("actions/execute", ChatActionExecuteView.as_view(), name="action-execute"),
+    path("actions/schema", ChatActionsSchemaView.as_view(), name="action-schema"),
     # Agentic chat V2 (OVERNIGHT_A): plan → per-step approve + session memory.
     path("chat/plan", ChatPlanCreateView.as_view(), name="chat-plan"),
     path("chat/plan/<uuid:plan_id>/step/<uuid:step_id>/approve",

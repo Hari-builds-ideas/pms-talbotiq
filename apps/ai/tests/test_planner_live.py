@@ -92,6 +92,35 @@ def test_live_injection_executes_nothing_and_only_registered_actions(org):
 
 
 @override_settings(**LIVE)
+def test_live_multi_step_plan_with_new_actions(org):
+    """OVERNIGHT_F: a real ``gpt-4o-mini`` plan over the NEW actions decomposes into
+    the registered actions and stays inert (params/scope enforced in Python)."""
+    from apps.ai.planner import build_plan
+    from apps.checkins.models import ManagerResponse
+    from apps.checkins.services import upsert_checkin
+    from apps.testsupport.factories import GoalFactory
+
+    with tenant_context(org.tenant):
+        _name(org.report, "Vera Reyes")
+        import datetime
+
+        cyc = CycleFactory(tenant=org.tenant, status="ACTIVE")
+        GoalFactory(employee=org.report, cycle=cyc, status="ACTIVE")  # pending approval
+        upsert_checkin(org.report, week_of=datetime.date(2026, 6, 29), mood=3)
+        out = build_plan(
+            org.manager, _session(org.manager),
+            "respond to Vera's check-in, approve Vera's goal, and start a 360 for Vera",
+        )
+        assert out["status"] == "planned"
+        actions = [s.action for s in out["plan"].steps.all()]
+        # the two clearly-new actions are recognised (order/other steps may vary by model)
+        assert "respond_to_checkin" in actions and "approve_goal" in actions
+        # INERT: nothing wrote on emit.
+        assert ManagerResponse.objects.count() == 0
+        assert AuditLog.objects.filter(action="goal.approved").count() == 0
+
+
+@override_settings(**LIVE)
 def test_live_out_of_scope_name_never_resolves(org, other_tenant):
     from apps.ai.planner import build_plan
 

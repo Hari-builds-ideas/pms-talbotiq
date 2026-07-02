@@ -90,6 +90,27 @@ class ChatActionExecuteView(RBACMixin, APIView):
         return Response(result)
 
 
+class ChatActionsSchemaView(RBACMixin, APIView):
+    """``GET /api/ai/actions/schema`` — public metadata for every supported assistant
+    action (name, label, one-line description, feel, capability, and whether the
+    CALLER may perform it). Powers the "what can the assistant do" surface and gives a
+    place to enumerate the agent's capabilities. SENSITIVE actions the caller can't
+    perform are omitted (no existence leak); no internals. Same gating as chat."""
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def get(self, request):
+        from apps.ai.actions import describe_actions
+
+        return Response({"actions": describe_actions(request.user)})
+
+
 class ChatPlanCreateView(RBACMixin, APIView):
     """``POST /api/ai/chat/plan`` — body ``{"query": str, "session_id"?: str}``.
 

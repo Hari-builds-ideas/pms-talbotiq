@@ -17,6 +17,7 @@ is authoritative). We never propose what the caller lacks capability/scope to do
 """
 from __future__ import annotations
 
+import datetime
 import re
 
 from django.utils import timezone
@@ -611,18 +612,294 @@ def _execute_give_recognition(user, params) -> dict:
     }
 
 
+# ══ OVERNIGHT_F — agent actions expansion ═══════════════════════════════════════
+# Each new action reuses the SAME audited service a human calls and re-checks
+# capability + scope at execute. No new gate, no widened permission.
+
+
+# ── open_checkin (Employee+) — confirm → mirrors upsert_checkin (OWN check-in) ───
+#     MANAGE_OWN_CHECKIN (everyone) + upsert_checkin for the CALLER's OWN weekly
+#     check-in. Non-destructive: an existing week's check-in is never clobbered
+#     (upsert replaces its priorities) — we navigate to it instead. Mood is REAL
+#     data the caller states (1–5); no mood → the chat ASKS (never invent a mood).
+
+_MOOD_WORDS = {
+    "struggling": 1, "awful": 1, "terrible": 1, "burnt out": 1, "burned out": 1,
+    "rough": 2, "tough": 2, "stressed": 2, "drained": 2, "tired": 2,
+    "ok": 3, "okay": 3, "fine": 3, "meh": 3, "average": 3, "alright": 3,
+    "good": 4, "solid": 4, "productive": 4,
+    "great": 5, "excellent": 5, "amazing": 5, "fantastic": 5,
+}
+
+
+def _current_week_monday() -> datetime.date:
+    today = timezone.now().date()
+    return today - datetime.timedelta(days=today.weekday())
+
+
+def _extract_mood(message: str):
+    """A mood 1–5 the caller STATED — "mood 4", "4/5", or a mood word. Returns an
+    int or None (None → the chat asks; we never fabricate a mood)."""
+    m = (message or "").lower()
+    hit = re.search(r"\bmood\s*(?:of|is|=|:)?\s*([1-5])\b", m) or re.search(r"\b([1-5])\s*/\s*5\b", m)
+    if hit:
+        return int(hit.group(1))
+    for word, val in _MOOD_WORDS.items():
+        if word in m:
+            return val
+    return None
+
+
+def _propose_open_checkin(user, message):
+    from apps.checkins.models import CheckIn
+
+    if not role_has_capability(user.role, Capability.MANAGE_OWN_CHECKIN):
+        return None
+    week = _current_week_monday()
+    if CheckIn.objects.filter(author_id=user.id, week_of=week).exists():
+        # never clobber an existing week (upsert replaces priorities) — go open it.
+        return {
+            "action": "open_checkin", "feel": "navigate",
+            "summary": "You already have this week's check-in — open Check-ins to update it.",
+            "preview": [], "deeplink": "/checkins", "prefill": {},
+        }
+    mood = _extract_mood(message)
+    if mood is None:
+        return _clarify("How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.")
+    return {
+        "action": "open_checkin", "feel": "confirm",
+        "summary": f"Start this week's check-in with mood {mood}/5? You can add wins & blockers next.",
+        "preview": [{"week_of": week.isoformat(), "mood": mood}],
+        "params": {"week_of": week.isoformat(), "mood": mood},
+    }
+
+
+def _execute_open_checkin(user, params) -> dict:
+    from apps.checkins.models import CheckIn
+    from apps.checkins.services import upsert_checkin
+
+    if not role_has_capability(user.role, Capability.MANAGE_OWN_CHECKIN):
+        raise PermissionDenied("You don't have permission to manage your check-in.")
+    try:
+        week = datetime.date.fromisoformat(str(params.get("week_of")))
+    except (ValueError, TypeError):
+        raise ValidationError({"week_of": "Invalid week."})
+    # Non-destructive + idempotent: never overwrite an existing week's check-in.
+    existing = CheckIn.objects.filter(author_id=user.id, week_of=week).first()
+    if existing is not None:
+        return {"action": "open_checkin", "ok": True, "checkin_id": str(existing.id),
+                "created": False, "message": "This week's check-in is already open."}
+    ci = upsert_checkin(user, week_of=week, mood=params.get("mood"))  # service validates mood 1–5
+    audit_record(action="checkin.opened", actor=user, target_type="checkin", target_id=ci.id,
+                 metadata={"week_of": week.isoformat()})
+    return {"action": "open_checkin", "ok": True, "checkin_id": str(ci.id),
+            "created": True, "message": f"Opened your check-in for the week of {week.isoformat()}."}
+
+
+# ── respond_to_checkin (Manager+) — confirm → mirrors respond_to_checkin svc ─────
+#     RESPOND_CHECKIN (Manager+) + the report must be in the caller's scope (the
+#     service 404s out-of-scope, 403s the caller's own). The report is resolved by
+#     name within scope; the comment is a clean default the human approves (DATA).
+
+
+def _propose_respond_checkin(user, message):
+    from apps.checkins.models import CheckIn
+
+    if not role_has_capability(user.role, Capability.RESPOND_CHECKIN):
+        return None
+    person = _resolve_person(user, message)
+    if person is AMBIGUOUS:
+        return _clarify("Whose check-in should I respond to? Please name one of your reports.")
+    if person is None or person.id == user.id:
+        return _clarify("Whose check-in should I respond to? Name one of your reports.")
+    ci = CheckIn.objects.filter(author_id=person.id).order_by("-week_of").first()
+    if ci is None:
+        return None  # no check-in from them yet → chat replies normally
+    return {
+        "action": "respond_to_checkin", "feel": "confirm",
+        "summary": f"Post a response to {_display(person)}'s check-in (week of {ci.week_of.isoformat()})?",
+        "preview": [{"employee": _display(person), "week_of": ci.week_of.isoformat()}],
+        "params": {"checkin_id": str(ci.id),
+                   "comment": "Thanks for the update — noted. Let's talk through the blockers at our next 1:1."},
+    }
+
+
+def _execute_respond_checkin(user, params) -> dict:
+    from apps.checkins.services import respond_to_checkin as respond_svc
+
+    if not role_has_capability(user.role, Capability.RESPOND_CHECKIN):
+        raise PermissionDenied("You don't have permission to respond to check-ins.")
+    resp = respond_svc(user, params.get("checkin_id"), comment=params.get("comment") or "")
+    audit_record(action="checkin.responded", actor=user, target_type="checkin", target_id=resp.check_in_id)
+    return {"action": "respond_to_checkin", "ok": True, "response_id": str(resp.id),
+            "message": "Response posted to the check-in."}
+
+
+# ── approve_goal (Manager+) — confirm → the singular sibling of approve_goals ─────
+#     APPROVE_GOALS (Manager+) + the goal's employee in the caller's scope. Resolves
+#     ONE named report's pending goal and approves just that one, reusing the SAME
+#     audited approve path + execute-time scope re-check. Out-of-scope / cross-tenant
+#     goal ids are skipped at execute (never approved).
+
+
+def _propose_approve_goal(user, message):
+    from apps.goals.models import Goal
+
+    if not role_has_capability(user.role, Capability.APPROVE_GOALS):
+        return None
+    person = _resolve_person(user, message)
+    if person is AMBIGUOUS:
+        return _clarify("Whose goal should I approve? Please name one person.")
+    subtree = reporting_subtree_ids(user)
+    if not subtree:
+        return None
+    qs = Goal.objects.filter(
+        employee_id__in=subtree, status=Goal.Status.ACTIVE, approved_by__isnull=True
+    ).select_related("employee")
+    if person is not None:
+        qs = qs.filter(employee_id=person.id)
+    pending = list(qs[:_MAX_TARGETS])
+    if not pending:
+        return None  # nothing pending in scope → chat replies normally
+    if len(pending) > 1:
+        if person is None:
+            return _clarify("Which goal should I approve? Name the person whose goal it is.")
+        # a named person with several pending goals — approve the most recent one.
+        pending = pending[:1]
+    g = pending[0]
+    return {
+        "action": "approve_goal", "feel": "confirm",
+        "summary": f"Approve {_display(g.employee)}'s goal “{g.title}”?",
+        "preview": [{"employee": _display(g.employee), "goal": g.title}],
+        "params": {"goal_ids": [str(g.id)]},  # reuses the approve_goals execute path
+    }
+
+
+# ── schedule_review (Manager+) — navigate-and-prefill (no chat write) ────────────
+#     MANAGE_REVIEWS (Manager+). Deep-links Reviews with the employee + current
+#     cycle prefilled; the human creates + starts it there via the audited endpoint.
+#     (The app hosts review creation on the Reviews list — there is no separate
+#     "/reviews/new" route — so the deeplink is "/reviews".)
+
+
+def _active_cycle_for(user):
+    from apps.cycles.models import PerformanceCycle
+
+    return (
+        PerformanceCycle.objects.filter(status=PerformanceCycle.Status.ACTIVE)
+        .order_by("-start_date")
+        .first()
+    )
+
+
+def _propose_schedule_review(user, message):
+    if not role_has_capability(user.role, Capability.MANAGE_REVIEWS):
+        return None
+    person = _resolve_person(user, message)
+    if person is AMBIGUOUS:
+        return _clarify("Whose review should I schedule? Please name one person.")
+    cycle = _active_cycle_for(user)
+    prefill = {}
+    if person is not None:
+        prefill["employee"] = str(person.id)
+    if cycle is not None:
+        prefill["cycle"] = str(cycle.id)
+    who = _display(person) if person is not None else "someone on your team"
+    return {
+        "action": "schedule_review", "feel": "navigate",
+        "summary": (f"Open Reviews to schedule a review for {who}"
+                    + (" for the current cycle" if cycle is not None else "")
+                    + " — you set it up and start it there."),
+        "preview": [{"employee": who}] if person is not None else [],
+        "deeplink": "/reviews", "prefill": prefill,
+    }
+
+
+# ── update_kpi_actual (Owner) — confirm → record_actual + suspicious-value warn ──
+#     UPDATE_OWN_ACTUALS + the KPI must be the CALLER's own (mirrors record_actual /
+#     KpiActualsView — a stricter sibling that WARNS on a value that contradicts the
+#     target's direction or is a >50% jump, but still just RECORDS: no analysis
+#     writes and NO widened scope — never a report's KPI).
+
+
+def _direction_warning(kpi, value) -> list[str]:
+    """Advisory warnings composed from the KPI's own facts — never blocks a record."""
+    from decimal import Decimal, InvalidOperation
+
+    warnings: list[str] = []
+    try:
+        val = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return warnings
+    latest = kpi.measurements.first()  # ordered -recorded_at
+    if latest is None:
+        return warnings
+    if latest.value != 0:
+        delta = abs(val - latest.value) / abs(latest.value)
+        if delta > Decimal("0.5"):
+            warnings.append(f"that's a {round(float(delta) * 100)}% change from the last recorded {latest.value}")
+    if kpi.direction == kpi.Direction.INCREASING and val < latest.value:
+        warnings.append("this lowers a higher-is-better KPI")
+    elif kpi.direction == kpi.Direction.DECREASING and val > latest.value:
+        warnings.append("this raises a lower-is-better KPI")
+    return warnings
+
+
+def _propose_update_kpi_actual(user, message):
+    if not role_has_capability(user.role, Capability.UPDATE_OWN_ACTUALS):
+        return None
+    kpis = _own_active_kpis(user)
+    if not kpis:
+        return None
+    m = (message or "").lower()
+    matched = [k for k in kpis if k.name and k.name.lower() in m]  # OWN KPIs only, by name
+    value = _extract_number(message)
+    if len(matched) != 1 or value is None:
+        return _clarify("Which KPI, and what value? e.g. “update my Uptime KPI to 99”.")
+    k = matched[0]
+    warns = _direction_warning(k, value)
+    warn_txt = (" ⚠️ " + "; ".join(warns) + ".") if warns else ""
+    unit = f" {k.unit}" if k.unit else ""
+    return {
+        "action": "update_kpi_actual", "feel": "confirm",
+        "summary": f"Update your KPI “{k.name}” to {value}{unit}?{warn_txt}",
+        "preview": [{"kpi": k.name, "value": value, "warnings": warns}],
+        "params": {"kpi_id": str(k.id), "value": value},
+    }
+
+
+def _execute_update_kpi_actual(user, params) -> dict:
+    # SAME write + OWN-only guard as record_actual (never widens scope); the extra
+    # validation is advisory at propose time. Reuse the single audited record path.
+    result = _execute_record_actual(user, params)
+    result["action"] = "update_kpi_actual"
+    return result
+
+
 # ── registry ──────────────────────────────────────────────────────────────────
 # Order matters: the first match wins. Specific matches precede general ones. Each
 # entry declares its `feel`; confirm actions have an `execute`, navigate actions do
 # not (they're completed on the deep-linked screen).
 
 ACTIONS: dict[str, dict] = {
+    # approve_goal (singular) MUST precede approve_goals (bulk): "goals" not in the
+    # message routes to the singular, named-person approve; "goals" to the bulk one.
+    "approve_goal": {
+        "feel": "confirm",
+        "propose": _propose_approve_goal,
+        "execute": _execute_approve_goals,  # same audited approve path, one goal id
+        "capability": Capability.APPROVE_GOALS,
+        "label": "approve a goal",
+        "description": "Approve one named report's pending goal from your inbox.",
+        "match": lambda m: "approve" in m and "goal" in m and "goals" not in m,
+    },
     "approve_goals": {
         "feel": "confirm",
         "propose": _propose_approve_goals,
         "execute": _execute_approve_goals,
         "capability": Capability.APPROVE_GOALS,
         "label": "approve goals",
+        "description": "Approve all pending goals across your team at once.",
         "match": lambda m: "approve" in m and "goal" in m,
     },
     "approve_reviews": {
@@ -631,6 +908,7 @@ ACTIONS: dict[str, dict] = {
         "execute": _execute_approve_reviews,
         "capability": Capability.APPROVE_REVIEW,
         "label": "approve reviews",
+        "description": "Approve reviews pending your sign-off.",
         "match": lambda m: "approve" in m and "review" in m,
     },
     "draft_review": {
@@ -639,7 +917,17 @@ ACTIONS: dict[str, dict] = {
         "execute": _execute_draft_review,
         "capability": Capability.RUN_AI_REVIEW_DRAFT,
         "label": "draft a review",
-        "match": lambda m: "review" in m and ("draft" in m or "create" in m or "write" in m) and "approve" not in m and "360" not in m,
+        "description": "Request an AI first draft of a team member's review (lands pending your approval).",
+        "match": lambda m: "review" in m and ("draft" in m or "create" in m or "write" in m) and "approve" not in m and "360" not in m and "schedule" not in m,
+    },
+    "schedule_review": {
+        "feel": "navigate",
+        "propose": _propose_schedule_review,
+        # no execute — navigate-and-prefill; the human creates + starts it on Reviews
+        "capability": Capability.MANAGE_REVIEWS,
+        "label": "schedule a review",
+        "description": "Open Reviews with an employee + current cycle prefilled to schedule a review.",
+        "match": lambda m: "schedule" in m and "review" in m,
     },
     "career_enrich": {
         "feel": "confirm",
@@ -647,6 +935,7 @@ ACTIONS: dict[str, dict] = {
         "execute": _execute_career_enrich,
         "capability": Capability.MANAGE_CAREER_ROADMAP,
         "label": "enrich a development roadmap",
+        "description": "Enrich a development roadmap with AI (lands as an adoptable draft).",
         "match": lambda m: "enrich" in m and ("roadmap" in m or "career" in m),
     },
     "succession_enrich": {
@@ -658,6 +947,7 @@ ACTIONS: dict[str, dict] = {
         # exists (succession stays a 404 for them). Falls back to the generic refusal.
         "sensitive": True,
         "label": "enrich a succession plan",
+        "description": "Enrich a critical-role succession plan with AI (pending your review).",
         "match": lambda m: "enrich" in m and ("succession" in m or "plan" in m),
     },
     "initiate_360": {
@@ -666,6 +956,7 @@ ACTIONS: dict[str, dict] = {
         "execute": _execute_initiate_360,
         "capability": Capability.MANAGE_FEEDBACK_CYCLE,
         "label": "start a 360",
+        "description": "Start a 360 feedback cycle for a team member (you then invite reviewers).",
         "match": lambda m: "360" in m,
     },
     "create_jd": {
@@ -674,6 +965,7 @@ ACTIONS: dict[str, dict] = {
         # no execute — navigate-and-prefill; the human submits via the JD endpoint
         "capability": Capability.MANAGE_JD_LIBRARY,
         "label": "create a JD",
+        "description": "Open the JD Library to create a job description.",
         "match": lambda m: ("jd" in m or "job description" in m),
     },
     "record_actual": {
@@ -682,8 +974,18 @@ ACTIONS: dict[str, dict] = {
         "execute": _execute_record_actual,
         "capability": Capability.UPDATE_OWN_ACTUALS,
         "label": "record a KPI actual",
+        "description": "Record a new actual value on one of your own KPIs.",
         "match": lambda m: "record" in m
         and ("actual" in m or "kpi" in m or "progress" in m or any(c.isdigit() for c in m)),
+    },
+    "update_kpi_actual": {
+        "feel": "confirm",
+        "propose": _propose_update_kpi_actual,
+        "execute": _execute_update_kpi_actual,
+        "capability": Capability.UPDATE_OWN_ACTUALS,
+        "label": "update a KPI actual",
+        "description": "Update one of your own KPIs, with a warning if the value looks suspicious.",
+        "match": lambda m: "update" in m and ("kpi" in m or "actual" in m) and any(c.isdigit() for c in m),
     },
     "give_recognition": {
         "feel": "confirm",
@@ -691,7 +993,28 @@ ACTIONS: dict[str, dict] = {
         "execute": _execute_give_recognition,
         "capability": Capability.GIVE_RECOGNITION,
         "label": "give recognition",
+        "description": "Give a colleague recognition for a company value.",
         "match": lambda m: ("recogni" in m or "kudos" in m) and "approve" not in m,
+    },
+    # respond_to_checkin MUST precede open_checkin: "respond" routes to the manager
+    # response; anything else about a check-in routes to opening the caller's own.
+    "respond_to_checkin": {
+        "feel": "confirm",
+        "propose": _propose_respond_checkin,
+        "execute": _execute_respond_checkin,
+        "capability": Capability.RESPOND_CHECKIN,
+        "label": "respond to a check-in",
+        "description": "Post your response to a direct report's weekly check-in.",
+        "match": lambda m: "respond" in m and ("checkin" in m or "check-in" in m or "check in" in m),
+    },
+    "open_checkin": {
+        "feel": "confirm",  # may downgrade to navigate inside propose when one already exists
+        "propose": _propose_open_checkin,
+        "execute": _execute_open_checkin,
+        "capability": Capability.MANAGE_OWN_CHECKIN,
+        "label": "open your check-in",
+        "description": "Start this week's check-in for yourself with a mood.",
+        "match": lambda m: ("checkin" in m or "check-in" in m or "check in" in m) and "respond" not in m,
     },
 }
 
@@ -745,3 +1068,28 @@ def execute_action(user, action: str, params: dict) -> dict:
     if spec is None or "execute" not in spec:
         raise ValidationError({"action": f"{action!r} can't be executed from chat — complete it on its screen."})
     return spec["execute"](user, params or {})
+
+
+def describe_actions(user) -> list[dict]:
+    """Public metadata for the actions surface (``GET /api/ai/actions/schema``):
+    per action ``{name, label, description, feel, capability, allowed}`` — powering
+    the assistant's "what can you do" list. A SENSITIVE action the caller can't
+    perform is OMITTED (never reveal it exists — succession stays a 404 for an
+    employee); everything else carries an ``allowed`` flag for the caller's role.
+    Only what a caller could already infer by trying each action; no internals."""
+    out: list[dict] = []
+    for name, spec in ACTIONS.items():
+        cap = spec.get("capability")
+        allowed = cap is None or role_has_capability(user.role, cap)
+        if spec.get("sensitive") and not allowed:
+            continue
+        out.append({
+            "name": name,
+            "label": spec.get("label", name),
+            "description": spec.get("description", ""),
+            "feel": spec.get("feel", "confirm"),
+            # Capability members are plain strings; getattr keeps it safe either way.
+            "capability": getattr(cap, "value", cap) if cap is not None else None,
+            "allowed": allowed,
+        })
+    return out

@@ -49,13 +49,18 @@ MAX_STEPS = 5
 _SYNTH = {
     "initiate_360": "start a 360 for {s}",
     "draft_review": "draft a review for {s}",
+    "schedule_review": "schedule a review for {s}",
     "career_enrich": "enrich the development roadmap for {s}",
     "succession_enrich": "enrich the succession plan for {s}",
     "give_recognition": "give recognition to {s}",
     "create_jd": "create a jd for {s}",
     "approve_goals": "approve goals",
+    "approve_goal": "approve the goal for {s}",
     "approve_reviews": "approve reviews",
     "record_actual": "{s}",  # subject carries the KPI + value phrase verbatim
+    "update_kpi_actual": "{s}",  # subject carries the KPI + value phrase verbatim
+    "respond_to_checkin": "respond to the check-in for {s}",
+    "open_checkin": "start my check-in {s}",  # subject may carry the mood
 }
 
 _PERSON_DEIXIS = re.compile(r"\b(they|them|their|her|him|his|she|he|that person|same person|this person)\b", re.I)
@@ -100,10 +105,21 @@ def _reason_for(action: str, proposal: dict) -> str:
         return f"“{row.get('kpi', '')}” is your own active KPI; recording {row.get('value', '')} updates your progress."
     if action == "give_recognition":
         return f"{who} is a colleague in your workspace; you can post recognition to them."
+    if action == "approve_goal":
+        return f"{who}'s goal is pending your approval and within your team, so you can approve it."
     if action == "approve_goals":
         return f"{len(proposal.get('params', {}).get('goal_ids', []))} goal(s) in your team are pending your approval."
     if action == "approve_reviews":
         return f"{len(proposal.get('params', {}).get('review_ids', []))} review(s) are pending your sign-off."
+    if action == "schedule_review":
+        return f"Opens Reviews with {who or 'the employee'} + the current cycle prefilled to schedule a review."
+    if action == "respond_to_checkin":
+        return f"{who} is your report; you can post a response to their weekly check-in."
+    if action == "open_checkin":
+        return "Starts your own weekly check-in — only you can write it."
+    if action == "update_kpi_actual":
+        row = (proposal.get("preview") or [{}])[0]
+        return f"“{row.get('kpi', '')}” is your own active KPI; recording {row.get('value', '')} updates your progress."
     if action == "create_jd":
         return "Opens the JD Library where you fill in the details and generate the JD."
     return proposal.get("summary", "")

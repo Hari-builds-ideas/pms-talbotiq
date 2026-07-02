@@ -20,7 +20,7 @@ from apps.ai.planner import approve_step, build_plan
 from apps.audit.models import AuditLog
 from apps.feedback.models import FeedbackCycle
 from apps.tenancy.context import tenant_context
-from apps.testsupport.factories import CycleFactory, ReviewFactory, UserFactory
+from apps.testsupport.factories import CycleFactory, GoalFactory, ReviewFactory, UserFactory
 
 pytestmark = pytest.mark.django_db
 FAKE = {"LLM_PROVIDER": "apps.ai.providers.FakeLLMProvider"}
@@ -156,6 +156,52 @@ def test_ambiguous_request_becomes_a_clarify_step(org):
         assert res["status"] == "needs_clarification"
         step.refresh_from_db()
         assert step.status == ChatPlanStep.Status.PENDING
+
+
+# ── OVERNIGHT_F: multi-step plans hitting the NEW actions ───────────────────────
+
+
+@override_settings(**FAKE)
+def test_multi_step_plan_with_new_actions_checkin_then_goal(org):
+    """"respond to the check-in for Rhea and approve the goal for Rhea" → two ordered
+    confirm steps (respond_to_checkin, approve_goal); nothing runs on emit."""
+    import datetime
+
+    from apps.checkins.models import ManagerResponse
+    from apps.checkins.services import upsert_checkin
+
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        cyc = CycleFactory(tenant=org.tenant, status="ACTIVE")
+        GoalFactory(employee=org.report, cycle=cyc, status="ACTIVE")  # pending (approved_by=None)
+        upsert_checkin(org.report, week_of=datetime.date(2026, 6, 29), mood=3)
+        session = _session(org.manager)
+        out = build_plan(org.manager, session,
+                         "respond to Rhea's check-in and approve Rhea's goal")
+        assert out["status"] == "planned"
+        steps = list(out["plan"].steps.all())
+        assert [s.action for s in steps] == ["respond_to_checkin", "approve_goal"]
+        assert all(s.feel == "confirm" and s.reason.strip() for s in steps)
+        # INERT: no response posted, no goal approved on emit.
+        assert ManagerResponse.objects.count() == 0
+        assert AuditLog.objects.filter(action="goal.approved").count() == 0
+
+
+@override_settings(**FAKE)
+def test_multi_step_plan_mixes_navigate_and_confirm(org):
+    """"schedule a review for Rhea and start a 360 for Rhea" → a NAVIGATE step
+    (schedule_review) then a CONFIRM step (initiate_360); inert on emit."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        CycleFactory(tenant=org.tenant, status="ACTIVE")
+        session = _session(org.manager)
+        out = build_plan(org.manager, session, "schedule a review for Rhea and start a 360 for Rhea")
+        assert out["status"] == "planned"
+        steps = list(out["plan"].steps.all())
+        assert [s.action for s in steps] == ["schedule_review", "initiate_360"]
+        assert steps[0].feel == "navigate" and steps[0].deeplink == "/reviews"
+        assert steps[1].feel == "confirm"
+        assert FeedbackCycle.objects.count() == 0  # inert
 
 
 @override_settings(**FAKE)

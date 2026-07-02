@@ -5,6 +5,33 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File F — Agent actions expansion ✅ LANDED on `main` (auto-merge, green)
+
+**Shipped 5 of 7 new agent actions** (each reuses the SAME audited endpoint a human
+uses; capability + scope re-checked at execute; params deterministic; no widened
+permission; no new gate):
+- `open_checkin` (Employee+, OWN, non-destructive — never clobbers an open week),
+- `respond_to_checkin` (Manager+, subtree-scoped),
+- `approve_goal` (Manager+, singular sibling of `approve_goals`),
+- `schedule_review` (Manager+, navigate-and-prefill `/reviews`),
+- `update_kpi_actual` (Owner, `record_actual` + suspicious-value warning; OWN-only).
+
+Plus **`GET /api/ai/actions/schema`** (public per-action metadata; sensitive actions
+hidden from callers who can't perform them) and planner integration (2 fake multi-step
+plans + 1 live `gpt-4o-mini` plan over the new actions).
+
+**Tests:** +28 (26 action/schema + 2 planner) → full suite **1406 passed, 7 deselected**
+(+1 `live_ai`). `web` + `celery-worker` recreated.
+
+**Flagged 2 (can't wire without widening perms / inventing an unaudited write):**
+`request_feedback` (no Employee-scoped feedback-request endpoint — invitations are
+Manager+) and `nudge_stale_goal` (stale goals are read-only advisory; no per-goal
+nudge-send endpoint). Each has a `HARI_ATTENTION_NEEDED_action_*.md` with options.
+Suite 1406 is just under the 1408 DoD target — a principled 5-of-7, documented in
+`AGENT_ACTIONS_v2.md`. **Invariants (HITL / RBAC / real-data) intact.**
+
+---
+
 ## File D — High-impact screens ⚠️ PARTIAL (1 branch + 3 speced flags)
 
 - **`hari/profile-signoff`** ✅ — added `ProfilePage.test.tsx` (3 RTL): section order locked, honest

@@ -5,6 +5,22 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## File E — Backend hardening + tests ⚠️ PARTIAL on `main` (auto-merge, green)
+
+**Done:** E4 (tests for flagged-untested code) — `apps/core/tests/test_seed_demo_rich.py` (3):
+idempotent (2 runs, stable counts), ACTIVE goal weights sum to 100 for every person, Akhil On Track,
+ACME-only. E5 — `PROD_READINESS_STATUS.md` grounded in code.
+
+**Found already in place:** E1 (N+1) — list views use select_related and are regression-guarded by the
+existing `[query-budget] … [BOUNDED]` tests (Δ=0 across 5→25 rows). Marked DONE with reference rather
+than re-done. Chat-session TTL/isolation tests (E4 item) already landed in File A.
+
+**Not attempted (flagged, need a careful dedicated pass — see HARI_ATTENTION_NEEDED_hardening.md):**
+E2 controlled migration command; E3 atomic Redis-Lua budget counters. Deferred to protect
+"never push red" under the run's time cap — both backend-only + testable, not blocked.
+
+---
+
 ## File B — Chat safety matrix ✅ LANDED on `main` (auto-merge, green)
 
 **Shipped:** `apps/ai/tests/test_agent_safety_matrix.py` — `TestAgentSafetyMatrix`, **24 tests**:

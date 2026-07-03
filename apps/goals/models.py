@@ -225,3 +225,31 @@ class KpiTemplate(TenantScopedModel):
 
     def __str__(self):
         return f"{self.role}:{self.name}"
+
+
+class GoalUpdate(TenantScopedModel):
+    """A short progress note on a goal — the "Updates" timeline under a goal card
+    (AGENT_UX_V3 Part 2.3). Written by the goal's owner or a manager in scope;
+    append-only; every write is audited (``goal.update.added``)."""
+
+    goal = models.ForeignKey("goals.Goal", on_delete=models.CASCADE, related_name="updates")
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="goal_updates",
+    )
+    text = models.CharField(max_length=500)
+
+    class Meta:
+        db_table = "goals_goalupdate"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant", "goal", "-created_at"], name="ix_goalupdate_timeline"),
+        ]
+
+    def __str__(self):
+        return f"GoalUpdate({self.goal_id}, {self.text[:20]!r})"
+
+    @property
+    def employee(self):
+        # Lets RBAC WithinScope resolve the subject uniformly (scope_subject_attr).
+        return self.goal.employee

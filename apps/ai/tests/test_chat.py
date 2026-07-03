@@ -69,12 +69,43 @@ def test_manager_can_see_a_report_goals_via_chat(org):
 
 
 @override_settings(**FAKE)
-def test_write_intent_is_blocked(org):
-    resp = _client_for(org.manager).post(CHAT, {"query": "approve review 123"}, format="json")
+def test_write_intent_returns_an_inert_plan(org):
+    # AGENT_UX_V3 §A — a write now returns a PLAN (not a single proposal / blanket
+    # block). It is INERT: creating it executes + audits NOTHING.
+    from apps.audit.models import AuditLog
+
+    with tenant_context(org.tenant):
+        before = AuditLog.objects.count()
+    resp = _client_for(org.manager).post(CHAT, {"query": "start a 360 for my report"}, format="json")
     assert resp.status_code == 200, resp.content
     body = resp.json()
-    assert body["status"] == "blocked"
-    assert body["intent"] == "write"
+    assert body["type"] == "plan" and body["status"] == "plan" and body["intent"] == "write"
+    assert isinstance(body["plan"]["steps"], list) and body["plan"]["summary"]
+    assert body["session_id"]
+    with tenant_context(org.tenant):
+        # No write/approval audit rows from merely planning (feedback_cycle.created etc.).
+        assert AuditLog.objects.filter(action="feedback_cycle.created").count() == 0
+        assert AuditLog.objects.filter(action="goal.approved").count() == 0
+        assert AuditLog.objects.count() == before
+
+
+@override_settings(**FAKE)
+def test_multi_intent_write_returns_multi_step_plan(org):
+    # "start a 360 for Rhea and draft a review for Rhea" → a 2-step plan (both
+    # actions the manager can do, with a draftable review present).
+    from apps.testsupport.factories import ReviewFactory
+
+    with tenant_context(org.tenant):
+        org.report.display_name = "Rhea Report"
+        org.report.save(update_fields=["display_name"])
+        ReviewFactory(employee=org.report, cycle=CycleFactory(tenant=org.tenant, status="ACTIVE"), state="DRAFT")
+    resp = _client_for(org.manager).post(
+        CHAT, {"query": "start a 360 for Rhea and draft a review for Rhea"}, format="json"
+    )
+    assert resp.status_code == 200, resp.content
+    steps = resp.json()["plan"]["steps"]
+    assert [s["action"] for s in steps] == ["initiate_360", "draft_review"]
+    assert all(s["feel"] == "confirm" and s["reason"] for s in steps)
 
 
 # ── RW_BUILD_5: natural-language team search, surfaced through chat ──────────────
@@ -114,28 +145,38 @@ def test_employee_team_search_is_not_exposed(org):
 
 
 @override_settings(**FAKE)
-def test_manager_jd_refusal_explains_capability(org):
-    # A manager lacks the JD capability (HRBP+) — correct refusal, but it says why.
+def test_manager_jd_write_returns_empty_plan_not_silent(org):
+    # A manager lacks the JD capability (HRBP+). The forbidden step is DROPPED at
+    # plan-build (defense in depth) → an empty plan whose summary SAYS nothing could
+    # be prepared (nothing silently dropped), without naming the capability.
     resp = _client_for(org.manager).post(CHAT, {"query": "create a JD for Staff Engineer"}, format="json")
-    assert resp.status_code == 200 and resp.json()["status"] == "blocked"
-    assert "permission" in resp.json()["answer"].lower()
+    assert resp.status_code == 200 and resp.json()["status"] == "plan"
+    body = resp.json()
+    assert body["plan"]["steps"] == []  # the JD step the manager can't do was dropped
+    assert body["plan"]["summary"]  # …but the summary is not silent
 
 
 @override_settings(**FAKE)
-def test_vague_followup_asks_rather_than_dead_ending(org):
+def test_vague_followup_write_plans_nothing_and_asks(org):
     resp = _client_for(org.manager).post(CHAT, {"query": "now make the draft"}, format="json")
-    assert resp.status_code == 200 and resp.json()["status"] == "blocked"
-    ans = resp.json()["answer"].lower()
-    assert "which would you like" in ans or "tell me" in ans
+    assert resp.status_code == 200 and resp.json()["status"] == "plan"
+    body = resp.json()
+    assert body["plan"]["steps"] == []
+    summary = body["plan"]["summary"].lower()
+    assert "couldn't" in summary or "tell me" in summary
 
 
 @override_settings(**FAKE)
-def test_employee_succession_refusal_does_not_reveal_it(org):
+def test_employee_succession_write_plan_does_not_reveal_it(org):
+    # Employee lacks the succession capability → the step is dropped; the plan summary
+    # must NOT reveal the sensitive feature exists.
     resp = _client_for(org.report).post(
         CHAT, {"query": "enrich the succession plan for VP Engineering"}, format="json"
     )
-    assert resp.status_code == 200 and resp.json()["status"] == "blocked"
-    assert "succession" not in resp.json()["answer"].lower()  # never reveal the sensitive feature
+    assert resp.status_code == 200 and resp.json()["status"] == "plan"
+    body = resp.json()
+    assert body["plan"]["steps"] == []
+    assert "succession" not in body["plan"]["summary"].lower()  # never reveal it
 
 
 # ── BUG 4: intent is honoured — general/capability questions don't dump metrics ──

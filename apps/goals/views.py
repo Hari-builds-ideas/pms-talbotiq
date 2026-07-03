@@ -44,11 +44,12 @@ from apps.rbac.scope import (
 from .models import Goal, Kpi, KpiMeasurement, KpiTemplate
 from .serializers import (
     GoalSerializer,
+    GoalUpdateSerializer,
     KpiMeasurementSerializer,
     KpiSerializer,
     KpiTemplateSerializer,
 )
-from .services import record_actual
+from .services import add_goal_update, record_actual
 from .templates import instantiate_role_templates
 from .validators import assert_kpi_weights_complete
 
@@ -173,6 +174,34 @@ class GoalApproveView(RBACMixin, APIView):
         goal.approved_at = timezone.now()
         goal.save()
         return Response(GoalSerializer(goal).data)
+
+
+class GoalUpdateListCreateView(RBACMixin, APIView):
+    """``GET, POST /api/goals/<goal_id>/updates`` — the goal's progress timeline
+    (AGENT_UX_V3 Part 2.3). GET=VIEW_OWN_GOALS, POST=UPDATE_OWN_ACTUALS; object scope
+    on the goal's employee (own goal for an employee, subtree for a manager)."""
+
+    scope_subject_attr = "employee"
+    _caps = {"GET": Capability.VIEW_OWN_GOALS, "POST": Capability.UPDATE_OWN_ACTUALS}
+
+    def get_permissions(self):
+        self.required_capability = self._caps.get(self.request.method)
+        return super().get_permissions()
+
+    def _goal(self, goal_id):
+        goal = get_object_or_404(Goal.objects.all(), pk=goal_id)
+        self.check_object_scope(goal)
+        return goal
+
+    def get(self, request, goal_id):
+        goal = self._goal(goal_id)
+        updates = goal.updates.select_related("author").all()
+        return Response(GoalUpdateSerializer(updates, many=True).data)
+
+    def post(self, request, goal_id):
+        goal = self._goal(goal_id)
+        update = add_goal_update(request.user, goal, request.data.get("text", ""))
+        return Response(GoalUpdateSerializer(update).data, status=status.HTTP_201_CREATED)
 
 
 class GoalKpiListCreateView(RBACMixin, APIView):

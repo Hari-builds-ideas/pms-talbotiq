@@ -27,7 +27,7 @@ from rest_framework import serializers
 
 from apps.core.display import person_label
 
-from .models import Goal, Kpi, KpiMeasurement, KpiTemplate
+from .models import Goal, GoalUpdate, Kpi, KpiMeasurement, KpiTemplate
 from .validators import assert_weights_sum_to_100, validate_target_value
 
 
@@ -204,3 +204,18 @@ class KpiTemplateSerializer(serializers.ModelSerializer):
             "default_weight",
         ]
         read_only_fields = fields
+
+
+class GoalUpdateSerializer(serializers.ModelSerializer):
+    """A goal's progress-timeline entry (AGENT_UX_V3 Part 2.3). Read-only output —
+    writes go through :func:`apps.goals.services.add_goal_update`."""
+
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GoalUpdate
+        fields = ["id", "goal", "text", "author", "author_name", "created_at"]
+        read_only_fields = fields
+
+    def get_author_name(self, obj):
+        return person_label(obj.author) if obj.author_id else None

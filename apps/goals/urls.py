@@ -14,6 +14,7 @@ from .views import (
     GoalDetailView,
     GoalKpiListCreateView,
     GoalListCreateView,
+    GoalUpdateListCreateView,
     KpiActualsView,
     KpiDetailView,
     KpiTemplateInstantiateView,
@@ -40,4 +41,5 @@ urlpatterns = [
     path("<uuid:pk>", GoalDetailView.as_view(), name="detail"),
     path("<uuid:pk>/approve", GoalApproveView.as_view(), name="approve"),
     path("<uuid:goal_id>/kpis", GoalKpiListCreateView.as_view(), name="goal-kpis"),
+    path("<uuid:goal_id>/updates", GoalUpdateListCreateView.as_view(), name="goal-updates"),
 ]

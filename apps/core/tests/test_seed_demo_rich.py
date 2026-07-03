@@ -71,3 +71,18 @@ def test_seed_demo_rich_is_acme_only():
     # No goals exist for any tenant other than acme.
     non_acme_goals = Goal.all_objects.exclude(tenant_id=acme.id).count()
     assert non_acme_goals == 0
+
+
+def test_seed_demo_rich_has_prior_cycle_history():
+    """AGENT_UX_V3 Part 2.2 — real analytics history: ≥4 cycles (current H1 + 3 prior
+    CLOSED) with real T-scores, so an individual trend is a 4-point curve. Prior-cycle
+    goals are archived, so the ACTIVE-weight invariant still holds."""
+    from apps.cycles.models import PerformanceCycle
+
+    call_command("seed_demo_rich")
+    acme = Tenant.objects.get(slug="acme")
+    with tenant_context(acme):
+        assert PerformanceCycle.objects.count() >= 4  # H1 2026 + Q1/Q2/H2 2025
+        akhil = User.objects.filter(email="akhil@acme.test").first()
+        assert CycleScore.objects.filter(employee_id=akhil.id).count() >= 4  # trend curve
+        assert _active_weight_violations(acme) == []  # archived history → weight still 100

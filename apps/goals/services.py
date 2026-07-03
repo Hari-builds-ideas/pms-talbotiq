@@ -48,3 +48,22 @@ def record_actual(
         recorded_by=recorded_by,
         source=source,
     )
+
+
+def add_goal_update(actor, goal, text):
+    """Append a progress note to a goal's timeline (AGENT_UX_V3 Part 2.3). Audits
+    ``goal.update.added`` BEFORE the write (project audit rule); the caller's scope on
+    the goal is enforced at the view. Tenant-stamped from the goal (safe off-request)."""
+    from rest_framework.exceptions import ValidationError
+
+    from apps.audit.services import record
+
+    from .models import GoalUpdate
+
+    text = (text or "").strip()
+    if not text:
+        raise ValidationError({"text": "An update needs some text."})
+    record(action="goal.update.added", actor=actor, target_type="goal", target_id=goal.id)
+    return GoalUpdate.objects.create(
+        tenant_id=goal.tenant_id, goal=goal, author=actor, text=text[:500],
+    )

@@ -109,7 +109,11 @@ class Command(BaseCommand):
                 self._entitlement(tenant)
                 people = self._people(tenant)
                 cycle = self._cycle(tenant)
+                # Prior CLOSED cycles FIRST (scored + archived) so the CURRENT cycle
+                # is scored LAST — a person's latest CycleScore is this cycle's.
+                self._prior_cycles(tenant, people)
                 self._goals_and_scores(tenant, cycle, people)
+                self._goal_updates(tenant, cycle, people)
                 self._make_some_stale(tenant, cycle, people)
                 self._reviews(tenant, cycle, people)
                 self._recognitions(tenant, people)
@@ -238,6 +242,55 @@ class Command(BaseCommand):
         )
         return cycle
 
+    # ── analytics history: 3 prior CLOSED cycles with real recorded actuals + real
+    #    T-scores via the scoring engine (AGENT_UX_V3 Part 2.2). Goals are built
+    #    ACTIVE → SCORED → ARCHIVED, so the CycleScore persists (the 4-point trend +
+    #    department/calibration history) while a person's ACTIVE weight stays = the
+    #    current cycle's 100. Idempotent: a cycle already scored is skipped. ────────
+    def _prior_cycles(self, tenant, people):
+        from apps.cycles.models import PerformanceCycle
+        from apps.goals.models import CycleScore, Goal, Kpi, KpiMeasurement
+        from apps.goals.scoring.engine import compute_cycle_scores
+
+        subjects = self._subjects(tenant)
+        priors = [
+            ("Q1 2025", datetime.date(2025, 1, 1), datetime.date(2025, 3, 31), 0.62, 300),
+            ("Q2 2025", datetime.date(2025, 4, 1), datetime.date(2025, 6, 30), 0.71, 210),
+            ("H2 2025", datetime.date(2025, 7, 1), datetime.date(2025, 12, 31), 0.80, 120),
+        ]
+        for name, start, end, base, days_ago in priors:
+            cyc, _ = self._ensure(
+                PerformanceCycle, tenant_id=tenant.id, name=name,
+                defaults={"start_date": start, "end_date": end, "status": "CLOSED"},
+            )
+            if CycleScore.objects.filter(cycle_id=cyc.id).exists():
+                continue  # already scored on a prior run — idempotent
+            recorded = timezone.now() - datetime.timedelta(days=days_ago)
+            for i, emp in enumerate(subjects):
+                # Believable per-person, per-cycle variation; Akhil trends strong.
+                attain = 0.9 if emp.email == "akhil@acme.test" else min(0.99, base + (i % 5) * 0.03)
+                goal, _ = self._ensure(
+                    Goal, tenant_id=tenant.id, employee=emp, cycle=cyc, title="Cycle objectives",
+                    defaults={"weight": Decimal("100.00"), "status": "ACTIVE",
+                              "created_by": emp.manager or emp,
+                              "description": "Historical cycle objective.",
+                              "objective": f"Objectives for {name}."},
+                )
+                kpi, _ = self._ensure(
+                    Kpi, tenant_id=tenant.id, goal=goal, name="Attainment",
+                    defaults={"weight": Decimal("100.00"), "target_value": Decimal("100.0000"),
+                              "direction": "INCREASING", "unit": "%", "source": "MANUAL"},
+                )
+                KpiMeasurement.objects.filter(kpi=kpi).delete()
+                KpiMeasurement.objects.create(
+                    tenant_id=tenant.id, kpi=kpi,
+                    value=Decimal(str(round(attain * 100, 2))), recorded_at=recorded, source="MANUAL",
+                )
+            compute_cycle_scores(tenant.id, cyc.id)
+            # Archive the historical goals so a person's ACTIVE weight stays the
+            # current cycle's 100 (the CycleScore rows we just wrote persist).
+            Goal.objects.filter(tenant_id=tenant.id, cycle=cyc, status="ACTIVE").update(status="ARCHIVED")
+
     # ── goals + KPIs + actuals + scores (weights sum to 100) ────────────────────
     def _goals_and_scores(self, tenant, cycle, people):
         from apps.goals.models import Goal, Kpi, KpiMeasurement
@@ -248,11 +301,15 @@ class Command(BaseCommand):
 
         # Two goals per person, weights 60 + 40 = 100 (so a person never shows
         # 200/100); each goal's KPIs also sum to 100.
+        # Concrete, role-appropriate KPI names (no more Impact/Throughput/Quality
+        # shells — AGENT_UX_V3 Part 2.3): they read like real objectives.
         goal_specs = [
             ("Deliver cycle objectives", Decimal("60.00"),
-             [("Throughput", Decimal("60.00")), ("Quality", Decimal("40.00"))]),
+             [("Features shipped this cycle", Decimal("60.00")),
+              ("Release quality (defect-free %)", Decimal("40.00"))]),
             ("Grow craft & collaboration", Decimal("40.00"),
-             [("Impact", Decimal("50.00")), ("Collaboration", Decimal("50.00"))]),
+             [("Cross-team impact", Decimal("50.00")),
+              ("Collaboration & mentoring", Decimal("50.00"))]),
         ]
         spec_titles = [s[0] for s in goal_specs]
         # EVERY non-admin in ACME (including accounts seeded by earlier commands /
@@ -292,6 +349,32 @@ class Command(BaseCommand):
                 tenant_id=tenant.id, employee=emp, cycle=cycle, status="ACTIVE",
             ).exclude(title__in=spec_titles).update(status="ARCHIVED")
         compute_cycle_scores(tenant.id, cycle.id)
+
+    # ── goal Updates timeline (AGENT_UX_V3 Part 2.3): 2–4 realistic progress notes
+    #    per ACTIVE goal for Ada's team, so the demo goal cards have life. Idempotent
+    #    (skips a goal that already has updates). ──────────────────────────────────
+    def _goal_updates(self, tenant, cycle, people):
+        from apps.goals.models import Goal, GoalUpdate
+
+        notes = [
+            "Shipped v2 of the pricing page — early adoption looks strong.",
+            "Cleared the top 3 support escalations this week.",
+            "Paired with a teammate to unblock the migration.",
+            "Cut the release regression list from 9 to 2.",
+        ]
+        team = list(people["ada_reports"]) + [people["ada"]]
+        for i, emp in enumerate(team):
+            goals = Goal.objects.filter(employee_id=emp.id, cycle=cycle, status="ACTIVE")
+            for goal in goals:
+                if GoalUpdate.objects.filter(goal=goal).exists():
+                    continue  # idempotent — don't pile up on re-run
+                for j in range(2 + (i % 3)):  # 2–4 updates
+                    day = (i + j) % 12 + 1
+                    GoalUpdate.objects.create(
+                        tenant_id=tenant.id, goal=goal, author=emp,
+                        text=notes[(i + j) % len(notes)],
+                        created_at=timezone.now() - datetime.timedelta(days=day),
+                    )
 
     # ── make a few of Ada's reports "stale" (no recent KPI measurement) so the
     #    stale-goal nudge + Ada's "My Tasks" populate. Backdates measurement dates

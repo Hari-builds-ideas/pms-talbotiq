@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Field } from "@/components/Field";
+import { GoalUpdates } from "./GoalUpdates";
 import {
   Dialog,
   DialogContent,
@@ -224,6 +225,9 @@ function GoalCard({ goal, mutations }: { goal: Goal; mutations: ReturnType<typeo
           </ul>
         </div>
 
+        {/* Progress timeline (AGENT_UX_V3 Part 2.3) — the goal's recent updates. */}
+        <GoalUpdates goalId={goal.id} canAdd={isOwn} />
+
         <div className="flex items-center justify-between border-t border-border pt-2">
           <span className="text-2xs text-muted-foreground">
             {goal.approved_by ? "Approved" : "Awaiting approval"}
@@ -270,9 +274,9 @@ function KpiRow({
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-muted-foreground">
             <span>weight <span className="tabular-nums text-foreground">{kpi.weight}</span></span>
             <span>target <span className="tabular-nums text-foreground">{formatScore(kpi.target_value)}</span> {kpi.unit}</span>
-            <span>{humanize(kpi.direction)} is better</span>
+            <span>{kpi.direction === "DECREASING" ? "Lower = better ↓" : "Higher = better ↑"}</span>
             <span>
-              actual{" "}
+              Progress{" "}
               {notRecorded ? (
                 <span className="italic">not recorded yet</span>
               ) : (
@@ -287,7 +291,7 @@ function KpiRow({
             <Input
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="actual"
+              placeholder="progress"
               className="h-7 w-20 text-xs"
               inputMode="decimal"
             />
@@ -299,7 +303,7 @@ function KpiRow({
               onClick={() =>
                 mutation
                   .mutateAsync({ kpiId: kpi.id, value: value.trim() })
-                  .then(() => { setValue(""); notifySuccess("Actual recorded"); })
+                  .then(() => { setValue(""); notifySuccess("Progress recorded"); })
                   .catch(notifyError)
               }
             >

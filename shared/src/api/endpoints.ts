@@ -30,6 +30,7 @@ import type {
   MyFeedbackCycle,
   Goal,
   GoalDraftResponse,
+  GoalUpdate,
   OwnFeedback,
   DepartmentAnalytics,
   Entitlement,
@@ -441,6 +442,10 @@ export const goalsApi = {
   aiDraft: (prompt: string) =>
     unwrap<GoalDraftResponse>(api.post("/goals/ai-draft", { prompt })),
   detail: (id: string) => unwrap<Goal>(api.get(`/goals/${id}`)),
+  // AGENT_UX_V3 Part 2.3 — the goal's progress-notes timeline.
+  goalUpdates: (id: string) => unwrap<GoalUpdate[]>(api.get(`/goals/${id}/updates`)),
+  addGoalUpdate: (id: string, text: string) =>
+    unwrap<GoalUpdate>(api.post(`/goals/${id}/updates`, { text })),
   create: (body: {
     employee: string;
     cycle: string;

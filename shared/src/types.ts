@@ -689,6 +689,16 @@ export interface Kpi {
   latest_actual?: Decimal | null;
 }
 
+/** A goal's progress-timeline entry (AGENT_UX_V3 Part 2.3). */
+export interface GoalUpdate {
+  id: UUID;
+  goal: UUID;
+  text: string;
+  author: UUID | null;
+  author_name: string | null;
+  created_at: string;
+}
+
 export interface Goal {
   id: UUID;
   employee: UUID;

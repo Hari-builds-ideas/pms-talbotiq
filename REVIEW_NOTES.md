@@ -87,10 +87,33 @@ plan renders (reason under each) → **Approve all & run** → step 1 ✓ card "
 DRAFT" **Open → /feedback**; step 2 shows "Drafting with AI…" → ✓ "Draft ready" card **Open →
 /reviews/{id}** → completion "2 of 2 done" + chip "Invite reviewers for the 360 cycle".
 
-**Backend live-verified** (gpt-4o-mini) end to end — see the transcript in
-`MORNING_HANDOFF_JULY3.md` (V3 addendum). The pixels/interaction are your pass.
+## Backend live-verified end to end (real gpt-4o-mini) — the exact transcript
+```
+login ada → 200
+>>> Ada: "start a 360 for Vera and draft her review"  (POST /api/ai/chat)
+    → 200 · status=plan · session=725b3147-…
+    plan summary: 'Initiate a 360 review for Vera and draft her performance review.'
+    step 1: initiate_360 [confirm]  reason: 'Vera Lindqvist is in your team, so you can open a 360 feedback cycle for them.'
+    step 2: draft_review [confirm]  reason: "Vera Lindqvist's review is in DRAFT and within your scope, so an AI draft is allowed."
+>>> Ada clicks Approve on step 1 (initiate_360)
+    → 200 · step status=done
+    ✓ artifact: feedback_cycle · '360 — Vera Lindqvist' · state=DRAFT · Open → /feedback
+>>> Ada clicks Approve on step 2 (draft_review)
+    → 200 · step status=done · job_id=4b2704bd-…
+    ✓ artifact: review · 'Review — Vera Lindqvist' · state=AI_DRAFTING · Open → /reviews/623ff8fa-…
+>>> session detail (memory)
+    → 200 · turns=2
+```
+`./scripts/demo_ready.sh` re-asserts this live: **57/57** (write→plan, 2 registered-action steps,
+approve → artifact + `/feedback` deep link, session isolation emp→404, injection executes nothing).
+The pixels/interaction are your device pass.
 
-## Not in this branch (flagged — `HARI_ATTENTION_NEEDED_agentux_*.md`)
-- Part 2.2 analytics history (3 prior scored cycles), Part 2.3 GoalUpdate model + Updates timeline +
-  KPI-name/label relabels, §G page-context, and a full "recent chats" session-resume picker (§F —
-  the panel already persists in the shell; the picker is the remaining piece).
+## Part 2.3 — Goal Updates timeline + label relabels (this branch)
+- `GoalUpdates` component under each goal card (list + add), backed by
+  `goalsApi.goalUpdates()/addGoalUpdate()` → the audited `/api/goals/:id/updates` (on `main`).
+  RTL test: lists updates, honest empty, owner-can-add. Relabels: KPI "actual" → **Progress**,
+  "Increasing/Decreasing is better" → **"Higher = better ↑" / "Lower = better ↓"**.
+
+## Still deferred (flagged — `HARI_ATTENTION_NEEDED_agentux.md`)
+- §G page-context, the full "recent chats" session-resume picker (§F — the panel already persists in
+  the shell; the picker is the remaining piece), and per-role KPI naming polish. Each has a plan.

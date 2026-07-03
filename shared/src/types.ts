@@ -552,11 +552,17 @@ export interface ChatActionResult {
   cycle_id?: string;
 }
 export interface ChatResponse {
-  status: "ok" | "blocked" | "proposal";
+  /** AGENT_UX_V3 §A — a write now returns "plan"; reads stay ok/blocked. */
+  status: "ok" | "blocked" | "proposal" | "plan";
   intent: string;
   answer: string;
   data?: unknown;
   proposal?: ChatProposal;
+  /** Present when status === "plan": the ordered, inert plan to approve step by step. */
+  type?: "plan";
+  plan?: ChatPlan;
+  /** The chat session id — threaded back on the next message for short-term memory. */
+  session_id?: UUID;
 }
 
 /** Agentic chat V2 (OVERNIGHT_A) — a plan is an ordered, INERT checklist the human

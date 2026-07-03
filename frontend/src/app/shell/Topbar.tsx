@@ -1,4 +1,4 @@
-import { Bell, HelpCircle, LogOut, Menu, Search, UserCog } from "lucide-react";
+import { Bell, HelpCircle, LogOut, Menu, Search, Sparkles, UserCog } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -141,7 +141,22 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
           <TooltipContent>{pending > 0 ? `${pending} pending action${pending === 1 ? "" : "s"}` : "No pending actions"}</TooltipContent>
         </Tooltip>
 
-        {/* Help & AI assistant */}
+        {/* Ask AI — first-class agent entry point (AGENT_UX_V3 Part 2.1) */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={chat.toggle}
+              aria-label="Ask AI"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-ai transition-colors hover:bg-ai-subtle"
+            >
+              <Sparkles className="h-[18px] w-[18px]" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Ask AI — plan &amp; approve multi-step work</TooltipContent>
+        </Tooltip>
+
+        {/* Help */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button

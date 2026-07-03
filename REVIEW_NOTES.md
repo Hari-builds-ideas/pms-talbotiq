@@ -55,3 +55,42 @@ until you've eyeballed it** — this is UI; I can't see pixels. It is **green** 
 
 `POST /api/ai/chat/plan`, `POST /api/ai/chat/plan/:id/step/:id/approve`, `GET /api/ai/chat/sessions`,
 `GET /api/ai/chat/sessions/:id`. See `AGENTIC_CHAT_V2_REPORT.md` + `docs/AGENT_ARCHITECTURE.md`.
+
+---
+
+# ADDENDUM — AGENT_UX_V3 (make it FEEL like an agent)
+
+Green: `tsc`, `eslint`, `vite build`, **vitest 114**. Still **NOT visually verified — your device/eyes.**
+
+## What changed (frontend, this branch)
+- **One send path (§A):** removed the separate "Plan" button — a single **Send** hits `/api/ai/chat`,
+  which now returns an inert PLAN for a write intent (backend on `main`). `shared` `ChatResponse` +
+  `aiApi.chat(query, sessionId)` updated to carry the plan + thread the session.
+- **Rich result cards + deep links (§B):** an executed step renders a **ResultCard** (icon by
+  artifact type, title, state pill, **Open →** that `navigate()`s to the real route). The artifact
+  comes from the approve result (`result.artifact`, added on `main`).
+- **Live async job tracking (§C):** a `draft_review`/enrich step shows "Drafting with AI… ~20s" and
+  polls the SAME job endpoint the screens use (`useAIJob`), flipping to "Draft ready" or an honest
+  "AI unavailable — nothing was changed" (never fakes success).
+- **Approve all & run (§D):** multi-step plans get one button that approves steps SEQUENTIALLY over
+  the existing per-step endpoint; a clarify pauses it, a **failure STOPS** it (rest stay pending).
+  Covered by an RTL test (3-step plan, fails at step 2, step 3 never called).
+- **Completion summary + suggestion chip (§E):** "N of N done" + ONE next-step chip (static map) that
+  **prefills** the input (never auto-sends).
+- **Ask AI button + subtitle (Part 2.1):** a first-class **sparkle "Ask AI"** button in the top bar;
+  the panel subtitle fixed (it no longer claims read-only): "Ask questions or plan multi-step tasks —
+  I propose, you approve each step. Nothing runs without your OK."
+
+## The click-path to eyeball (login `ada@acme.test` / `Passw0rd!demo`)
+Top bar → **Ask AI** (✨) → type *"start a 360 for Vera and draft her review"* → **Send** → a 2-step
+plan renders (reason under each) → **Approve all & run** → step 1 ✓ card "360 — Vera Lindqvist ·
+DRAFT" **Open → /feedback**; step 2 shows "Drafting with AI…" → ✓ "Draft ready" card **Open →
+/reviews/{id}** → completion "2 of 2 done" + chip "Invite reviewers for the 360 cycle".
+
+**Backend live-verified** (gpt-4o-mini) end to end — see the transcript in
+`MORNING_HANDOFF_JULY3.md` (V3 addendum). The pixels/interaction are your pass.
+
+## Not in this branch (flagged — `HARI_ATTENTION_NEEDED_agentux_*.md`)
+- Part 2.2 analytics history (3 prior scored cycles), Part 2.3 GoalUpdate model + Updates timeline +
+  KPI-name/label relabels, §G page-context, and a full "recent chats" session-resume picker (§F —
+  the panel already persists in the shell; the picker is the remaining piece).

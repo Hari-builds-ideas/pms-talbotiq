@@ -391,7 +391,8 @@ export const integrationsApi = {
 // ---- AI --------------------------------------------------------------------
 
 export const aiApi = {
-  chat: (query: string) => unwrap<ChatResponse>(api.post("/ai/chat", { query })),
+  chat: (query: string, sessionId?: string) =>
+    unwrap<ChatResponse>(api.post("/ai/chat", { query, session_id: sessionId })),
   // RW_BUILD_4 — run a previously PROPOSED assistant action on explicit human
   // Approve. The server re-checks permission + scope and audits each effect.
   executeAction: (action: string, params: Record<string, unknown>) =>

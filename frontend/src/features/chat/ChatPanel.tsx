@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, ListChecks, Send, Sparkles, User as UserIcon } from "lucide-react";
+import { Bot, Send, Sparkles, User as UserIcon } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -37,7 +37,7 @@ export function useChatPanel() {
 interface Turn {
   role: "user" | "assistant";
   text: string;
-  status?: "ok" | "blocked" | "proposal";
+  status?: "ok" | "blocked" | "proposal" | "plan";
   data?: unknown;
   proposal?: ChatProposal;
   plan?: ChatPlan;
@@ -66,12 +66,23 @@ function ChatSheet() {
   const sessionId = React.useRef<string | undefined>(undefined);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
+  // AGENT_UX_V3 §A — ONE send path. /ai/chat answers reads and, for a write intent,
+  // returns an inert PLAN (status:"plan") the human approves step by step. Session id
+  // is threaded across turns for short-term memory.
   const mutation = useMutation({
-    mutationFn: (q: string) => aiApi.chat(q),
+    mutationFn: (q: string) => aiApi.chat(q, sessionId.current),
     onSuccess: (res) => {
+      if (res.session_id) sessionId.current = res.session_id;
       setTurns((t) => [
         ...t,
-        { role: "assistant", text: res.answer, status: res.status, data: res.data, proposal: res.proposal },
+        {
+          role: "assistant",
+          text: res.answer,
+          status: res.status,
+          data: res.data,
+          proposal: res.proposal,
+          plan: res.plan,
+        },
       ]);
     },
     onError: (err) => {
@@ -86,30 +97,7 @@ function ChatSheet() {
       }
     },
   });
-
-  // OVERNIGHT_A — the AGENT path: plan a (possibly multi-step) request into an inert
-  // checklist. Session id is threaded across turns for short-term memory.
-  const planMutation = useMutation({
-    mutationFn: (q: string) => aiApi.plan(q, sessionId.current),
-    onSuccess: (res) => {
-      sessionId.current = res.session_id;
-      setTurns((t) => [...t, { role: "assistant", text: res.plan.summary, plan: res.plan }]);
-    },
-    onError: (err) => {
-      const mapped = mapApiError(err);
-      if (mapped.kind === "ai_unavailable") setUnavailable(true);
-      else setTurns((t) => [...t, { role: "assistant", text: mapped.message, status: "blocked" }]);
-    },
-  });
-  const busy = mutation.isPending || planMutation.isPending;
-
-  function planIt() {
-    const q = input.trim();
-    if (!q) return;
-    setTurns((t) => [...t, { role: "user", text: q }]);
-    setInput("");
-    planMutation.mutate(q);
-  }
+  const busy = mutation.isPending;
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -133,8 +121,8 @@ function ChatSheet() {
             AI Assistant
           </SheetTitle>
           <SheetDescription>
-            Read-only and RBAC-scoped — it only answers from what you can already
-            see, and never makes changes.
+            Ask questions or plan multi-step tasks — I propose, you approve each step.
+            Nothing runs without your OK.
           </SheetDescription>
         </SheetHeader>
 
@@ -186,7 +174,7 @@ function ChatSheet() {
               )}
 
               {turns.map((turn, i) => (
-                <ChatBubble key={i} turn={turn} />
+                <ChatBubble key={i} turn={turn} onSuggest={setInput} />
               ))}
 
               {busy && (
@@ -203,21 +191,10 @@ function ChatSheet() {
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask, or plan a multi-step task…"
+                placeholder="Ask, or describe a multi-step task…"
                 disabled={unavailable}
                 aria-label="Chat message"
               />
-              <Button
-                type="button"
-                size="icon"
-                variant="outline"
-                onClick={planIt}
-                disabled={unavailable || !input.trim()}
-                title="Plan this as step-by-step actions you approve"
-                aria-label="Plan as steps"
-              >
-                <ListChecks className="h-4 w-4" />
-              </Button>
               <Button type="submit" size="icon" disabled={unavailable || !input.trim()}>
                 <Send className="h-4 w-4" />
               </Button>
@@ -229,7 +206,7 @@ function ChatSheet() {
   );
 }
 
-function ChatBubble({ turn }: { turn: Turn }) {
+function ChatBubble({ turn, onSuggest }: { turn: Turn; onSuggest?: (text: string) => void }) {
   const isUser = turn.role === "user";
   return (
     <div className={cn("flex gap-2.5", isUser && "flex-row-reverse")}>
@@ -252,7 +229,7 @@ function ChatBubble({ turn }: { turn: Turn }) {
         )}
         <p className="whitespace-pre-wrap">{turn.text}</p>
         {turn.proposal && <ProposalCard proposal={turn.proposal} />}
-        {turn.plan && <PlanChecklist plan={turn.plan} />}
+        {turn.plan && <PlanChecklist plan={turn.plan} onSuggest={onSuggest} />}
         {Array.isArray(turn.data) && turn.data.length > 0 && (
           <ul className="list-disc space-y-0.5 pl-4 text-xs opacity-90">
             {(turn.data as string[]).map((d, i) => (

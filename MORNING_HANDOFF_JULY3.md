@@ -90,5 +90,66 @@ Each has its own `REVIEW_NOTES.md` (login + click-path + deviations).
 1. Eyeball + merge `hari/agent-ui-v2` (the CEO-facing win), then the 3 `hari/dash-*` branches
    (cherry-pick order in `HARI_ATTENTION_NEEDED_dashboard_role_parity.md`) + `hari/profile-signoff`.
 2. Reviews / Recognition / Feedback recompose — one screen at a time with your visual approval (the
-   three `HARI_ATTENTION_NEEDED_screen_*.md` files are ready-to-execute).
-3. File E E2/E3 as a focused backend pass (flag file has the plan + the test each needs).
+   three `HARI_ATTENTION_NEEDED_screen_*.md` files are ready-to-execute). `hari/reviews-sections`
+   already does the biggest Reviews sub-win (markdown→section cards) — cherry-pick it first.
+3. Device pass on the two mobile branches (`hari/mobile-tab-ia`, then `hari/mobile-chat-agent-v2`).
+
+---
+
+# ADDENDUM — Files F–J (same night, later runs)
+
+Ran `OVERNIGHT_F/G/H/I/J`. **Before any demo, run `./scripts/demo_ready.sh`** — it
+recreates the stack, seeds the rich demo, and runs the E2E smoke (now **55/55**,
+incl. the agent plan→approve flow + the refusal beat). It went green tonight.
+
+## `main` — auto-merged, all green (backend 1327 → **1415 passed**, 7 deselected)
+| Commit | File | What |
+|---|---|---|
+| `a0ccf8e` | **F** | Agent actions expansion: 5 new actions (`open_checkin`, `respond_to_checkin`, `approve_goal`, `schedule_review`, `update_kpi_actual`) reusing existing audited endpoints + `GET /api/ai/actions/schema` + planner integration + 1 live gpt-4o-mini test. Flagged 2 (see below). +28 tests. |
+| `b41f959` | **I** | Backend hardening: `deploy_migrate` (advisory-locked migrations, E2) + atomic budget resilience (EVALSHA/NOSCRIPT recovery, Redis-down soft fallback + metric, E3). +9 tests. `HARI_ATTENTION_NEEDED_hardening.md` → RESOLVED. |
+| `68be96e` | **J2/J3** | Agent-V2 E2E in `scripts/smoke.py` (48→**55/55**, live-verified) + `scripts/demo_ready.sh` + `docs/DEMO_READY.md`. |
+| `f41df02`, `6413cd5` | G, H | Progress/handoff docs for the branch work below. |
+
+## `hari` review branches created this run (green, DO NOT merge — your eyes/device)
+| Branch | File | What | Gate |
+|---|---|---|---|
+| `hari/reviews-sections` | **H** | Reviews AI body → **section cards** (+ "View raw"); parser + render + tests | tsc/lint/vitest 118/build |
+| `hari/mobile-tab-ia` | **G1** | Mobile tab IA recut → Home·Goals·Reviews·Recognition·You | tsc/expo lint/expo export/vitest |
+| `hari/mobile-chat-agent-v2` | **G2** | Mobile chat consumes agent V2 (plan/step) + session in secure store | tsc(×2)/expo lint/expo export(iOS+web)/vitest |
+| `hari/dash-hrbp` · `dash-admin` · `dash-employee` | **J1** | Added a cockpit RTL test locking each role's KPI hero row | tsc/lint/vitest |
+
+`hari/agent-ui-v2` (`PlanChecklist.test`) and `hari/profile-signoff` (`ProfilePage.test`)
+already carried their composition tests — both **re-verified green** this run.
+
+## New `HARI_ATTENTION_NEEDED_*` (decisions waiting)
+- **`_action_request_feedback.md`** — File F: no Employee-scoped feedback-request endpoint
+  exists (invitations are Manager+); wiring it Employee+ would widen permissions. Options inside.
+- **`_action_nudge_stale_goal.md`** — File F: stale goals are read-only advisory; no audited
+  per-goal nudge-send endpoint to reuse. Options inside.
+- **`_mobile_no_pixel.md`** — review order for the two mobile branches (tab-IA first).
+- (`_hardening.md` now marked ✅ RESOLVED — E2/E3 shipped.)
+
+## Live-verified vs green-tests-only
+- **Live-verified (real gpt-4o-mini):** the File F planner over the new actions
+  (`test_planner_live.py`), and the **full E2E smoke 55/55** — the agent plans, remembers
+  (session), isolates (emp→404), and REFUSES (an injection plans only registered actions and
+  executes nothing — `goal.approved` audit unchanged, proven live).
+- **Green tests only:** the 5 File F actions' unit/HTTP tests (FakeLLMProvider); every `hari`
+  branch (tsc/lint/build/expo — NOT visually/device verified).
+
+## Live AI spend (this run)
+~**6 gpt-4o-mini calls** total (1 File-F live planner test + ~4 across two smoke runs).
+Fractions of a cent. No `gpt-4o` (expensive tier). `live_ai` tests stay deselected by default.
+
+## Test counts (end of night)
+- **Backend: 1415 passed, 7 deselected** (start-of-run 1378 → +37: F +28, I +9; 7 deselected =
+  2 `large_tenant` + 5 `live_ai`).
+- **E2E smoke: 55/55** against the live stack.
+- Frontend: web suite 118 (on `hari/reviews-sections`); each `hari` branch green on its own gate.
+
+## What did NOT get done (honest)
+- **File F**: `request_feedback` + `nudge_stale_goal` — flagged, not shipped (no clean/Employee-scoped
+  audited endpoint; wiring them would widen permissions or invent an unaudited write). Shipped 5 of 7.
+- The Reviews/Recognition/Feedback **full visual recompose** still needs your eyes (unchanged from the
+  first run; `hari/reviews-sections` does the one mechanical Reviews sub-win).
+- Nothing pushed to origin (outward-facing; left for your review).

@@ -188,8 +188,19 @@ approve → artifact + `/feedback` deep link, session isolation (emp→404), and
 ## Live AI spend (this run)
 ~**8 gpt-4o-mini calls** (the demo-story verify + demo_ready's smoke). Under the ≤10 cap. No gpt-4o.
 
-## What did NOT get done (flagged — `HARI_ATTENTION_NEEDED_agentux.md`, with ready-to-run plans)
-Part 2.2 (3 prior scored cycles for analytics history), Part 2.3 (GoalUpdate model + Updates
-timeline + KPI-name/label relabels), §G (page-context), §F (recent-chats session picker — the panel
-already persists; the picker is the remaining bit). Each is bounded + backend-mostly; none blocked.
-Your **device/visual pass** on `hari/agent-ui-v2` is the last gate for the V3 UX (pixels are your call).
+## Follow-up pass (later same run) — Part 2.2 + 2.3 landed
+- **Part 2.3 — GoalUpdate** (`main` `73e8cb3`): a `TenantScopedModel` progress-note timeline under
+  each goal (migration 0004) + audited endpoint `GET/POST /api/goals/:id/updates` + 5 tests + seeded
+  updates; KPI shells renamed to concrete names; "actual"→"Progress", direction→"Higher/Lower =
+  better". UI timeline + relabels on `hari/agent-ui-v2` (`e2919d5`, +3 RTL). (Weight/T-score tooltips
+  already existed.)
+- **Part 2.2 — analytics history** (`main` `73e8cb3`): 3 prior CLOSED cycles (Q1/Q2/H2 2025) with
+  real recorded actuals + real T-scores via the scoring engine → a 4-point individual trend +
+  dept/calibration history. Goals built ACTIVE→scored→ARCHIVED so the ACTIVE-weight=100 invariant
+  still holds; idempotent. +1 test. Backend suite **1429 passed**.
+- **Part 2.4** current-cycle actuals were already seeded.
+
+## Still flagged — `HARI_ATTENTION_NEEDED_agentux.md` (small, ready-to-run)
+§G (page-context, stretch), §F recent-chats session picker (the panel already persists; the picker
+is the bit left), per-role KPI-naming polish — plus your **device/visual pass** on `hari/agent-ui-v2`
+(the standing "agent can't see pixels" rule). None blocked.

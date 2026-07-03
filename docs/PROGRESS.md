@@ -16,9 +16,13 @@ top-bar button + subtitle fix.
 
 **Live-verified** on gpt-4o-mini + **`demo_ready.sh` 57/57 ✓**: "start a 360 for Vera and draft her
 review" → 2 confirm steps → approve each → feedback_cycle + review artifacts with Open→ links + draft
-job; injection executes nothing (goal.approved 50→50). Deferred (flagged, ready-to-run):
-`HARI_ATTENTION_NEEDED_agentux.md` — analytics history, GoalUpdate timeline, page-context, session
-picker; + the frontend device/visual pass.
+job; injection executes nothing (goal.approved 50→50).
+
+Follow-up pass landed **Part 2.2** (3 prior scored cycles → analytics history; `main` `73e8cb3`,
+suite 1429) and **Part 2.3** (GoalUpdate model + Updates timeline + KPI-name/label relabels; backend
+`main`, UI `hari/agent-ui-v2` `e2919d5`, web vitest 117). Still flagged
+(`HARI_ATTENTION_NEEDED_agentux.md`): §G page-context, §F recent-chats picker, per-role KPI polish,
++ the frontend device/visual pass.
 
 ---
 

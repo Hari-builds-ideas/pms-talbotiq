@@ -109,14 +109,16 @@ def section_agent_v2(mgr, hrbp, emp):
     results.append((st == 200 and bool(names & {"approve_goal", "initiate_360", "open_checkin"}),
                     "actions schema lists agent actions", f"{st} · {len(names)} actions"))
 
-    # A real multi-step plan (whatever provider the stack runs).
-    st, planned = call("POST", "/api/ai/chat/plan", mgr,
-                       {"query": "start a 360 for my report and draft a review for my report"})
+    # AGENT_UX_V3 §A — ONE send path: a write to /api/ai/chat returns a PLAN (not a
+    # single proposal). The demo story: "start a 360 for Vera and draft her review".
+    st, planned = call("POST", "/api/ai/chat", mgr,
+                       {"query": "start a 360 for Vera and draft a review for Vera"})
     plan = planned.get("plan") if isinstance(planned, dict) else None
     session_id = planned.get("session_id") if isinstance(planned, dict) else None
     steps = plan.get("steps", []) if isinstance(plan, dict) else []
-    results.append((st == 200 and isinstance(plan, dict), "plan create (mgr)",
-                    f"POST /api/ai/chat/plan → {st}"))
+    results.append((st == 200 and isinstance(planned, dict) and planned.get("status") == "plan"
+                    and isinstance(plan, dict), "write → plan (one send path)",
+                    f"POST /api/ai/chat → {st} · {planned.get('status') if isinstance(planned, dict) else '?'}"))
     results.append((all(s.get("action") in KNOWN_ACTIONS for s in steps),
                     "every plan step is a registered action (no fabrication)", f"{len(steps)} steps"))
 
@@ -130,12 +132,17 @@ def section_agent_v2(mgr, hrbp, emp):
         check("session isolation (emp → 403/404)", "GET",
               f"/api/ai/chat/sessions/{session_id}", emp, expect=(403, 404))
 
-    # Per-step approve — a real audited write — only if the plan produced a confirm step.
+    # Per-step approve — a real audited write — with a rich ARTIFACT + deep link (§B).
     plan_id = plan.get("id") if isinstance(plan, dict) else None
     confirm = next((s for s in steps if s.get("feel") == "confirm"), None)
     if plan_id and confirm:
-        check("approve one step (mgr, real write)", "POST",
-              f"/api/ai/chat/plan/{plan_id}/step/{confirm['id']}/approve", mgr, expect=(200,))
+        st, appr = call("POST", f"/api/ai/chat/plan/{plan_id}/step/{confirm['id']}/approve", mgr, {})
+        results.append((st == 200, "approve one step (mgr, real write)",
+                        f"step → {st}"))
+        art = (appr.get("result") or {}).get("artifact") if isinstance(appr, dict) else None
+        results.append((isinstance(art, dict) and str(art.get("deeplink", "")).startswith("/"),
+                        "executed step returns an artifact + deep link",
+                        f"{(art or {}).get('type')} → {(art or {}).get('deeplink')}"))
     else:
         print(f"  {DIM}(no confirm step to approve on this seed — skipped){RESET}")
 
@@ -218,12 +225,12 @@ def run():
     check("nudges DENIED (employee→403)", "GET", "/api/ai/nudges", emp, expect=(403,))
     st, chat = check("chat read (mgr)", "POST", "/api/ai/chat", mgr,
                      expect=(200,), body={"query": "how are my reports doing?"})
-    st, blocked = check("chat write-blocked (mgr)", "POST", "/api/ai/chat", mgr,
-                        expect=(200,), body={"query": "approve all reviews"})
-    if isinstance(blocked, dict) and blocked.get("status") not in (None, "blocked"):
-        # chat answered but should classify a write as blocked
-        results.append((blocked.get("intent") == "write" or blocked.get("status") == "blocked",
-                        "chat classifies write→blocked", str(blocked.get("status"))))
+    # AGENT_UX_V3 §A — a write now returns a PLAN (not a blanket block); still inert.
+    st, planned = check("chat write→plan (mgr)", "POST", "/api/ai/chat", mgr,
+                        expect=(200,), body={"query": "approve my team's goals"})
+    if isinstance(planned, dict):
+        results.append((planned.get("status") == "plan" and isinstance(planned.get("plan"), dict),
+                        "chat write returns an inert plan", str(planned.get("status"))))
 
     section_agent_v2(mgr, hrbp, emp)
 

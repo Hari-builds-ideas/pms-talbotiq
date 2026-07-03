@@ -100,6 +100,20 @@ def _clarify(question: str) -> dict:
     return {"action": "clarify", "feel": "clarify", "summary": question, "preview": [], "params": {}}
 
 
+def _artifact(type_: str, id_, title: str, state: str, deeplink: str) -> dict:
+    """The thing an executed action produced/touched, for a rich result card + a
+    deep link (AGENT_UX_V3 §B). ``deeplink`` is a PLAIN client route that already
+    exists in the SPA router (verified) — never an invented path. ``id_`` may be
+    None for actions with no single artifact id."""
+    return {
+        "type": type_,
+        "id": str(id_) if id_ is not None else None,
+        "title": title,
+        "state": state,
+        "deeplink": deeplink,
+    }
+
+
 # ── approve_goals (RW_BUILD_4) ──────────────────────────────────────────────────
 
 
@@ -139,7 +153,7 @@ def _execute_approve_goals(user, params) -> dict:
     ids = params.get("goal_ids") or []
     if not isinstance(ids, list):
         raise ValidationError({"goal_ids": "Expected a list."})
-    approved, skipped = 0, []
+    approved, skipped, last_goal = 0, [], None
     for gid in ids[:_MAX_TARGETS]:
         goal = Goal.objects.filter(id=gid).select_related("employee").first()
         if goal is None:
@@ -156,7 +170,14 @@ def _execute_approve_goals(user, params) -> dict:
         goal.approved_at = timezone.now()
         goal.save()
         approved += 1
-    return {"action": "approve_goals", "approved": approved, "skipped": skipped}
+        last_goal = goal
+    out = {"action": "approve_goals", "approved": approved, "skipped": skipped}
+    if last_goal is not None:  # deep-link to the (last) approved goal's owner profile
+        out["artifact"] = _artifact(
+            "goal", last_goal.id, f"Goal approved — {_display(last_goal.employee)}",
+            "APPROVED", f"/people/{last_goal.employee_id}",
+        )
+    return out
 
 
 # ── approve_reviews (RW_BUILD_5) ────────────────────────────────────────────────
@@ -199,7 +220,7 @@ def _execute_approve_reviews(user, params) -> dict:
     ids = params.get("review_ids") or []
     if not isinstance(ids, list):
         raise ValidationError({"review_ids": "Expected a list."})
-    approved, skipped = 0, []
+    approved, skipped, last_review = 0, [], None
     for rid in ids[:_MAX_TARGETS]:
         review = Review.objects.filter(id=rid).select_related("employee").first()
         if review is None:
@@ -208,9 +229,16 @@ def _execute_approve_reviews(user, params) -> dict:
         try:
             state_machine.approve(review, user)
             approved += 1
+            last_review = review
         except Exception as exc:  # noqa: BLE001 — out of scope / wrong state → skip, never force
             skipped.append({"review_id": str(rid), "reason": type(exc).__name__})
-    return {"action": "approve_reviews", "approved": approved, "skipped": skipped}
+    out = {"action": "approve_reviews", "approved": approved, "skipped": skipped}
+    if last_review is not None:
+        out["artifact"] = _artifact(
+            "review", last_review.id, f"Review approved — {_display(last_review.employee)}",
+            "APPROVED", f"/reviews/{last_review.id}",
+        )
+    return out
 
 
 # ── draft_review (AGENTIC_CHAT) — confirm → existing async Agent-1 seam ──────────
@@ -278,6 +306,10 @@ def _execute_draft_review(user, params) -> dict:
         "ok": True,
         "job_id": str(job.id),
         "message": f"AI draft requested for {_display(review.employee)} — it'll land pending your review.",
+        "artifact": _artifact(
+            "review", review.id, f"Review — {_display(review.employee)}",
+            "AI_DRAFTING", f"/reviews/{review.id}",
+        ),
     }
 
 
@@ -324,6 +356,7 @@ def _execute_career_enrich(user, params) -> dict:
         "ok": True,
         "job_id": str(job.id),
         "message": "Roadmap enrichment requested — adopt the AI draft when it's ready.",
+        "artifact": _artifact("career_roadmap", roadmap.id, "Development roadmap", "ENRICHING", "/career"),
     }
 
 
@@ -367,6 +400,10 @@ def _execute_succession_enrich(user, params) -> dict:
         "ok": True,
         "job_id": str(job.id),
         "message": f"Succession enrichment requested for {plan.critical_role.name}.",
+        "artifact": _artifact(
+            "succession_plan", plan.id, f"Succession plan — {plan.critical_role.name}",
+            "ENRICHING", "/succession",
+        ),
     }
 
 
@@ -422,6 +459,9 @@ def _execute_initiate_360(user, params) -> dict:
         "ok": True,
         "cycle_id": str(cycle.id),
         "message": f"360 cycle created for {_display(subject)} (draft) — open it to invite reviewers.",
+        "artifact": _artifact(
+            "feedback_cycle", cycle.id, f"360 — {_display(subject)}", "DRAFT", "/feedback",
+        ),
     }
 
 
@@ -526,6 +566,7 @@ def _execute_record_actual(user, params) -> dict:
     return {
         "action": "record_actual", "ok": True, "measurement_id": str(measurement.id),
         "message": f"Recorded {value} for “{kpi.name}”.",
+        "artifact": _artifact("kpi", kpi.id, f"{kpi.name} — {value}", "RECORDED", "/goals"),
     }
 
 
@@ -609,6 +650,9 @@ def _execute_give_recognition(user, params) -> dict:
     return {
         "action": "give_recognition", "ok": True, "recognition_id": str(rec.id),
         "message": f"Recognition posted for {_display(rec.recipient)}.",
+        "artifact": _artifact(
+            "recognition", rec.id, f"Recognition — {_display(rec.recipient)}", "POSTED", "/recognition",
+        ),
     }
 
 
@@ -688,12 +732,14 @@ def _execute_open_checkin(user, params) -> dict:
     existing = CheckIn.objects.filter(author_id=user.id, week_of=week).first()
     if existing is not None:
         return {"action": "open_checkin", "ok": True, "checkin_id": str(existing.id),
-                "created": False, "message": "This week's check-in is already open."}
+                "created": False, "message": "This week's check-in is already open.",
+                "artifact": _artifact("checkin", existing.id, "This week's check-in", "OPEN", "/checkins")}
     ci = upsert_checkin(user, week_of=week, mood=params.get("mood"))  # service validates mood 1–5
     audit_record(action="checkin.opened", actor=user, target_type="checkin", target_id=ci.id,
                  metadata={"week_of": week.isoformat()})
     return {"action": "open_checkin", "ok": True, "checkin_id": str(ci.id),
-            "created": True, "message": f"Opened your check-in for the week of {week.isoformat()}."}
+            "created": True, "message": f"Opened your check-in for the week of {week.isoformat()}.",
+            "artifact": _artifact("checkin", ci.id, "This week's check-in", "OPEN", "/checkins")}
 
 
 # ── respond_to_checkin (Manager+) — confirm → mirrors respond_to_checkin svc ─────
@@ -732,7 +778,8 @@ def _execute_respond_checkin(user, params) -> dict:
     resp = respond_svc(user, params.get("checkin_id"), comment=params.get("comment") or "")
     audit_record(action="checkin.responded", actor=user, target_type="checkin", target_id=resp.check_in_id)
     return {"action": "respond_to_checkin", "ok": True, "response_id": str(resp.id),
-            "message": "Response posted to the check-in."}
+            "message": "Response posted to the check-in.",
+            "artifact": _artifact("checkin", resp.check_in_id, "Check-in response", "RESPONDED", "/checkins")}
 
 
 # ── approve_goal (Manager+) — confirm → the singular sibling of approve_goals ─────

@@ -213,12 +213,17 @@ class Command(BaseCommand):
         # in the demo (forced high attainment → On Track; check-ins + recognition below).
         akhil = self._user(tenant, "akhil", "Akhil Menon", "EMPLOYEE", manager=ada, department=leads[0][1])
         employees.append(akhil)
+        # Vera Lindqvist — Ada's report used by the agent demo story ("start a 360 for
+        # Vera and draft her review"). Guaranteed a DRAFT review below so both steps
+        # resolve to confirm actions.
+        vera = self._user(tenant, "vera", "Vera Lindqvist", "EMPLOYEE", manager=ada, department=leads[0][1])
+        employees.append(vera)
         managers = [d for d, _ in directors] + [l for l, _ in leads]
         ada_reports = [e for e in employees if e.manager_id == ada.id]
         return {
             "admin": admin, "hrbps": hrbps, "directors": [d for d, _ in directors],
             "managers": managers, "leads": [l for l, _ in leads], "employees": employees,
-            "ada": ada, "ada_reports": ada_reports, "akhil": akhil,
+            "ada": ada, "ada_reports": ada_reports, "akhil": akhil, "vera": vera,
             "all": [admin, *hrbps, *managers, *employees],
         }
 
@@ -343,15 +348,20 @@ class Command(BaseCommand):
         from apps.identity.models import User as _User
 
         ada = people["ada"]
-        target = _User.objects.filter(tenant_id=tenant.id, email="emp009@acme.test").first()
-        if target is not None and target.manager_id == ada.id:
+        # FIXED Ada reports (emp009 + Vera) that always carry a DRAFT review + SELF
+        # assessment so the "Request AI draft" screen step AND the agent "draft her
+        # review" step are reliably available even after a prior rehearsal advanced them.
+        for email in ("emp009@acme.test", "vera@acme.test"):
+            target = _User.objects.filter(tenant_id=tenant.id, email=email).first()
+            if target is None or target.manager_id != ada.id:
+                continue
             review = self._review(
                 tenant, target, cycle,
                 {"reviewer": ada, "state": "DRAFT", "source": "MANUAL",
                  "draft_body": "Strong, consistent delivery this cycle with clear growth areas."},
             )
             if review is None:
-                return
+                continue
             if review.state != "DRAFT":
                 review.state = "DRAFT"
                 review.human_reviewer = None

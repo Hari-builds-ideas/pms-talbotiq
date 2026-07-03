@@ -42,10 +42,17 @@ class ChatView(RBACMixin, APIView):
         return perms
 
     def post(self, request):
+        # AGENT_UX_V3 §A — ONE send path: reads answer; writes return an inert PLAN.
+        # Session-backed so multi-turn memory + references work from the single field.
+        from apps.ai import sessions
+        from apps.ai.models import ChatTurn
+
         query = (request.data.get("query") or "").strip()
         if not query:
             return Response({"detail": "query is required."}, status=status.HTTP_400_BAD_REQUEST)
-        result = chat_answer(request.user, query)
+        session = sessions.get_session(request.user, request.data.get("session_id"))
+        sessions.append_turn(session, ChatTurn.Role.USER, query)
+        result = chat_answer(request.user, query, session=session)
         if result["status"] == "not_configured":
             return Response(
                 {"detail": "The Chat Assistant is not configured (LLM provider unset; "
@@ -60,8 +67,24 @@ class ChatView(RBACMixin, APIView):
         if result["status"] == "error":
             return Response({"detail": f"chat unavailable: {result.get('detail')}"},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        # ok / blocked-write → 200 (a blocked write is a valid, informative answer).
-        return Response(result)
+        if result["status"] == "plan":
+            # A write → an ordered, INERT plan the human approves step by step.
+            from apps.ai.planner import refs_for_plan
+            from apps.ai.serializers import ChatPlanSerializer
+
+            plan = result["plan"]
+            sessions.append_turn(
+                session, ChatTurn.Role.ASSISTANT, plan.summary,
+                refs=refs_for_plan(plan), plan=plan,
+            )
+            return Response({
+                "type": "plan", "status": "plan", "intent": "write",
+                "session_id": str(session.id), "answer": plan.summary,
+                "plan": ChatPlanSerializer(plan).data,
+            })
+        # ok / blocked-write / legacy-proposal → 200 (record the assistant turn).
+        sessions.append_turn(session, ChatTurn.Role.ASSISTANT, result.get("answer", ""))
+        return Response({**result, "session_id": str(session.id)})
 
 
 class ChatActionExecuteView(RBACMixin, APIView):

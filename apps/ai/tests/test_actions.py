@@ -854,3 +854,70 @@ def test_actions_schema_hides_sensitive_from_employee(org):
     # a manager (who could try it) does see it.
     mgr_names = {a["name"] for a in _client(org.hrbp).get("/api/ai/actions/schema").json()["actions"]}
     assert "succession_enrich" in mgr_names
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# AGENT_UX_V3 §B — every executed action returns an `artifact` {type,id,title,state,
+# deeplink} for a rich result card + a REAL client-route deep link (never invented).
+# ════════════════════════════════════════════════════════════════════════════════
+
+_REAL_ROUTE_PREFIXES = (
+    "/feedback", "/reviews", "/recognition", "/goals", "/people/", "/checkins", "/career", "/succession",
+)
+
+
+def _assert_artifact(out, *, type_, deeplink_prefix):
+    art = out.get("artifact")
+    assert art is not None, f"{out.get('action')} returned no artifact"
+    assert art["type"] == type_
+    assert art["title"] and art["state"]
+    assert art["deeplink"].startswith(deeplink_prefix)
+    assert any(art["deeplink"].startswith(p) for p in _REAL_ROUTE_PREFIXES)  # a real SPA route
+
+
+def test_artifact_initiate_360(org):
+    with tenant_context(org.tenant):
+        out = execute_action(org.manager, "initiate_360", {"subject_id": str(org.report.id)})
+        _assert_artifact(out, type_="feedback_cycle", deeplink_prefix="/feedback")
+        assert out["artifact"]["id"] == out["cycle_id"]
+
+
+def test_artifact_draft_review(org):
+    with tenant_context(org.tenant):
+        review = ReviewFactory(employee=org.report, cycle=_active_cycle(org), state="DRAFT")
+        out = execute_action(org.manager, "draft_review", {"review_id": str(review.id)})
+        _assert_artifact(out, type_="review", deeplink_prefix=f"/reviews/{review.id}")
+
+
+def test_artifact_give_recognition(org):
+    with tenant_context(org.tenant):
+        out = execute_action(org.manager, "give_recognition", {
+            "recipient_user_id": str(org.report.id), "category": "Teamwork", "note": "x"})
+        _assert_artifact(out, type_="recognition", deeplink_prefix="/recognition")
+
+
+def test_artifact_record_actual(org):
+    with tenant_context(org.tenant):
+        kpi = _own_kpi(org, name="Uptime")
+        out = execute_action(org.report, "record_actual", {"kpi_id": str(kpi.id), "value": "90"})
+        _assert_artifact(out, type_="kpi", deeplink_prefix="/goals")
+
+
+def test_artifact_approve_goal(org):
+    with tenant_context(org.tenant):
+        goal = _pending_goal(org, org.report)
+        out = execute_action(org.manager, "approve_goal", {"goal_ids": [str(goal.id)]})
+        _assert_artifact(out, type_="goal", deeplink_prefix=f"/people/{org.report.id}")
+
+
+def test_artifact_open_checkin(org):
+    with tenant_context(org.tenant):
+        out = execute_action(org.report, "open_checkin", {"week_of": _week_monday().isoformat(), "mood": 4})
+        _assert_artifact(out, type_="checkin", deeplink_prefix="/checkins")
+
+
+def test_artifact_respond_to_checkin(org):
+    with tenant_context(org.tenant):
+        ci = _report_checkin(org, author=org.report, mood=3)
+        out = execute_action(org.manager, "respond_to_checkin", {"checkin_id": str(ci.id), "comment": "ok"})
+        _assert_artifact(out, type_="checkin", deeplink_prefix="/checkins")

@@ -205,13 +205,16 @@ def build_plan(user, session, message: str) -> dict:
             continue
         realized.append((action, proposal))
 
-    if omitted and not summary:
-        summary = "Here's what I can set up. Some requested steps couldn't be prepared with the information available."
+    # AGENT_UX_V3 §A — nothing silently dropped: the summary SAYS when nothing (or
+    # only part) of the ask could be prepared. When nothing realized, OVERRIDE any
+    # over-eager model/fake "planned it!" summary with an honest one.
+    if not realized:
+        summary = ("I couldn't set any of that up as a step I can prepare — tell me "
+                   "who or what it's for, or ask me what I can do.")
     elif omitted:
-        summary += " (Some requested steps couldn't be prepared with the information available.)"
-    if not realized and not summary:
-        summary = ("I couldn't turn that into a step I'm able to prepare. "
-                   "Tell me who or what it's for, or ask me what I can do.")
+        summary = (summary or "Here's what I can set up.") + (
+            " (Some requested steps couldn't be prepared with the information available.)"
+        )
 
     plan = _persist_plan(user, session, message, summary, result.confidence, realized)
     return {"status": "planned", "plan": plan}

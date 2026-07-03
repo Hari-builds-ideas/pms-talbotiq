@@ -153,3 +153,43 @@ Fractions of a cent. No `gpt-4o` (expensive tier). `live_ai` tests stay deselect
 - The Reviews/Recognition/Feedback **full visual recompose** still needs your eyes (unchanged from the
   first run; `hari/reviews-sections` does the one mechanical Reviews sub-win).
 - Nothing pushed to origin (outward-facing; left for your review).
+
+---
+
+# ADDENDUM 2 — AGENT_UX_V3 (make the agent FEEL like an agent)
+
+**The write is real but the experience said "nothing happened."** Fixed the experience without
+touching the gate. **`./scripts/demo_ready.sh` → 57/57 ✓ DEMO READY.**
+
+## `main` — auto-merged, green (backend suite **1423 passed**)
+| Commit | What |
+|---|---|
+| `0f4f030` | **§A** `/api/ai/chat` returns an inert PLAN for a write (was a single proposal); session-backed; nothing silently dropped. **§B** every executed action returns an `artifact {type,id,title,state,deeplink}` on REAL SPA routes (result cards + Open→). **Seed:** Vera Lindqvist (Ada's report + DRAFT review) so the demo story resolves. +7 artifact tests + chat write→plan contract; smoke → plan flow. |
+
+## `hari/agent-ui-v2` — extended (green: tsc/lint/build/**vitest 114**; DO NOT merge — device pass)
+| Commit | What |
+|---|---|
+| `54d40b1` | **§A** one Send (no separate Plan button). **§B** ResultCard + Open→. **§C** live job tracking (reuses `useAIJob`). **§D** Approve-all-&-run (sequential; stops on failure; RTL test). **§E** completion summary + suggestion chip. **Part 2.1** sparkle "Ask AI" top-bar button + corrected panel subtitle. |
+
+## Live-verified — the target demo story, end to end on gpt-4o-mini
+```
+Ada: "start a 360 for Vera and draft her review"  → POST /api/ai/chat → status=plan (2 steps)
+  step 1: initiate_360 [confirm]  "Vera Lindqvist is in your team, so you can open a 360…"
+  step 2: draft_review [confirm]  "Vera Lindqvist's review is in DRAFT and within your scope…"
+Approve step 1 → done · artifact feedback_cycle "360 — Vera Lindqvist" DRAFT · Open → /feedback
+Approve step 2 → done · job_id=… (async draft) · artifact review "Review — Vera Lindqvist"
+                 AI_DRAFTING · Open → /reviews/{id}
+session detail → 2 turns (memory)
+```
+`demo_ready.sh` also asserts it live: write→plan (one send path), 2 registered-action steps,
+approve → artifact + `/feedback` deep link, session isolation (emp→404), and the refusal beat
+(injection plans only registered actions, `goal.approved` audit unchanged 50→50).
+
+## Live AI spend (this run)
+~**8 gpt-4o-mini calls** (the demo-story verify + demo_ready's smoke). Under the ≤10 cap. No gpt-4o.
+
+## What did NOT get done (flagged — `HARI_ATTENTION_NEEDED_agentux.md`, with ready-to-run plans)
+Part 2.2 (3 prior scored cycles for analytics history), Part 2.3 (GoalUpdate model + Updates
+timeline + KPI-name/label relabels), §G (page-context), §F (recent-chats session picker — the panel
+already persists; the picker is the remaining bit). Each is bounded + backend-mostly; none blocked.
+Your **device/visual pass** on `hari/agent-ui-v2` is the last gate for the V3 UX (pixels are your call).

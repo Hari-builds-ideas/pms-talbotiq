@@ -5,6 +5,23 @@ Start state: `main` @ `74ea96b`, backend 1327 tests, smoke 48/48.
 
 ---
 
+## AGENT_UX_V3 — make the agent FEEL like an agent ✅ core landed (demo-verified)
+
+**Backend `main` (`0f4f030`, suite 1423):** §A `/api/ai/chat` → inert PLAN for writes (was a single
+proposal), session-backed, nothing silently dropped. §B `artifact {type,id,title,state,deeplink}` on
+every executed action (real SPA routes). Seed: Vera Lindqvist (Ada's report + DRAFT review) so the
+demo story resolves. **Frontend `hari/agent-ui-v2` (`54d40b1`, vitest 114):** one send path, result
+cards + Open→, live job tracking, Approve-all-&-run (RTL test), completion + suggestion chip, Ask-AI
+top-bar button + subtitle fix.
+
+**Live-verified** on gpt-4o-mini + **`demo_ready.sh` 57/57 ✓**: "start a 360 for Vera and draft her
+review" → 2 confirm steps → approve each → feedback_cycle + review artifacts with Open→ links + draft
+job; injection executes nothing (goal.approved 50→50). Deferred (flagged, ready-to-run):
+`HARI_ATTENTION_NEEDED_agentux.md` — analytics history, GoalUpdate timeline, page-context, session
+picker; + the frontend device/visual pass.
+
+---
+
 ## File J — Branch tests + E2E smoke ✅ (J2/J3 on `main`; J1 on branches)
 
 - **J2 — agent V2 E2E smoke (on `main`):** extended `scripts/smoke.py` with a

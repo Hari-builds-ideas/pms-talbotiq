@@ -37,3 +37,6 @@ docs/.DS_Store
 
 # Figma Make design export — reference only, not part of the app
 Enterprise AI Performance Management/
+
+# Scratch: overnight run prompts/logs (not part of the codebase)
+overnight/

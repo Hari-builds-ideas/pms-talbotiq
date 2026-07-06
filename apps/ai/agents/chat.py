@@ -26,6 +26,8 @@ _WRITE_WORDS = (
     # AGENTIC_CHAT verbs — drive an app action (propose-and-confirm); each maps to a
     # registered action (or, if none matches, the read-only refusal still holds).
     "draft", "enrich", "initiate", "create",
+    # OVERNIGHT_A verbs — record a KPI actual; give recognition / kudos.
+    "record", "recogni", "kudos",
 )
 #: Keyword cues for the deterministic FakeLLMProvider classifier (tests + the
 #: no-real-key path). The real LLM classifies via the _CHAT system prompt.
@@ -123,9 +125,18 @@ def _latest_score(target):
     return CycleScore.objects.filter(employee_id=target.id).order_by("-computed_at").first()
 
 
-def chat_answer(caller, query: str) -> dict:
-    """Answer ``query`` for ``caller`` (read-only, RBAC-bound). Returns a dict with
-    a ``status`` the view maps to HTTP: ok | not_configured | budget | blocked."""
+def chat_answer(caller, query: str, session=None) -> dict:
+    """Answer ``query`` for ``caller`` (RBAC-bound). Returns a dict with a ``status``
+    the view maps to HTTP: ok | plan | not_configured | budget | blocked | error.
+
+    AGENT_UX_V3 §A — ONE send path: a write-intent message now returns a PLAN
+    (``status="plan"``, a :class:`ChatPlan`) the human approves step by step, instead
+    of a single proposal. A single intent → a 1-step plan; a multi-step ask → N steps;
+    parts that can't be prepared are said so in the plan summary (nothing silently
+    dropped). Read intents are UNCHANGED. The plan path needs a ``session`` (owner-
+    bound memory); without one (legacy/direct callers) the old single-proposal path
+    still applies — the gate itself is identical either way.
+    """
     result = gateway.run(
         tenant=caller.tenant_id, agent_code=AGENT_CODE, prompt=query, model="chat", schema=SCHEMA
     )
@@ -138,10 +149,22 @@ def chat_answer(caller, query: str) -> dict:
 
     intent = result.content.get("intent", "general")
     if intent == "write":
-        # Propose-and-confirm (RW_BUILD_4): if the write maps to a SUPPORTED action
-        # the caller is allowed to perform, return an inert PROPOSAL for the UI to
-        # confirm (nothing executes here). Otherwise the read-only refusal holds —
-        # the assistant never writes on its own say-so.
+        if session is not None:
+            # AGENT_UX_V3 §A — everything is a plan. The planner emits action NAMES
+            # only; params/scope resolve server-side; the plan is INERT until a
+            # per-step Approve through the existing gate (contract unchanged).
+            from apps.ai.planner import build_plan
+
+            out = build_plan(caller, session, query)
+            if out["status"] == "planned":
+                return {"status": "plan", "intent": "write", "plan": out["plan"]}
+            if out["status"] == "not_configured":
+                return {"status": "not_configured"}
+            if out["status"] == "budget":
+                return {"status": "budget", "errors": out.get("errors")}
+            return {"status": "error", "detail": out.get("detail")}
+        # Legacy path (no session): the single inert PROPOSAL (RW_BUILD_4). Kept so
+        # direct callers still work; the write gate is identical.
         from apps.ai.actions import propose_action, write_refusal
 
         proposal = propose_action(caller, query)
@@ -152,9 +175,6 @@ def chat_answer(caller, query: str) -> dict:
                 "proposal": proposal,
                 "answer": proposal["summary"],
             }
-        # No proposal: give a PRECISE reason (capability refusal / "what would you like")
-        # instead of a blanket read-only line — but keep genuine refusals refusing, and
-        # never reveal a sensitive feature (succession) the caller can't see.
         return {
             "status": "blocked",
             "intent": "write",

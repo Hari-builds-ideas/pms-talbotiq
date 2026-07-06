@@ -552,11 +552,82 @@ export interface ChatActionResult {
   cycle_id?: string;
 }
 export interface ChatResponse {
-  status: "ok" | "blocked" | "proposal";
+  /** AGENT_UX_V3 §A — a write now returns "plan"; reads stay ok/blocked. */
+  status: "ok" | "blocked" | "proposal" | "plan";
   intent: string;
   answer: string;
   data?: unknown;
   proposal?: ChatProposal;
+  /** Present when status === "plan": the ordered, inert plan to approve step by step. */
+  type?: "plan";
+  plan?: ChatPlan;
+  /** The chat session id — threaded back on the next message for short-term memory. */
+  session_id?: UUID;
+}
+
+/** Agentic chat V2 (OVERNIGHT_A) — a plan is an ordered, INERT checklist the human
+ *  approves step by step. Nothing runs until a per-step Approve; each step then
+ *  executes through the same audited, RBAC/scope-checked gate as the human UI. */
+export interface ChatPlanStep {
+  id: UUID;
+  ordinal: number;
+  action: string;
+  feel: "confirm" | "navigate" | "clarify";
+  summary: string;
+  /** The grounded "why", composed server-side from real fetched facts. */
+  reason: string;
+  preview: Record<string, unknown>[];
+  deeplink?: string;
+  prefill?: Record<string, unknown>;
+  candidates?: Record<string, unknown>[];
+  status: "pending" | "approved" | "done" | "skipped" | "failed";
+  result?: Record<string, unknown>;
+}
+export interface ChatPlan {
+  id: UUID;
+  session: UUID;
+  message: string;
+  summary: string;
+  confidence?: number | null;
+  steps: ChatPlanStep[];
+  created_at: string;
+}
+export interface ChatPlanResponse {
+  session_id: UUID;
+  plan: ChatPlan;
+}
+/** Result of approving ONE step. Idempotent; `out_of_order` flags approving ahead
+ *  of still-pending earlier steps (earlier steps are never auto-run). */
+export interface ChatStepApproveResult {
+  plan_id: UUID;
+  step_id: UUID;
+  action: string;
+  feel: string;
+  ordinal: number;
+  out_of_order: boolean;
+  idempotent?: boolean;
+  status: "done" | "in_progress" | "skipped" | "needs_clarification" | "failed";
+  result?: Record<string, unknown>;
+  deeplink?: string;
+  prefill?: Record<string, unknown>;
+  question?: string;
+  candidates?: Record<string, unknown>[];
+}
+export interface ChatTurn {
+  id: UUID;
+  role: "user" | "assistant";
+  text: string;
+  refs: Record<string, unknown>[];
+  created_at: string;
+}
+export interface ChatSessionSummary {
+  id: UUID;
+  title: string;
+  last_activity: string;
+  created_at: string;
+}
+export interface ChatSessionDetail extends ChatSessionSummary {
+  turns: ChatTurn[];
 }
 
 export interface Nudge {
@@ -616,6 +687,16 @@ export interface Kpi {
   source: "MANUAL" | "JIRA";
   external_ref?: string | null;
   latest_actual?: Decimal | null;
+}
+
+/** A goal's progress-timeline entry (AGENT_UX_V3 Part 2.3). */
+export interface GoalUpdate {
+  id: UUID;
+  goal: UUID;
+  text: string;
+  author: UUID | null;
+  author_name: string | null;
+  created_at: string;
 }
 
 export interface Goal {

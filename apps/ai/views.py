@@ -9,8 +9,10 @@ is enforced by the gateway (over budget → 429).
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -40,10 +42,17 @@ class ChatView(RBACMixin, APIView):
         return perms
 
     def post(self, request):
+        # AGENT_UX_V3 §A — ONE send path: reads answer; writes return an inert PLAN.
+        # Session-backed so multi-turn memory + references work from the single field.
+        from apps.ai import sessions
+        from apps.ai.models import ChatTurn
+
         query = (request.data.get("query") or "").strip()
         if not query:
             return Response({"detail": "query is required."}, status=status.HTTP_400_BAD_REQUEST)
-        result = chat_answer(request.user, query)
+        session = sessions.get_session(request.user, request.data.get("session_id"))
+        sessions.append_turn(session, ChatTurn.Role.USER, query)
+        result = chat_answer(request.user, query, session=session)
         if result["status"] == "not_configured":
             return Response(
                 {"detail": "The Chat Assistant is not configured (LLM provider unset; "
@@ -58,8 +67,24 @@ class ChatView(RBACMixin, APIView):
         if result["status"] == "error":
             return Response({"detail": f"chat unavailable: {result.get('detail')}"},
                             status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        # ok / blocked-write → 200 (a blocked write is a valid, informative answer).
-        return Response(result)
+        if result["status"] == "plan":
+            # A write → an ordered, INERT plan the human approves step by step.
+            from apps.ai.planner import refs_for_plan
+            from apps.ai.serializers import ChatPlanSerializer
+
+            plan = result["plan"]
+            sessions.append_turn(
+                session, ChatTurn.Role.ASSISTANT, plan.summary,
+                refs=refs_for_plan(plan), plan=plan,
+            )
+            return Response({
+                "type": "plan", "status": "plan", "intent": "write",
+                "session_id": str(session.id), "answer": plan.summary,
+                "plan": ChatPlanSerializer(plan).data,
+            })
+        # ok / blocked-write / legacy-proposal → 200 (record the assistant turn).
+        sessions.append_turn(session, ChatTurn.Role.ASSISTANT, result.get("answer", ""))
+        return Response({**result, "session_id": str(session.id)})
 
 
 class ChatActionExecuteView(RBACMixin, APIView):
@@ -86,6 +111,145 @@ class ChatActionExecuteView(RBACMixin, APIView):
             return Response({"detail": "action is required."}, status=status.HTTP_400_BAD_REQUEST)
         result = execute_action(request.user, action, request.data.get("params") or {})
         return Response(result)
+
+
+class ChatActionsSchemaView(RBACMixin, APIView):
+    """``GET /api/ai/actions/schema`` — public metadata for every supported assistant
+    action (name, label, one-line description, feel, capability, and whether the
+    CALLER may perform it). Powers the "what can the assistant do" surface and gives a
+    place to enumerate the agent's capabilities. SENSITIVE actions the caller can't
+    perform are omitted (no existence leak); no internals. Same gating as chat."""
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def get(self, request):
+        from apps.ai.actions import describe_actions
+
+        return Response({"actions": describe_actions(request.user)})
+
+
+class ChatPlanCreateView(RBACMixin, APIView):
+    """``POST /api/ai/chat/plan`` — body ``{"query": str, "session_id"?: str}``.
+
+    The AGENT surface (OVERNIGHT_A): plan a (possibly multi-step) request into an
+    INERT :class:`~apps.ai.models.ChatPlan` the human approves step by step. Nothing
+    executes here — the plan is data. Resumes/creates the caller's session, records
+    the user + assistant turns (short-term memory), and returns the plan + session id.
+    Same gating as chat (USE_CHAT + the chat entitlement); AI-throttled (one LLM call).
+    """
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def post(self, request):
+        from apps.ai import sessions
+        from apps.ai.models import ChatTurn
+        from apps.ai.planner import build_plan, refs_for_plan
+        from apps.ai.serializers import ChatPlanSerializer
+
+        query = (request.data.get("query") or "").strip()
+        if not query:
+            return Response({"detail": "query is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        session = sessions.get_session(request.user, request.data.get("session_id"))
+        sessions.append_turn(session, ChatTurn.Role.USER, query)
+
+        out = build_plan(request.user, session, query)
+        if out["status"] == "not_configured":
+            return Response(
+                {"detail": "The assistant is not configured (no LLM provider)."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        if out["status"] == "budget":
+            return Response(
+                {"detail": "Assistant budget exhausted for this window.", "errors": out.get("errors")},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        if out["status"] == "error":
+            return Response({"detail": f"assistant unavailable: {out.get('detail')}"},
+                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        plan = out["plan"]
+        sessions.append_turn(
+            session, ChatTurn.Role.ASSISTANT, plan.summary,
+            refs=refs_for_plan(plan), plan=plan,
+        )
+        return Response({"session_id": str(session.id), "plan": ChatPlanSerializer(plan).data})
+
+
+class ChatSessionListView(RBACMixin, APIView):
+    """``GET /api/ai/chat/sessions`` — the caller's recent, non-expired chat sessions
+    (the recent-chats picker). Owner + tenant scoped; never another user's."""
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def get(self, request):
+        from apps.ai.models import CHAT_SESSION_TTL_HOURS, ChatSession
+        from apps.ai.serializers import ChatSessionSerializer
+
+        cutoff = timezone.now() - timedelta(hours=CHAT_SESSION_TTL_HOURS)
+        qs = ChatSession.objects.filter(owner=request.user, last_activity__gte=cutoff).order_by("-last_activity")[:25]
+        return Response(ChatSessionSerializer(qs, many=True).data)
+
+
+class ChatSessionDetailView(RBACMixin, APIView):
+    """``GET /api/ai/chat/sessions/<id>`` — one of the caller's own sessions with its
+    recent turns (the resume payload). 404 for a missing / expired / other-user /
+    cross-tenant id (no existence leak)."""
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def get(self, request, session_id):
+        from apps.ai import sessions
+        from apps.ai.serializers import ChatSessionDetailSerializer
+
+        session = sessions.fetch_session_or_none(request.user, session_id)
+        if session is None:
+            return Response({"detail": "No such session."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(ChatSessionDetailSerializer(session).data)
+
+
+class ChatPlanStepApproveView(RBACMixin, APIView):
+    """``POST /api/ai/chat/plan/<plan_id>/step/<step_id>/approve`` — approve and run
+    EXACTLY ONE step of a plan. The ONLY write path from a plan; reached only on an
+    explicit human Approve. ``approve_step`` re-checks capability + scope on the real
+    targets (403/404) and is concurrency-safe + idempotent. Same gating as chat."""
+
+    required_capability = Capability.USE_CHAT
+    throttle_classes = AI_THROTTLES
+
+    def get_permissions(self):
+        perms = super().get_permissions()
+        perms.append(requires_entitlement("chat")())
+        return perms
+
+    def post(self, request, plan_id, step_id):
+        from apps.ai.planner import approve_step
+
+        return Response(approve_step(request.user, plan_id, step_id))
 
 
 class MeetingSummaryView(RBACMixin, APIView):

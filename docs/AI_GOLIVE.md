@@ -48,7 +48,7 @@ Moving from Groq (free tier) to **OpenAI (a paid US processor)** changes the dat
 
 **Recommendation:** **C** is the cheapest way to remove the exposure entirely (mirrors what succession already does) if you can't get a DPA in place quickly; **A** if OpenAI's standard API terms + a DPA are acceptable to the SME customers. The code currently does **A implicitly** — which is exactly why this needs an explicit yes rather than shipping silently.
 
-> Until Hari signs off, the **live smoke** below should run on a record with **no real personal name** (the seed users have email-style logins, so `_subject_name` falls back to "the employee") — so the verification itself does not egress identifiable data ahead of the decision.
+> Note on the **live smoke**: the seed users carry **fictional** display names (e.g. "Ada Lovelace"), so a review/JD/career draft does send a first name to OpenAI — but it's demo data, not a real person, so no real personal data egresses ahead of the sign-off. For a strictly name-free live check, exercise **feedback (Agent 3)** or **succession (Agent 4)** instead (name-free by construction), or temporarily clear the subject's `display_name`.
 
 ## To productionise
 

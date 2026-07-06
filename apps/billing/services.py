@@ -14,11 +14,15 @@ identically whether called from an endpoint (tenant already bound by
 """
 from __future__ import annotations
 
+import logging
+
 from django.core.cache import cache
 from django.utils import timezone
+from redis.exceptions import RedisError
 
 from apps.audit.services import record
 from apps.core.cache import invalidate_tenant_cache, tenant_cache_key
+from apps.core.metrics import record_budget_outcome
 from apps.tenancy.context import tenant_context
 
 from . import atomic
@@ -31,6 +35,8 @@ from .packs import (
     default_budget_limit,
     features_for_packs,
 )
+
+logger = logging.getLogger("pms.billing")
 
 #: Time-to-live (seconds) for a cached entitlement read.
 _ENTITLEMENT_CACHE_TTL = 300
@@ -385,9 +391,21 @@ def check_and_reserve_budget(
     limit = resolve_budget_limit(tenant, agent_code, window)
     period = _budget_period(window, now)
     key = tenant_cache_key(tid, _BUDGET_COUNTER_PART, agent_code, window, period)
-    # ATOMIC reserve (BUILD_3): the read+compare+incr+TTL run in one Lua step, so
-    # concurrent reservers across replicas cannot both pass at the cap edge.
-    reserved = atomic.reserve(key, limit=limit, ttl_ms=_budget_ttl(window) * 1000)
+    # ATOMIC reserve (E3): the read+compare+incr+TTL run in ONE Redis Lua step
+    # (EVALSHA), so concurrent reservers across replicas cannot both pass at the cap
+    # edge. If Redis is unavailable the shared counter can't be consulted, so we
+    # DEGRADE SOFT — log + allow the call (fail-open) rather than 500 a request on a
+    # cache outage. The `redis_down` metric is the alert signal; prod watches it.
+    try:
+        reserved = atomic.reserve(key, limit=limit, ttl_ms=_budget_ttl(window) * 1000)
+        outcome = "over" if reserved == -1 else "reserved"
+    except RedisError:
+        logger.warning(
+            "budget: Redis unavailable; allowing call soft (tenant=%s agent=%s window=%s)",
+            tid, agent_code, window,
+        )
+        reserved, outcome = 1, "redis_down"  # fail-open: never crash the request
+    record_budget_outcome(outcome)
     if reserved == -1:
         raise BudgetExceeded(agent_code=agent_code, window=window, limit=limit)
     return {"reserved": reserved, "limit": limit, "window": window, "agent_code": agent_code}

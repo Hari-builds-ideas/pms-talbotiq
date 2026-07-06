@@ -17,8 +17,9 @@ import { mapApiError } from "@/lib/errors";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { cn } from "@/lib/utils";
-import type { ChatProposal } from "@/lib/types";
+import type { ChatPlan, ChatProposal } from "@/lib/types";
 import { ProposalCard } from "./ProposalCard";
+import { PlanChecklist } from "./PlanChecklist";
 
 interface ChatContextValue {
   open: boolean;
@@ -36,9 +37,10 @@ export function useChatPanel() {
 interface Turn {
   role: "user" | "assistant";
   text: string;
-  status?: "ok" | "blocked" | "proposal";
+  status?: "ok" | "blocked" | "proposal" | "plan";
   data?: unknown;
   proposal?: ChatProposal;
+  plan?: ChatPlan;
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
@@ -61,14 +63,26 @@ function ChatSheet() {
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [input, setInput] = React.useState("");
   const [unavailable, setUnavailable] = React.useState(false);
+  const sessionId = React.useRef<string | undefined>(undefined);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
+  // AGENT_UX_V3 §A — ONE send path. /ai/chat answers reads and, for a write intent,
+  // returns an inert PLAN (status:"plan") the human approves step by step. Session id
+  // is threaded across turns for short-term memory.
   const mutation = useMutation({
-    mutationFn: (q: string) => aiApi.chat(q),
+    mutationFn: (q: string) => aiApi.chat(q, sessionId.current),
     onSuccess: (res) => {
+      if (res.session_id) sessionId.current = res.session_id;
       setTurns((t) => [
         ...t,
-        { role: "assistant", text: res.answer, status: res.status, data: res.data, proposal: res.proposal },
+        {
+          role: "assistant",
+          text: res.answer,
+          status: res.status,
+          data: res.data,
+          proposal: res.proposal,
+          plan: res.plan,
+        },
       ]);
     },
     onError: (err) => {
@@ -83,6 +97,7 @@ function ChatSheet() {
       }
     },
   });
+  const busy = mutation.isPending;
 
   React.useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -106,8 +121,8 @@ function ChatSheet() {
             AI Assistant
           </SheetTitle>
           <SheetDescription>
-            Read-only and RBAC-scoped — it only answers from what you can already
-            see, and never makes changes.
+            Ask questions or plan multi-step tasks — I propose, you approve each step.
+            Nothing runs without your OK.
           </SheetDescription>
         </SheetHeader>
 
@@ -159,10 +174,10 @@ function ChatSheet() {
               )}
 
               {turns.map((turn, i) => (
-                <ChatBubble key={i} turn={turn} />
+                <ChatBubble key={i} turn={turn} onSuggest={setInput} />
               ))}
 
-              {mutation.isPending && (
+              {busy && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Bot className="h-4 w-4 text-ai" />
                   <span className="flex gap-1">
@@ -176,7 +191,7 @@ function ChatSheet() {
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask a question…"
+                placeholder="Ask, or describe a multi-step task…"
                 disabled={unavailable}
                 aria-label="Chat message"
               />
@@ -191,7 +206,7 @@ function ChatSheet() {
   );
 }
 
-function ChatBubble({ turn }: { turn: Turn }) {
+function ChatBubble({ turn, onSuggest }: { turn: Turn; onSuggest?: (text: string) => void }) {
   const isUser = turn.role === "user";
   return (
     <div className={cn("flex gap-2.5", isUser && "flex-row-reverse")}>
@@ -214,6 +229,7 @@ function ChatBubble({ turn }: { turn: Turn }) {
         )}
         <p className="whitespace-pre-wrap">{turn.text}</p>
         {turn.proposal && <ProposalCard proposal={turn.proposal} />}
+        {turn.plan && <PlanChecklist plan={turn.plan} onSuggest={onSuggest} />}
         {Array.isArray(turn.data) && turn.data.length > 0 && (
           <ul className="list-disc space-y-0.5 pl-4 text-xs opacity-90">
             {(turn.data as string[]).map((d, i) => (

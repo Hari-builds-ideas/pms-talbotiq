@@ -10,7 +10,11 @@ import type {
   BenchCandidate,
   CalibrationGrid,
   ChatActionResult,
+  ChatPlanResponse,
   ChatResponse,
+  ChatSessionDetail,
+  ChatSessionSummary,
+  ChatStepApproveResult,
   CheckIn,
   CheckInPriorityStatus,
   CriticalRole,
@@ -26,6 +30,7 @@ import type {
   MyFeedbackCycle,
   Goal,
   GoalDraftResponse,
+  GoalUpdate,
   OwnFeedback,
   DepartmentAnalytics,
   Entitlement,
@@ -387,7 +392,8 @@ export const integrationsApi = {
 // ---- AI --------------------------------------------------------------------
 
 export const aiApi = {
-  chat: (query: string) => unwrap<ChatResponse>(api.post("/ai/chat", { query })),
+  chat: (query: string, sessionId?: string) =>
+    unwrap<ChatResponse>(api.post("/ai/chat", { query, session_id: sessionId })),
   // RW_BUILD_4 — run a previously PROPOSED assistant action on explicit human
   // Approve. The server re-checks permission + scope and audits each effect.
   executeAction: (action: string, params: Record<string, unknown>) =>
@@ -406,6 +412,16 @@ export const aiApi = {
   // + ONE advisory AI follow-up suggestion. READ-ONLY; the list always returns (the
   // suggestion is null when the AI is unavailable), so this 200s rather than 503-ing.
   staleGoals: () => unwrap<StaleGoalsResponse>(api.get("/ai/stale-goals")),
+  // OVERNIGHT_A — the AGENT surface: plan a (multi-step) request into an INERT
+  // checklist; nothing runs until a per-step approve. Optionally resumes a session.
+  plan: (query: string, sessionId?: string) =>
+    unwrap<ChatPlanResponse>(api.post("/ai/chat/plan", { query, session_id: sessionId })),
+  // Approve + run EXACTLY ONE step (server re-checks capability + scope, audits).
+  approveStep: (planId: string, stepId: string) =>
+    unwrap<ChatStepApproveResult>(api.post(`/ai/chat/plan/${planId}/step/${stepId}/approve`, {})),
+  // Recent, non-expired chat sessions (the resume picker) + one session's turns.
+  listSessions: () => unwrap<ChatSessionSummary[]>(api.get("/ai/chat/sessions")),
+  getSession: (id: string) => unwrap<ChatSessionDetail>(api.get(`/ai/chat/sessions/${id}`)),
 };
 
 // ---- Async AI jobs (poll surface) ------------------------------------------
@@ -426,6 +442,10 @@ export const goalsApi = {
   aiDraft: (prompt: string) =>
     unwrap<GoalDraftResponse>(api.post("/goals/ai-draft", { prompt })),
   detail: (id: string) => unwrap<Goal>(api.get(`/goals/${id}`)),
+  // AGENT_UX_V3 Part 2.3 — the goal's progress-notes timeline.
+  goalUpdates: (id: string) => unwrap<GoalUpdate[]>(api.get(`/goals/${id}/updates`)),
+  addGoalUpdate: (id: string, text: string) =>
+    unwrap<GoalUpdate>(api.post(`/goals/${id}/updates`, { text })),
   create: (body: {
     employee: string;
     cycle: string;

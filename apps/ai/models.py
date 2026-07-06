@@ -96,3 +96,159 @@ class AIJob(TenantScopedModel):
     def is_terminal(self) -> bool:
         """True once the job has reached a final state (no further transitions)."""
         return self.status in {self.Status.SUCCEEDED, self.Status.DEGRADED, self.Status.FAILED}
+
+
+# ── Agentic chat V2 (OVERNIGHT_A) — session memory + plan → per-step approve ────
+#
+# The chat becomes an AGENT: a request can span multiple turns and multiple steps.
+# These rows persist that WITHOUT weakening any invariant — a ChatPlan is INERT
+# data (nothing runs on plan-emit); a step executes ONLY through the existing
+# ``execute_action`` gate on an explicit human Approve, re-checking capability +
+# scope on the real targets. All rows are :class:`TenantScopedModel` (tenant_id +
+# UUID pk), so the tenant-scoped manager isolates them per tenant automatically; we
+# additionally bind each session/plan to its ``owner`` so one user can never read or
+# approve another's (a cross-user id is filtered out → 404/403).
+
+#: A chat session is "live" for this long since its last activity. Older sessions
+#: return empty history and never resolve prior references (short-term memory only).
+CHAT_SESSION_TTL_HOURS = 24
+
+
+class ChatSession(TenantScopedModel):
+    """A short-term chat memory scope for ONE user. Turns and plans hang off it so a
+    user can close and reopen the panel within the TTL and resume the conversation.
+    Bound to ``owner``; never shared across users (or tenants — the manager scopes
+    that). Not an audit record — it's convenience memory, safe to expire/prune."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_sessions"
+    )
+    #: A short human label (derived from the first user message) for the recent-chats picker.
+    title = models.CharField(max_length=120, blank=True, default="")
+    #: Bumped on every turn; drives the TTL (see :attr:`is_expired`).
+    last_activity = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "ai_chat_session"
+        ordering = ["-last_activity"]
+        indexes = [models.Index(fields=["tenant", "owner", "-last_activity"], name="ix_chatsess_owner")]
+
+    def __str__(self):
+        return f"ChatSession(owner={self.owner_id}) [{self.last_activity:%Y-%m-%d %H:%M}]"
+
+    @property
+    def is_expired(self) -> bool:
+        """True once the session has been idle past the TTL — history and prior
+        references are then treated as gone (short-term memory only)."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        return timezone.now() - self.last_activity > timedelta(hours=CHAT_SESSION_TTL_HOURS)
+
+
+class ChatTurn(TenantScopedModel):
+    """One message in a :class:`ChatSession` — the user's text or the assistant's
+    reply. ``refs`` records the real, in-scope objects the turn referenced (e.g. the
+    review just drafted) so a LATER turn can resolve "the review we just drafted"
+    against them — but resolution ALWAYS re-checks the caller can still see the
+    object (a ref never widens access; see :mod:`apps.ai.sessions`)."""
+
+    class Role(models.TextChoices):
+        USER = "user", "User"
+        ASSISTANT = "assistant", "Assistant"
+
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name="turns")
+    role = models.CharField(max_length=10, choices=Role.choices)
+    text = models.TextField(blank=True, default="")
+    #: [{"type": "review"|"user"|..., "id": "<uuid>", "label": "<display>"}] — the
+    #: objects this turn was grounded in. Data only; never re-interpreted as a command.
+    refs = models.JSONField(default=list, blank=True)
+    #: The plan this assistant turn emitted, if any (nullable).
+    plan = models.ForeignKey("ai.ChatPlan", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        db_table = "ai_chat_turn"
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["tenant", "session", "created_at"], name="ix_chatturn_session")]
+
+    def __str__(self):
+        return f"ChatTurn({self.role}, session={self.session_id})"
+
+
+class ChatPlan(TenantScopedModel):
+    """An ordered, INERT plan the agent proposed for a multi-step request. Emitting a
+    plan runs NOTHING — each step executes only on an explicit per-step human Approve
+    (:class:`ChatPlanStep`). Bound to ``owner`` so only its author can view/approve it."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chat_plans"
+    )
+    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name="plans")
+    #: The originating user request (verbatim, data only).
+    message = models.TextField(blank=True, default="")
+    #: A natural-language summary of the plan (may explain omissions — e.g. a step
+    #: dropped because nothing was in scope — WITHOUT revealing out-of-scope objects).
+    summary = models.TextField(blank=True, default="")
+    #: The planner's confidence (from the gateway), for the UI to show low-confidence.
+    confidence = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        db_table = "ai_chat_plan"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["tenant", "owner", "-created_at"], name="ix_chatplan_owner")]
+
+    def __str__(self):
+        return f"ChatPlan(owner={self.owner_id}, steps={self.steps.count()})"
+
+
+class ChatPlanStep(TenantScopedModel):
+    """ONE step of a :class:`ChatPlan` — exactly one registered action, its
+    deterministically-resolved params, a grounded reason, and its lifecycle status.
+    Params are resolved in Python (never LLM-generated); the step executes only via
+    ``execute_action`` on Approve, which re-checks capability + scope."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending approval"
+        APPROVED = "approved", "Approved (executing)"
+        DONE = "done", "Done"
+        SKIPPED = "skipped", "Skipped"
+        FAILED = "failed", "Failed"
+
+    class Feel(models.TextChoices):
+        CONFIRM = "confirm", "Confirm in chat"
+        NAVIGATE = "navigate", "Open a screen"
+        CLARIFY = "clarify", "Ask a question"
+
+    plan = models.ForeignKey(ChatPlan, on_delete=models.CASCADE, related_name="steps")
+    #: 0-based position in the plan.
+    ordinal = models.PositiveSmallIntegerField()
+    #: A registered action name (or "clarify"). Validated against the registry at build.
+    action = models.CharField(max_length=48)
+    feel = models.CharField(max_length=10, choices=Feel.choices, default=Feel.CONFIRM)
+    #: Deterministically-resolved params (scope-bound; never model-extracted).
+    params = models.JSONField(default=dict, blank=True)
+    #: The human-facing one-liner (the proposal summary).
+    summary = models.TextField(blank=True, default="")
+    #: The grounded "why" — composed in Python from real, fetched, in-scope facts.
+    reason = models.TextField(blank=True, default="")
+    #: Small preview payload (e.g. [{"employee": "Vera"}]) for the UI.
+    preview = models.JSONField(default=list, blank=True)
+    #: navigate steps carry a deep-link + prefill (completed on the screen, never in chat).
+    deeplink = models.CharField(max_length=255, blank=True, default="")
+    prefill = models.JSONField(default=dict, blank=True)
+    #: clarify steps carry candidate options (scoped to the caller).
+    candidates = models.JSONField(default=list, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    #: The execute_action result (job/audit ids) once approved+run; data only.
+    result = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        db_table = "ai_chat_plan_step"
+        ordering = ["ordinal"]
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "ordinal"], name="uq_planstep_plan_ordinal")
+        ]
+
+    def __str__(self):
+        return f"ChatPlanStep(#{self.ordinal} {self.action} [{self.status}])"

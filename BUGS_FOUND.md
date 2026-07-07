@@ -63,14 +63,25 @@ still-resolving role, or a post-login redirect to a `from` route the role can't 
   visible to every role). Verify in-browser at :8090 per role. (No server gate changed — server RBAC
   still enforces; this is display correctness.)
 
-## P1-4 — Writes don't reflect in UI until reopen 🟠  *(one shared cause)*
-**Root cause:** the finalize-review / 360 "open for collection" / approval-reject mutations succeed on
-the backend but their `onSuccess` does not invalidate the React Query cache for the record's detail/list
-keys, so the screen keeps the stale cached object until a refetch (close/reopen). *(Exact mutation
-sites + query keys being confirmed by the frontend investigation; fix = add
-`queryClient.invalidateQueries` for the detail + list keys on each, matching the existing convention
-used by the goals-approve / ProposalCard paths.)*
-* **Proposed fix:** add the missing invalidations consistently across reviews, feedback/360, approvals.
+## P1-4 — Writes don't reflect in UI until reopen 🟠  *(NOT the shared cause first assumed)*
+**Correction after investigation:** it is **not** a blanket missing-invalidation. Two of the three
+already invalidate correctly in the current tree; only one genuinely reproduces.
+- **Review Finalize** (`reviews/useReviews.ts:83`, `refresh` at `:72-76`) invalidates
+  `["reviews","detail",id]`+timeline+list; `ReviewDetailPage` reads the live `useReview` detail →
+  already refetches in place. **No fix needed** (the user saw this on the *pre-rebuild* bundle).
+- **Approval reject** (`approvals/useApprovals.ts:36-40`, `invalidate` at `:26-29`) invalidates
+  `["approvals","route",routeId]`+inbox; `RouteSheet` reads the live `useRoute` → **already correct**.
+- **360 "Open for collection" — the REAL bug.** `feedback/useFeedback.ts:73-76` DOES invalidate
+  `["feedback"]`, but `CycleSheet`/`CycleBody` derive state from the **`cycle` PROP snapshot**
+  (`CycleSheet.tsx:66-68` `isDraft = cycle.status === "DRAFT"`), and the parent passes a captured
+  `useState` object (`FeedbackPage.tsx:183,210,218`). There is no single-cycle detail query, so the open
+  sheet keeps the stale `DRAFT` snapshot until close/reopen. Adding invalidation is a no-op.
+* **Root cause:** stale prop snapshot in the feedback Cycle sheet (the lone screen not following the
+  app's "parent holds id, child reads a live query" convention used by `RouteSheet`/`ReviewDetailPage`).
+* **File/line:** `frontend/src/features/feedback/FeedbackPage.tsx:183,210,218` + `CycleSheet.tsx:37,66-68`.
+* **Proposed fix:** store only `selectedId` in the parent and derive `selected` from the live
+  `useCycles` list (already invalidated by `openCycle`), so the sheet reflects Collecting immediately.
+  (Also re-verify finalize/reject live in-browser on the rebuilt bundle.)
 
 ## P1-5 / P1-6 — JD generation & Admin "crashes" 🟠
 - **JD (HRBP):** backend verified working end-to-end (login→create→save-inputs→generate `202`→job

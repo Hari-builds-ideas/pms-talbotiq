@@ -48,7 +48,7 @@ import {
   useMySummary,
   useReviewQueue,
 } from "./useFeedback";
-import type { FeedbackCycle, MyFeedbackCycle } from "@/lib/types";
+import type { MyFeedbackCycle } from "@/lib/types";
 
 export function FeedbackPage() {
   const { atLeast } = useAuth();
@@ -180,8 +180,12 @@ function MySummaryCard({ cycle }: { cycle: MyFeedbackCycle }) {
 function CyclesTab() {
   const cycles = useCycles();
   const [createOpen, setCreateOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState<FeedbackCycle | null>(null);
+  // Hold only the id and derive the row from the LIVE list, so a mutation (Open for
+  // collection / close) that invalidates ["feedback"] reflects in the open sheet
+  // immediately — a captured object snapshot went stale until reopen (BUGS_FOUND P1-4).
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const rows = cycles.data?.results ?? [];
+  const selected = rows.find((c) => c.id === selectedId) ?? null;
 
   return (
     <div className="space-y-4">
@@ -207,7 +211,7 @@ function CyclesTab() {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={c.status} dot />
-                  <Button variant="outline" size="sm" onClick={() => setSelected(c)}>Manage</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedId(c.id)}>Manage</Button>
                 </div>
               </li>
             ))}
@@ -215,7 +219,7 @@ function CyclesTab() {
         </Panel>
       )}
       <CreateCycleDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <CycleSheet cycle={selected} onOpenChange={(o) => !o && setSelected(null)} />
+      <CycleSheet cycle={selected} onOpenChange={(o) => !o && setSelectedId(null)} />
     </div>
   );
 }

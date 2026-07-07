@@ -98,6 +98,20 @@ export function NudgesTile() {
     enabled,
   });
 
+  // One row per person (keep the worst severity), worst-first, capped — the raw list is
+  // the whole tenant for HRBP/Admin and read as an endless wall (BUGS_FOUND #8).
+  const rank: Record<string, number> = { CRITICAL: 0, STANDARD: 1, SUPPRESSED: 2 };
+  const byPerson = new Map<string, NonNullable<typeof q.data>[number]>();
+  for (const n of q.data ?? []) {
+    const cur = byPerson.get(n.employee);
+    if (!cur || (rank[n.level] ?? 9) < (rank[cur.level] ?? 9)) byPerson.set(n.employee, n);
+  }
+  const deduped = [...byPerson.values()].sort(
+    (a, b) => (rank[a.level] ?? 9) - (rank[b.level] ?? 9),
+  );
+  const shown = deduped.slice(0, 5);
+  const more = deduped.length - shown.length;
+
   return (
     <Panel
       title="KPI nudges"
@@ -110,20 +124,27 @@ export function NudgesTile() {
         <LinesSkeleton lines={3} />
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} compact />
-      ) : q.data && q.data.length > 0 ? (
+      ) : shown.length > 0 ? (
         <ul className="space-y-2">
-          {q.data.map((n, i) => (
+          {shown.map((n) => (
             <li
-              key={`${n.employee}-${i}`}
+              key={n.employee}
               className={cn("rounded-md border-l-2 px-3 py-2", NUDGE_TONE[n.level] ?? NUDGE_TONE.STANDARD)}
             >
-              <div className="flex items-center justify-between gap-2">
-                <PersonName id={n.employee} withAvatar className="text-sm font-medium" />
-                <StatusBadge status={n.level} />
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{n.message}</p>
+              <Link to={`/people/${n.employee}`} className="block hover:opacity-90">
+                <div className="flex items-center justify-between gap-2">
+                  <PersonName id={n.employee} withAvatar className="text-sm font-medium" />
+                  <StatusBadge status={n.level} />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{n.message}</p>
+              </Link>
             </li>
           ))}
+          {more > 0 && (
+            <li className="px-3 pt-1 text-xs text-muted-foreground">
+              +{more} more person{more === 1 ? "" : "s"} flagged at risk
+            </li>
+          )}
         </ul>
       ) : (
         <EmptyState compact icon={TrendingUp} title="No nudges" description="No one on your team is flagged at risk this cycle." />

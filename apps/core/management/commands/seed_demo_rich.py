@@ -178,9 +178,13 @@ class Command(BaseCommand):
         )
 
     def _gen_name(self, i: int) -> str:
-        # Deterministic spread across the pools; the offset on the last name keeps
-        # adjacent indices from sharing a surname.
-        return f"{FIRST_NAMES[i % len(FIRST_NAMES)]} {LAST_NAMES[(i * 7 + 3) % len(LAST_NAMES)]}"
+        # Deterministic, and UNIQUE per index up to 40*40=1600 people. Both pools are
+        # length 40, so the old `(i*7+3) % 40` repeated the full name every 40 people —
+        # ~5 distinct users shared a display name ("Liam Costa" ×5), which read as
+        # duplicate dashboard rows (BUGS_FOUND #8). Adding the block index `i // 40`
+        # shifts the surname sequence each block, so (first, last) is unique per i.
+        nf, nl = len(FIRST_NAMES), len(LAST_NAMES)
+        return f"{FIRST_NAMES[i % nf]} {LAST_NAMES[(i * 7 + 3 + i // nf) % nl]}"
 
     # ── people: admin → HRBP → director(MANAGER) → lead(MANAGER) → employee ─────
     def _people(self, tenant):

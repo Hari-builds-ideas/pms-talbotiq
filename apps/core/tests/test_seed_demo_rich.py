@@ -73,6 +73,27 @@ def test_seed_demo_rich_is_acme_only():
     assert non_acme_goals == 0
 
 
+def test_seed_demo_rich_reconciles_named_account_roles():
+    """BUGS_FOUND #2 — the seed must ESTABLISH the named accounts' intended roles, and a
+    role that later diverged (an admin role-change, or an earlier state) must be RESTORED
+    on reseed. Previously `_user` only reconciled manager/display_name, so a demoted
+    ada@ stayed EMPLOYEE forever (broke the manager demo)."""
+    call_command("seed_demo_rich")
+    acme = Tenant.objects.get(slug="acme")
+    with tenant_context(acme):
+        assert User.objects.get(email="ada@acme.test").role == "MANAGER"
+        assert User.objects.get(email="priya@acme.test").role == "HRBP"
+        assert User.objects.get(email="admin@acme.test").role == "ADMIN"
+        # Simulate a diverged role (e.g. an admin flipped Ada to EMPLOYEE) …
+        ada = User.objects.get(email="ada@acme.test")
+        ada.role = "EMPLOYEE"
+        ada.save(update_fields=["role"])
+    # … a reseed must restore the intended role.
+    call_command("seed_demo_rich")
+    with tenant_context(acme):
+        assert User.objects.get(email="ada@acme.test").role == "MANAGER"
+
+
 def test_seed_demo_rich_has_prior_cycle_history():
     """AGENT_UX_V3 Part 2.2 — real analytics history: ≥4 cycles (current H1 + 3 prior
     CLOSED) with real T-scores, so an individual trend is a 4-point curve. Prior-cycle

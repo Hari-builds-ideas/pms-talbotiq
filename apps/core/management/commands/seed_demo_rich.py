@@ -162,6 +162,13 @@ class Command(BaseCommand):
             if existing.display_name != display_name:
                 existing.display_name = display_name
                 fields.append("display_name")
+            # Reconcile ROLE too: the named demo accounts have INTENDED roles (ada=MANAGER,
+            # priya=HRBP, …). Without this, a role that later diverged (an admin role-change,
+            # or an earlier seed state) sticks through every reseed — which is exactly how
+            # ada@ ended up demoted to EMPLOYEE. The seed's job is to establish known roles.
+            if existing.role != role:
+                existing.role = role
+                fields.append("role")
             if fields:
                 existing.save(update_fields=fields)
             return existing

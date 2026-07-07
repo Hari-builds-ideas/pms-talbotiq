@@ -152,15 +152,20 @@ class Command(BaseCommand):
         email = f"{local}@{tenant.slug}.test"
         existing = User.objects.filter(email=email).first()
         if existing:
-            changed = False
+            fields = []
             if existing.manager_id != (manager.id if manager else None):
                 existing.manager = manager
-                changed = True
+                fields.append("manager")
             if existing.display_name != display_name:
                 existing.display_name = display_name
-                changed = True
-            if changed:
-                existing.save(update_fields=["manager", "display_name"])
+                fields.append("display_name")
+            # Reconcile ROLE too — the named accounts have INTENDED roles; a diverged role
+            # (admin role-change / earlier state) must not survive a reseed (see BUGS_FOUND #2).
+            if existing.role != role:
+                existing.role = role
+                fields.append("role")
+            if fields:
+                existing.save(update_fields=fields)
             return existing
         return User.objects.create_user(
             email=email, password=DEMO_PASSWORD, tenant=tenant, role=role,

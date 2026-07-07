@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { authApi } from "@/lib/api/endpoints";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { landingPathFor } from "@/app/nav";
 import { mapApiError } from "@/lib/errors";
 import type { TokenPair } from "@/lib/types";
 
@@ -29,12 +30,14 @@ const DEMO_ACCOUNTS = [
 ];
 
 export function LoginPage() {
-  const { status, completeLogin } = useAuth();
+  const { status, completeLogin, me } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = React.useState<string | null>(null);
   const [challenge, setChallenge] = React.useState<string | null>(null);
-  const from = (location.state as { from?: string } | null)?.from ?? "/";
+  const rawFrom = (location.state as { from?: string } | null)?.from ?? "/";
+  // Clamp a role-forbidden target back to the dashboard so we never land on a 403 page.
+  const from = landingPathFor(rawFrom, me?.role);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),

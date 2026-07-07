@@ -39,7 +39,9 @@ export function RoleGate({
   min: Role;
   children: React.ReactNode;
 }) {
-  const { me } = useAuth();
+  const { me, status } = useAuth();
+  // Never flash a false 403 while auth is still resolving (BUGS_FOUND P0-3).
+  if (status === "loading") return <FullScreenLoader label="Loading…" />;
   if (me && ROLE_RANK[me.role] >= ROLE_RANK[min]) return <>{children}</>;
   return <NotPermitted />;
 }

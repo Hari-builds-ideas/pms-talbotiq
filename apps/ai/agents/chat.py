@@ -21,6 +21,15 @@ from apps.rbac.scope import actor_can_access
 AGENT_CODE = "chat"
 SCHEMA = {"intent": str}
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+# Destructive intent — deletion/destruction is NOT an agent action; refuse it explicitly.
+# Requires a destructive VERB and a bulk-data OBJECT so incidental phrasing ("dropped the
+# ball", "erase this typo") doesn't trip it. See chat_answer / BUGS_FOUND P0-1.
+_DESTRUCTIVE_VERB_RE = re.compile(r"\b(delete|destroy|erase|wipe|purge|truncate)\b", re.I)
+_DESTRUCTIVE_OBJ_RE = re.compile(
+    r"\b(all|everyone|everything|datas?|records?|users?|people|employees?|accounts?|"
+    r"table|tables|database|db)\b",
+    re.I,
+)
 _WRITE_WORDS = (
     "approve", "reject", "delete", "change", "update", "finalize", "publish", "set ",
     # AGENTIC_CHAT verbs — drive an app action (propose-and-confirm); each maps to a
@@ -146,6 +155,19 @@ def chat_answer(caller, query: str, session=None) -> dict:
         return {"status": "budget", "errors": result.errors}
     if not result.ok:
         return {"status": "error", "detail": result.status}
+
+    # Deletion/destruction is NOT an agent action at all — there is no delete in the
+    # action registry, so a bulk-destructive request can never run. Refuse it EXPLICITLY
+    # (verb + a bulk data object, so "he dropped the ball" is unaffected) instead of
+    # silently emitting an empty plan, so the boundary is honest and visible. Nothing to
+    # gate — there is nothing to execute. (BUGS_FOUND P0-1.)
+    if _DESTRUCTIVE_VERB_RE.search(query or "") and _DESTRUCTIVE_OBJ_RE.search(query or ""):
+        return {
+            "status": "blocked", "intent": "general", "data": [],
+            "answer": "I can't delete, erase, or destroy data — there's no such action "
+                      "available to me. I can help you review, draft, summarise, or approve "
+                      "within what you're allowed to see.",
+        }
 
     intent = result.content.get("intent", "general")
     if intent == "write":

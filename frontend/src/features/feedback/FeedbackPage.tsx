@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
   Inbox,
@@ -50,15 +51,22 @@ import {
 } from "./useFeedback";
 import type { MyFeedbackCycle } from "@/lib/types";
 
+const FEEDBACK_TABS = ["inbox", "mine", "cycles", "review"];
+
 export function FeedbackPage() {
   const { atLeast } = useAuth();
+  // Honour a ?tab= deep-link so dashboard cards can land on the right tab (e.g. a
+  // "Summaries to release" row → the review tab). Uncontrolled after mount so manual
+  // tab switching still works. BUGS_FOUND #9.
+  const [sp] = useSearchParams();
+  const initialTab = FEEDBACK_TABS.includes(sp.get("tab") ?? "") ? sp.get("tab")! : "inbox";
   return (
     <div>
       <PageHeader
         eyebrow="Performance" title="360 Feedback"
         description="Request, give and summarise multi-rater feedback. Responses are anonymised and threshold-gated; every AI summary passes a human gate before release."
       />
-      <Tabs defaultValue="inbox">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           {/* "For me" + "My 360" are for everyone (give feedback / see own released
               360). Managing cycles is Manager+ (MANAGE_FEEDBACK_CYCLE); releasing
@@ -186,6 +194,12 @@ function CyclesTab() {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const rows = cycles.data?.results ?? [];
   const selected = rows.find((c) => c.id === selectedId) ?? null;
+  // Deep-link: /feedback?tab=cycles&cycle=<id> opens that cycle's Manage sheet directly.
+  const [cycleSp] = useSearchParams();
+  const deepCycle = cycleSp.get("cycle");
+  React.useEffect(() => {
+    if (deepCycle) setSelectedId(deepCycle);
+  }, [deepCycle]);
 
   return (
     <div className="space-y-4">

@@ -9,7 +9,6 @@ import {
   GitBranch,
   LayoutDashboard,
   MessageSquareText,
-  Plug,
   Route,
   ScrollText,
   Settings,
@@ -92,7 +91,9 @@ export const NAV: NavSection[] = [
       { label: "Users & Roles", to: "/admin/users", icon: UserCog, minRole: "ADMIN" },
       { label: "Configure", to: "/admin/tenant", icon: Settings, minRole: "ADMIN" },
       { label: "Entitlements", to: "/admin/billing", icon: CreditCard, minRole: "ADMIN" },
-      { label: "Integrations", to: "/admin/integrations", icon: Plug, minRole: "ADMIN" },
+      // "Integrations" nav item removed — there is no /admin/integrations page (Jira/Slack
+      // aren't wired), so the link went nowhere. Re-add with a real "not connected" page
+      // when integrations ship. BUGS_FOUND #6/#16.
     ],
   },
 ];

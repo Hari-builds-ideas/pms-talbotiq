@@ -20,7 +20,7 @@ const TALENT_MGR = ["Employees", "Career Paths"];
 const TALENT_HRBP = ["Employees", "Career Paths", "Succession", "JD Library"];
 const INSIGHTS_MGR = ["Analytics"];
 const INSIGHTS_HRBP = ["Analytics", "Audit"];
-const SETTINGS = ["Users & Roles", "Configure", "Entitlements", "Integrations"];
+const SETTINGS = ["Users & Roles", "Configure", "Entitlements"];
 
 // Items no employee should ever see in the nav (display gating; server still enforces).
 const MANAGER_PLUS = ["Approvals", "Employees", "Analytics"];

@@ -113,8 +113,16 @@ function ChatSheet() {
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetContent side="right" className="w-full sm:max-w-md">
+    <Sheet open={open} onOpenChange={setOpen} modal={false}>
+      {/* Non-blocking dockable panel: no overlay + non-modal so the rest of the PMS stays
+          usable while the assistant is open, and interacting with the app doesn't dismiss
+          it (close via the X or the Ask-AI toggle). BUGS_FOUND #11. */}
+      <SheetContent
+        side="right"
+        overlay={false}
+        onInteractOutside={(e) => e.preventDefault()}
+        className="w-full sm:max-w-md"
+      >
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-ai" />

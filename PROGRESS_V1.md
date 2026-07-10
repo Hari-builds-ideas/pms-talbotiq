@@ -5,11 +5,31 @@ real data only, deferred features HIDDEN-not-deleted (+ how to re-enable), tests
 free-tier only. Ambiguities → simplest choice for a non-expert + logged under QUESTIONS. Log updated after
 each phase; final `V1_HANDOFF_REPORT.md` at the very end.
 
-## Status
-- [x] **A — Simplify** — done. Deferred features hidden (code kept), T-score demoted, goals plain lead, reseeded. 4 commits (A1–A4). tsc + 118 vitest green.
-- [x] **B — Polish** — brand-green favicon (was off-brand blue), meta/OG, consistent Sprout login mark + v1-accurate tagline. Empty states/consistency pre-existing (EmptyState used throughout). 1 commit. 118 vitest green.
-- [x] **C — Deploy demo** — GeminiProvider wired (mirrors OpenAI, OpenAI-compat endpoint) + 5 tests; render.yaml + vercel.json + DEPLOY_DEMO.md; free-tier honest (eager Celery, ephemeral MySQL, sleep). 1 commit. 239 backend green.
-- [x] **D — Handoff docs** — done. `docs/handoff/` complete: README, SYSTEM_OVERVIEW, V1_VS_V2 (+re-enable), HOW_IT_WAS_BUILT, DEVELOPER_SETUP, DEPLOYMENT (free demo + prod path), MOBILE (deferred to v2, backend-ready/frontend-needs-work), OPEN_QUESTIONS. All code-grounded (real paths/commands). 1 commit. tsc + 118 vitest green.
+## RUN 2 (2026-07-11) — REAL redesign (supersedes RUN 1's Goals/T-score work)
+RUN 1's Phase A only added a status tag + demoted the T-score behind a caption — **that was REJECTED.**
+RUN 2 does the real thing per the updated `V1_MASTER.md` (order A→E→B→C→D):
+- [x] **A — REDESIGN Goals + REMOVE T-score** — done.
+  - `docs/GOALS_RESEARCH.md`: researched Lattice/15Five/Betterworks → the simplest common pattern
+    (% complete + colored progress bar per goal, plain status, details hidden). Copied it.
+  - **Goals screen rebuilt** (`GoalsPage.tsx`): each goal now leads with a big **% complete** + a
+    **colored bar** (green on track / amber behind / red at risk) + a one-word status; person line
+    "N of M goals on track — X% overall"; ALL technical detail (weight→"How much this counts",
+    target→"Goal", KPI breakdown, direction, dates, approve) moved behind **Show details**. New shared
+    `lib/goalProgress.ts` (engine-consistent %; +7 unit tests) and `components/ProgressBar.tsx`.
+  - **T-score removed from the v1 UI everywhere** — goals, person profile, employee cockpit, analytics
+    (individual trend+table → progress %; department → status distribution, no mean/median T-score),
+    manager dashboard (avg-score card + big number + team column → on-track/status), review evidence
+    (→ plain Progress %). All guarded by the new `V1_HIDE_TSCORE` flag in `app/v1.ts` (backend
+    `CycleScore.t_score` + engine UNTOUCHED). TrendChart got a `seriesName` prop (plots "Progress %").
+  - Enterprise features (nine-box/calibration/succession/career/raw tenant-config) stay hidden from
+    RUN 1 (intact). 5 commits. tsc + **125** vitest green (118 + 7 new).
+- [ ] **E — Gemini** · [ ] **B — Polish (re-verify)** · [ ] **C — Deploy (update for Gemini)** · [ ] **D — Handoff (update for redesign)**
+
+### RUN 1 status (kept for history; Goals/T-score parts superseded by RUN 2 above)
+- [x] **A — Simplify** — hid deferred features (code kept); ~~T-score demoted, goals plain lead~~ (redone in RUN 2).
+- [x] **B — Polish** — brand-green favicon, meta/OG, Sprout login mark + v1 tagline. 1 commit.
+- [x] **C — Deploy demo** — GeminiProvider wired (OpenAI-compat) + 5 tests; render.yaml + vercel.json + DEPLOY_DEMO.md.
+- [x] **D — Handoff docs** — `docs/handoff/` (8 docs). (Being updated in RUN 2 for the redesign.)
 
 ### Phase B/C notes
 - **B:** favicon.svg replaced (blue "R" → brand-green sprout matching APP_ICON); index.html gained

@@ -23,7 +23,33 @@ RUN 2 does the real thing per the updated `V1_MASTER.md` (order A→E→B→C→
     `CycleScore.t_score` + engine UNTOUCHED). TrendChart got a `seriesName` prop (plots "Progress %").
   - Enterprise features (nine-box/calibration/succession/career/raw tenant-config) stay hidden from
     RUN 1 (intact). 5 commits. tsc + **125** vitest green (118 + 7 new).
-- [ ] **E — Gemini** · [ ] **B — Polish (re-verify)** · [ ] **C — Deploy (update for Gemini)** · [ ] **D — Handoff (update for redesign)**
+- [x] **E — Gemini** — best/fast two-model split (`gemini-2.5-pro` human-read / `gemini-2.5-flash` chat,
+  env-overridable), `_model_for` ignores stray non-Gemini names, single `GEMINI_MODEL` force-override;
+  `.env.example` Gemini block (`GEMINI_API_KEY=your-gemini-key-here` + `LLM_PROVIDER`); OpenAI/Groq still
+  switchable; gemini test updated (best/fast split) — 5 gemini + 239 AI tests green. Live e2e needs the
+  key → one-step verify documented (DEPLOY_DEMO). 1 commit.
+- [x] **B — Polish** — re-verified intact (brand-green favicon, Sprout login mark ×2); the new Goals/
+  progress UI uses the same brand tokens (success/warning/danger, Card, Badge) — no visual cliff.
+- [x] **C — Deploy** — render.yaml no longer forces gemini-1.5-flash (best/fast split by default, free-tier
+  flash override documented); DEPLOY_DEMO env table + one-step Gemini verify updated. 1 commit.
+- [x] **D — Handoff** — V1_VS_V2 (Goals REDESIGNED + T-score REMOVED + `V1_HIDE_TSCORE` re-enable),
+  SYSTEM_OVERVIEW (Gemini best/fast), HOW_IT_WAS_BUILT (redesign rationale) updated. 1 commit.
+
+### RUN 2 QUESTIONS (decided the simplest non-expert thing; flag for Hari)
+- **Goal status thresholds:** On track ≥70% / Behind 40–69% / At risk <40%, pure-% (no time-pacing).
+  Real tools often factor cycle time elapsed; that's a v2 refinement. Change in `lib/goalProgress.ts`.
+- **"Not started":** a goal with no KPI actual recorded shows "Not started" (not 0%/At risk). An
+  unrecorded KPI on a *partly* recorded goal counts as 0 in the rollup (engine-consistent).
+- **Goals "Refresh analytics" button:** the old "Recompute scores" button is kept (manager-only) but
+  relabelled — it refreshes the backend analytics/status from recorded progress. The live progress bars
+  don't need it. Could move to Analytics in a later pass.
+- **Raw tenant-config:** still hidden (not rebuilt as friendly toggles) — a v2 build.
+- **Dept analytics individuals table:** shows Employee + Status only (that endpoint returns no per-person
+  progress %); the per-cycle trend uses raw attainment %.
+- **T-score re-enable caveat:** `V1_HIDE_TSCORE=false` restores every T-score number EXCEPT the profile/
+  analytics **trend charts**, which plot progress % in v1 (one-line data-source swap, documented).
+- **Gemini models:** defaults `gemini-2.5-pro`/`gemini-2.5-flash` are env-overridable; **not yet
+  live-verified** (no key at build time) — run the one-step verify in DEPLOY_DEMO after pasting the key.
 
 ### RUN 1 status (kept for history; Goals/T-score parts superseded by RUN 2 above)
 - [x] **A — Simplify** — hid deferred features (code kept); ~~T-score demoted, goals plain lead~~ (redone in RUN 2).

@@ -50,7 +50,20 @@ Open the Vercel URL. Demo accounts (tenant `acme`, password **`Passw0rd!demo`**)
 | Manager | `ada@acme.test` |
 | Employee | `akhil@acme.test` |
 
-The AI (Ask-AI plan flow, review drafts, JD generation) runs on your Gemini key.
+The AI (Ask-AI plan flow, review drafts, JD generation) runs on your Gemini key. Models default to
+Gemini's **best/fast split** — `gemini-2.5-pro` for the human-read agents (review / JD / feedback /
+succession / career) and `gemini-2.5-flash` for chat. Override the ids with `GEMINI_MODEL_BEST` /
+`GEMINI_MODEL_FAST`, or force the fast model everywhere with `GEMINI_MODEL=gemini-2.5-flash` if a free
+tier limits Pro.
+
+**Verify the AI end-to-end (one command, after the key is pasted):**
+```bash
+# on the Render web service shell (or locally with GEMINI_API_KEY set):
+docker compose run --rm web python manage.py shell -c "from apps.ai.providers import get_llm_provider; p=get_llm_provider(); print(type(p).__name__, 'configured=', p.configured)"
+# → GeminiProvider configured= True
+```
+Then in the app: open **Ask AI → "draft a review for <report>"** → a plan appears → approve a step → the
+draft returns (lands PENDING for human review). If the key is missing you get a clean 503, never a fake.
 
 ## Every env var (backend / Render)
 | Var | Set by | Notes |
@@ -61,7 +74,8 @@ The AI (Ask-AI plan flow, review drafts, JD generation) runs on your Gemini key.
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | **you** (Step 1.4) | the Vercel URL |
 | **`GEMINI_API_KEY`** | **you — hand-paste** ⚠ | the only real secret; never committed |
 | `LLM_PROVIDER` | blueprint | `apps.ai.gemini_provider.GeminiProvider` |
-| `GEMINI_MODEL` | blueprint | `gemini-1.5-flash` (free-tier friendly) |
+| `GEMINI_MODEL_BEST` / `_FAST` | defaults in settings | `gemini-2.5-pro` / `gemini-2.5-flash`; override to change ids |
+| `GEMINI_MODEL` | *(optional)* | set to force ONE model for all agents (e.g. `gemini-2.5-flash` on a tight free tier) |
 | `LLM_MAX_CALLS` | blueprint | `200` — demo-wide 24h cost cap |
 | `CELERY_TASK_ALWAYS_EAGER` | blueprint (`true`) | AI runs inline (no free worker) |
 | `DB_*` / `REDIS_*` / `CELERY_*` | blueprint (wired) | from the redis + mysql services |

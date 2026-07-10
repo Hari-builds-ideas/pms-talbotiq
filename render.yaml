@@ -40,8 +40,11 @@ services:
         value: apps.ai.gemini_provider.GeminiProvider
       - key: GEMINI_API_KEY
         sync: false # ⚠ Hari pastes this in the dashboard — NEVER committed
-      - key: GEMINI_MODEL
-        value: gemini-1.5-flash
+      # Models default to the best/fast split (gemini-2.5-pro for human-read agents,
+      # gemini-2.5-flash for chat). On a constrained free tier, uncomment to force the
+      # cheap/fast model everywhere:
+      # - key: GEMINI_MODEL
+      #   value: gemini-2.5-flash
       - key: LLM_MAX_CALLS
         value: "200" # small demo cost cap (deployment-wide, 24h)
       # ── Celery eager (no free worker on Render) ──

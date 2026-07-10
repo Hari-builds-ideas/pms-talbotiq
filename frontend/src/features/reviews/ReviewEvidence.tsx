@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { LinesSkeleton } from "@/components/Skeletons";
 import { goalsApi, cyclesApi, reviewsApi } from "@/lib/api/endpoints";
+import { V1_HIDE_TSCORE } from "@/app/v1";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
@@ -50,8 +51,15 @@ export function EvidencePanel({ employee, cycle }: { employee: string; cycle: st
         <div className="space-y-4">
           {score && (
             <div className="flex items-center gap-4 rounded-md bg-secondary/40 px-3 py-2">
-              <Metric label="T-score" value={formatScore(score.t_score)} />
-              <Metric label="Raw" value={formatScore(score.raw_score)} />
+              {/* v1: plain goal progress instead of the T-score/Raw (kept for v2). */}
+              {V1_HIDE_TSCORE ? (
+                <Metric label="Progress" value={`${Math.round(Number(score.raw_score) * 100)}%`} />
+              ) : (
+                <>
+                  <Metric label="T-score" value={formatScore(score.t_score)} />
+                  <Metric label="Raw" value={formatScore(score.raw_score)} />
+                </>
+              )}
               <Metric label="Cohort" value={String(score.cohort_size)} />
               {score.pace_behind && <Badge variant="warning">Behind pace</Badge>}
             </div>

@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LinesSkeleton } from "@/components/Skeletons";
 import { Badge } from "@/components/ui/badge";
+import { V1_HIDE_TSCORE } from "@/app/v1";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
 import {
@@ -101,10 +102,11 @@ export function ManagerDashboard() {
     <div className="space-y-5">
       {/* ── 5 KPI cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {/* v1: a plain "on track" count instead of the T-score average (kept for v2). */}
         <DashboardKpiCard
-          label="Team avg score"
-          value={meanT != null ? meanT.toFixed(1) : "—"}
-          hint="T-score · 50 = cohort average"
+          label={V1_HIDE_TSCORE ? "Team on track" : "Team avg score"}
+          value={V1_HIDE_TSCORE ? (scored ? `${dist.ON_TRACK}/${scored}` : "—") : meanT != null ? meanT.toFixed(1) : "—"}
+          hint={V1_HIDE_TSCORE ? "On track this cycle" : "T-score · 50 = cohort average"}
           loading={scoresQ.isLoading || goalsQ.isLoading}
         />
         <DashboardKpiCard
@@ -149,14 +151,26 @@ export function ManagerDashboard() {
             <EmptyState compact icon={TrendingUp} title="No scored team members yet" description="Once your team's scores are computed for the cycle, the distribution appears here." />
           ) : (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Average team T-score</p>
-                <p className="mt-1 text-3xl font-bold tabular-nums text-foreground">{meanT!.toFixed(1)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">50 = cohort average · across {scored} scored {scored === 1 ? "member" : "members"}</p>
-                <p className="mt-4 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
-                  A per-cycle trend line appears once more than one cycle has been scored.
-                </p>
-              </div>
+              {/* v1: lead with the plain "on track" count; T-score average kept for v2. */}
+              {V1_HIDE_TSCORE ? (
+                <div>
+                  <p className="text-sm text-muted-foreground">On track</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-foreground">{dist.ON_TRACK} of {scored}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">team {scored === 1 ? "member is" : "members are"} on track this cycle</p>
+                  <p className="mt-4 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                    See each person's goal progress in Goals, or open Analytics for the trend.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-muted-foreground">Average team T-score</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-foreground">{meanT!.toFixed(1)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">50 = cohort average · across {scored} scored {scored === 1 ? "member" : "members"}</p>
+                  <p className="mt-4 rounded-lg bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                    A per-cycle trend line appears once more than one cycle has been scored.
+                  </p>
+                </div>
+              )}
               <div>
                 <p className="mb-3 text-sm text-muted-foreground">Score distribution (by risk band)</p>
                 <ScoreDonut bands={bands} centerValue={scored} centerLabel={scored === 1 ? "Member" : "Members"} />
@@ -212,7 +226,7 @@ export function ManagerDashboard() {
                   <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     <th className="pb-2 pr-3 font-semibold">Employee</th>
                     <th className="pb-2 pr-3 font-semibold">Role</th>
-                    <th className="pb-2 pr-3 text-right font-semibold">T-score</th>
+                    {!V1_HIDE_TSCORE && <th className="pb-2 pr-3 text-right font-semibold">T-score</th>}
                     <th className="pb-2 pr-3 font-semibold">Status</th>
                     <th className="pb-2 text-right font-semibold">KPIs on target</th>
                   </tr>
@@ -229,7 +243,7 @@ export function ManagerDashboard() {
                           </Link>
                         </td>
                         <td className="py-2.5 pr-3 text-muted-foreground">{role ? ROLE_LABEL[role as Role] : "—"}</td>
-                        <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{Number(s.t_score).toFixed(1)}</td>
+                        {!V1_HIDE_TSCORE && <td className="py-2.5 pr-3 text-right font-semibold tabular-nums">{Number(s.t_score).toFixed(1)}</td>}
                         <td className="py-2.5 pr-3"><StatusBadge status={s.risk_status} dot /></td>
                         <td className="py-2.5 text-right tabular-nums text-muted-foreground">{kp ? `${kp.onTarget}/${kp.total}` : "—"}</td>
                       </tr>

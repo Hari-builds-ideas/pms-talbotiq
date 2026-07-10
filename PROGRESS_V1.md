@@ -7,9 +7,19 @@ each phase; final `V1_HANDOFF_REPORT.md` at the very end.
 
 ## Status
 - [x] **A — Simplify** — done. Deferred features hidden (code kept), T-score demoted, goals plain lead, reseeded. 4 commits (A1–A4). tsc + 118 vitest green.
-- [ ] **B — Polish** (favicon, logo, premium login, brand consistency, calm empty states)
-- [ ] **C — Deploy demo** (render.yaml + vercel.json + DEPLOY_DEMO.md; wire Gemini provider; free tier)
+- [x] **B — Polish** — brand-green favicon (was off-brand blue), meta/OG, consistent Sprout login mark + v1-accurate tagline. Empty states/consistency pre-existing (EmptyState used throughout). 1 commit. 118 vitest green.
+- [x] **C — Deploy demo** — GeminiProvider wired (mirrors OpenAI, OpenAI-compat endpoint) + 5 tests; render.yaml + vercel.json + DEPLOY_DEMO.md; free-tier honest (eager Celery, ephemeral MySQL, sleep). 1 commit. 239 backend green.
 - [ ] **D — Handoff docs** (docs/handoff/ — 8 docs, code-grounded)
+
+### Phase B/C notes
+- **B:** favicon.svg replaced (blue "R" → brand-green sprout matching APP_ICON); index.html gained
+  description/theme-color/OG; LoginPage mark Building2→Sprout + tagline no longer names hidden succession.
+  Placeholder-mark note: the sprout favicon is a clean brand-color placeholder — swap for a final designer
+  asset when available (does not block the demo).
+- **C:** Gemini via its OpenAI-compatible endpoint keeps the gateway pipeline unchanged. Free path:
+  Celery EAGER (no free Render worker), MySQL private service WITHOUT a paid disk (ephemeral, reseed on
+  boot), single free Redis, `LLM_MAX_CALLS=200`. Vercel `/api` proxy → same-origin → no CORS (no backend
+  change / no new dep). The Gemini key is dashboard-only (`sync:false`).
 
 ## Log
 ### Setup

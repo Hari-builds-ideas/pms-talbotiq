@@ -1,162 +1,161 @@
-# V1 Handoff Report
+# V1 Handoff Report (RUN 2 — real redesign)
 
-**Task:** execute `V1_MASTER.md` end-to-end (Phases A→B→C→D) autonomously.
-**Status: DONE.** All four phases complete, committed per change, tests green. Nothing is left running or
-half-done. This is the one doc to read first; everything it references is real and in the repo.
+**Task:** execute the updated `V1_MASTER.md` (A→E→B→C→D) — a **real** Goals/OKR redesign (the earlier
+tag-only attempt was rejected), remove the T-score from the v1 UI, wire Gemini, polish, prepare the free
+deploy, and update the handoff docs. **Status: DONE, verified green.** I've tried not to overclaim — the
+"Honesty / partials" section below lists what is prepared-but-not-live and every judgement call.
 
-Branch `hari/agent-ui-v2`. New commits this run (oldest → newest):
+Branch `hari/agent-ui-v2`. RUN 2 commits (oldest → newest):
 
-| # | Commit | Phase |
-|---|---|---|
-| 1 | `8c8b2d2` feat(v1): hide career, succession, calibration, raw tenant-config | A |
-| 2 | `b5f8ecb` feat(v1): remove succession + career tiles from dashboards | A |
-| 3 | `bf547e3` feat(v1): demote T-score behind plain status + 0-100 bar | A |
-| 4 | `b3fc97f` feat(v1): plain per-person lead line on Goals | A |
-| 5 | `9c75f8f` docs(v1): log Phase A | A |
-| 6 | `cd028db` feat(v1): brand-green favicon, meta, consistent login mark | B |
-| 7 | `1fd6a9a` feat(deploy): wire Gemini provider + free Vercel/Render demo scaffolding | C |
-| 8 | `002eaa5` docs(v1): log Phase B + C | C |
-| 9 | `9121039` docs(handoff): complete docs/handoff/ (8 code-grounded docs) | D |
-
-**Iron rules honoured:** no working feature was broken (deferred features are HIDDEN, not deleted — all
-code/routes/endpoints/tests retained); real data only (no fabrication); no backend data-model change;
-committed per change; free-tier only; no secrets committed; no login to your Vercel/Render accounts.
-Every hidden feature has documented one-line re-enable steps.
-
----
-
-## 1. What changed, by phase
-
-### A — Simplify (make every screen readable in 10 seconds)
-- **One central v1 switch:** `frontend/src/app/v1.ts` — product scope, consulted in exactly 4 places
-  (nav, ⌘K palette, router, Analytics). Distinct from the billing `hasFeature()` lever.
-- **Hidden (code kept):** nine-box/calibration, succession, career roadmaps, raw-JSON tenant config —
-  removed from nav, ⌘K, routes (guarded, imports/components retained), dashboards (tiles + queries), and
-  the Analytics calibration tab.
-- **T-score demoted:** new `frontend/src/components/ScoreBar.tsx` — a plain **On track / At risk / Needs
-  attention** badge + a 0–100 bar; the raw T-score is now a small "Score N/100 · 50 = team average"
-  caption with a tooltip. Applied to the Employee dashboard card + the profile page.
-- **Goals plain-language:** a one-line human lead per person ("On track this cycle · N goals") above the
-  OKR detail; the existing Progress/Goal/"Higher is better" relabels remain.
-- **Reseeded** ACME (211 people) so every kept screen looks full.
-
-### B — Polish (visual only)
-- Favicon replaced (off-brand blue "R" → brand-green **#0d5c3a** sprout mark matching the app icon).
-- `index.html`: page title, description meta, `theme-color`, OpenGraph/Twitter tags.
-- Login: consistent Sprout brand mark + a v1-accurate tagline (no longer names hidden succession).
-- *Placeholder note:* the sprout mark is a clean brand-color placeholder — swap for a final designer asset
-  when you have one; it does not block the demo.
-
-### C — Free demo deploy (prepared + documented; nothing deployed on your behalf)
-- **Gemini wired:** `apps/ai/gemini_provider.py` (mirrors the OpenAI provider via Gemini's
-  OpenAI-compatible endpoint, so the gateway pipeline is unchanged) + 5 unit tests.
-- **Deploy files:** `render.yaml` (web + free Redis + MySQL), `vercel.json` (SPA + `/api` proxy → no
-  CORS), and **`DEPLOY_DEMO.md`** (the click-by-click).
-- **Free-tier realities documented honestly:** eager Celery (no free worker), ephemeral MySQL that
-  reseeds on boot, web sleeps (~30–60s cold start), single Redis, Gemini rate limits.
-- The Gemini key is the **only** hand-entered secret (pasted in the Render dashboard, `sync:false`).
-
-### D — Handoff docs
-- **`docs/handoff/`** — 8 code-grounded docs: `README` (start here) → `SYSTEM_OVERVIEW` → `V1_VS_V2`
-  (scope split + re-enable) → `HOW_IT_WAS_BUILT` → `DEVELOPER_SETUP` → `DEPLOYMENT` → `MOBILE` →
-  `OPEN_QUESTIONS`. Written for a new engineer inheriting the codebase; every path/command is real.
-
----
-
-## 2. What was CUT vs KEPT
-
-**Kept & live in v1:** Dashboards (per role), Goals & OKRs (simplified), Reviews (+AI draft, HITL), 360°
-Feedback (+AI summary), Check-ins, Recognition, Approvals, Employees/Org chart, JD Library + AI generator,
-Analytics (trends + status distribution), Audit log, Admin (Users & Roles, Entitlements).
-
-**Hidden in v1 (NOT deleted — code, routes, endpoints, components, tests all retained):**
-
-| Hidden feature | Re-enable (all in `frontend/src/app/v1.ts`) |
+| Commit | What |
 |---|---|
-| Career roadmaps | remove `"/career"` from `V1_HIDDEN_PATHS` |
-| Succession + nine-box + critical roles | remove `"/succession"` |
-| Analytics calibration / nine-box tab | set `V1_HIDE_CALIBRATION = false` |
-| Raw-JSON tenant config | remove `"/admin/tenant"` |
+| `87b341a` | **Goals screen rebuilt** — %+colored bar per goal, details hidden (+ `GOALS_RESEARCH.md`, `goalProgress.ts`, `V1_HIDE_TSCORE`) |
+| `4a8762e` | T-score removed from person profile + employee cockpit; shared `ProgressBar`; `TrendChart` `seriesName` |
+| `6dc6e78` | T-score removed from analytics, manager dashboard, review evidence |
+| `3253d5f` | 7 unit tests for `goalProgress` |
+| `57e17e1` | PROGRESS_V1 — Phase A log |
+| `f5e9c88` | **Gemini** best/fast model split + `.env.example` key placeholder |
+| `371e9a3` | Deploy files updated for Gemini (render.yaml + DEPLOY_DEMO) |
+| `65b8693` | Handoff docs updated (V1_VS_V2 / SYSTEM_OVERVIEW / HOW_IT_WAS_BUILT) |
+| `1d0d1ae` | PROGRESS_V1 — E/B/C/D + QUESTIONS |
 
-After a re-enable: `cd frontend && npm run build`, and restore the old expectations in
-`frontend/src/app/nav.test.ts`. Full detail: `docs/handoff/V1_VS_V2.md`.
-
-**Simplified (original detail still present):** T-score → status-first (raw number kept as a caption and
-in Analytics tables); Goals → plain lead line (raw weight/target kept on the card).
-
----
-
-## 3. Deploy instructions (free demo)
-
-Full click-by-click: **`DEPLOY_DEMO.md`**. In brief — nothing here has been run for you; it's one-click:
-1. **Render:** New → Blueprint → point at this repo (`render.yaml`). It creates the web service + free
-   Redis + MySQL. In the web service env, set `LLM_PROVIDER=apps.ai.gemini_provider.GeminiProvider` and
-   **paste your `GEMINI_API_KEY`** (the only hand-entered secret — never in git).
-2. **Vercel:** New Project → this repo. In `vercel.json`, replace the placeholder Render hostname in the
-   `/api` rewrite with your real `*.onrender.com` host. Deploy.
-3. Open the Vercel URL. First hit may cold-start (~30–60s) because the free web service sleeps.
-
-Demo accounts (tenant `acme`, password `Passw0rd!demo`): `admin@acme.test` / `priya@acme.test` (HRBP) /
-`ada@acme.test` (Manager) / `akhil@acme.test` (Employee).
-
-Path to real production (durable DB, real Celery worker, secrets manager, always-on + replicas,
-observability): `docs/handoff/DEPLOYMENT.md` Part 2 — it's provisioning + config, not a rewrite.
-
-**The running local demo is refreshed:** the `pms-frontend-8090` helper was recreated from the rebuilt
-frontend image, so **http://localhost:8090** now shows all A+B changes (verified: 200, brand-green
-favicon, updated title/meta).
+**Verified:** `tsc` clean · **125** frontend vitest (118 + 7 new) · **239** backend AI tests · **57/57**
+E2E smoke (`demo_ready.sh`) → **DEMO READY**. Reseeded (rich ACME). The running demo at
+**http://localhost:8090** was rebuilt + confirmed serving the redesign.
 
 ---
 
-## 4. Testing checklist — run this when you have time
+## 1. The Goals/OKR screen — honest before / after
 
-Tests were kept green throughout (I verified after each phase). This is for **you** to confirm.
+**BEFORE (rejected RUN 1):** the same dense screen — per person a T-score number + status badge + weight
+badges; each goal card showed a "Goal weight N" badge and a raw KPI list (weight · target · direction ·
+progress) always expanded. The only "simplification" was a status word added on top. A non-expert still
+saw statistics and jargon first.
 
-**Automated (fast):**
-- [ ] Frontend: `cd frontend && npx tsc --noEmit && npm test` → expect tsc clean + **118 passing**.
-      *(⚠ run from `frontend/`, not the repo root — a stray root vitest config falsely shows 2 failures;
-      see OPEN_QUESTIONS.)*
-- [ ] Backend AI: `docker compose run --rm web pytest apps/ai -q` → expect **239 passed, 5 deselected**.
-- [ ] Full backend: `docker compose run --rm web pytest -q` → expect green.
-- [ ] E2E smoke: `./scripts/demo_ready.sh` → expect "✓ DEMO READY".
+**AFTER (this run):** copied the pattern real tools use (Lattice / 15Five / Betterworks — see
+`docs/GOALS_RESEARCH.md`). Per goal, the first thing you see is:
+- the **goal title** in plain words,
+- a big **% complete** (e.g. "72%"),
+- a **colored progress bar** — green (on track) / amber (behind) / red (at risk),
+- a one-word **status**.
 
-**Manual (open http://localhost:8090, ~10 min):**
-- [ ] **Nav is clean** — no "Career Paths", "Succession", or "Configure" in the sidebar or ⌘K, for any role.
-- [ ] **Dashboards** — no succession/coverage/roadmap tiles; the Employee "My performance" card leads with
-      a plain status word (not a bare number).
-- [ ] **A profile** (People → someone) — leads with the status badge + 0–100 bar; the T-score is a small
-      caption with a "50 = team average" tooltip.
-- [ ] **Goals** — each person opens with a plain one-line lead ("On track this cycle · N goals"); KPIs read
-      Progress / Goal / "Higher is better".
-- [ ] **Analytics** — trend + status distribution; **no** calibration/nine-box tab.
-- [ ] **Brand** — the browser tab shows the green sprout favicon + "Talbotiq PMS · Admin Hub"; the login
-      page shows the sprout mark.
-- [ ] **Nothing broke** — log in as each of the 4 roles; Reviews, Feedback, Approvals, JD Library, Audit
-      all still work.
-- [ ] **Re-enable spot-check (optional)** — in `frontend/src/app/v1.ts` remove `"/succession"`, rebuild,
-      confirm Succession returns intact; then revert.
+Above each person's goals: **"3 of 4 goals on track — 68% overall."** Everything technical — weight
+("How much this counts"), target ("Goal"), the KPI breakdown, direction ("Higher/Lower is better"),
+the progress timeline, and the Approve button — is now **hidden behind "Show details."** A manager who
+has never seen the product knows who's on track in ten seconds without opening anything.
+
+The % is computed in `frontend/src/lib/goalProgress.ts` to mirror the backend scoring engine
+(direction-aware KPI attainment, weight-blended), so the number is honest, not invented. **No backend or
+data-model change** — KPIs, weights, targets, and the create / record-progress / approve flows are all
+unchanged, just relocated.
 
 ---
 
-## 5. Open questions & mobile state
+## 2. What was REMOVED vs KEPT
 
-Full list: `docs/handoff/OPEN_QUESTIONS.md` + the QUESTIONS section of `PROGRESS_V1.md`. The decisions I
-made autonomously (and would flag for your call):
-- **Goals lead wording** — used the honest "status + goal count" instead of the exact "3 of 4 goals on
-  track" (the precise phrasing needs per-goal attainment threaded to the header — small follow-up).
-- **T-score demotion scope** — demoted on per-person headline surfaces; kept as a secondary column in the
-  Analytics/team tables (expert "insights" screens). Say if you want it demoted there too.
-- **Raw tenant config** — hidden rather than rebuilt as friendly toggles (a v2 build).
-- **Stray root-level vitest** — running vitest from the repo root shows 2 false failures (wrong config);
-  the real suite is green from `frontend/`. Worth removing that root config so no one is misled.
+**Removed from the v1 UI — the T-score number, everywhere** (person profile, employee cockpit, analytics
+individual trend + table, analytics department mean/median, manager dashboard avg-score card + big number
++ team column, review evidence). v1 shows plain **goal progress % + status** in each spot instead. All of
+it is guarded by one flag, **`V1_HIDE_TSCORE` in `frontend/src/app/v1.ts`** — set it to `false` and the
+T-score numbers come back. **The backend is untouched**: `CycleScore.t_score` and the scoring engine still
+compute and store it; only the UI stops printing it.
 
-**Mobile (`docs/handoff/MOBILE.md`): deferred to v2 — backend-ready, frontend needs work.** A real Expo
-app exists and talks to the live backend using the **same** `@shared` client + types as web (so no
-mobile-specific backend work). It has NOT had the v1 simplification or brand pass, has no tests, and isn't
-in the demo deploy. v2 = a focused frontend effort (mirror `v1.ts` scope, brand, test), not new backend.
+**Kept (still hidden from RUN 1, code intact):** nine-box / calibration, succession, career roadmaps,
+raw-JSON tenant config — all one edit to `app/v1.ts` to restore (see `docs/handoff/V1_VS_V2.md`).
+
+**Kept & working, untouched:** reviews (+ AI draft, HITL), 360 feedback, approvals, check-ins,
+recognition, org chart, JD library, audit log, admin users/entitlements, and the whole AI agent
+(plan→approve) flow.
+
+**One re-enable caveat (not overclaiming):** flipping `V1_HIDE_TSCORE` restores every T-score number
+**except** the profile + analytics **trend charts**, which plot progress % in v1 — reverting those two
+charts to a T-score series is a one-line data-source swap, documented in the code and in `V1_VS_V2.md`.
 
 ---
 
-**Bottom line:** v1 is a simpler, on-brand, demo-deployable product with a complete handoff — and every
-enterprise feature is one line away from returning. Nothing was deleted; nothing was faked; the guards
-(tenant isolation, RBAC, HITL, append-only audit, one LLM gateway, no fabrication) are all intact.
+## 3. Gemini — how you paste the key (your only action)
+
+The Gemini provider is wired as the configured provider, with a **two-model split**: `gemini-2.5-pro` for
+the human-read agents (review / JD / feedback / succession / career) and `gemini-2.5-flash` for chat —
+both env-overridable. OpenAI and Groq remain switchable by config.
+
+**Your whole action — paste the key, restart:**
+1. In `.env` (gitignored — never commit), the block is already scaffolded (see `.env.example`):
+   ```
+   LLM_PROVIDER=apps.ai.gemini_provider.GeminiProvider
+   GEMINI_API_KEY=your-gemini-key-here      ← paste the enterprise key here
+   ```
+2. Restart: `docker compose restart web celery-worker`.
+3. **Verify (one command):**
+   ```
+   docker compose run --rm web python manage.py shell -c "from apps.ai.providers import get_llm_provider; p=get_llm_provider(); print(type(p).__name__, 'configured=', p.configured)"
+   # → GeminiProvider configured= True
+   ```
+   Then in the app: **Ask AI → "draft a review for <a report>"** → approve the step → the draft returns
+   (lands PENDING for human review). No key → a clean 503, never a fake.
+
+To force the cheap model everywhere on a tight free tier: set `GEMINI_MODEL=gemini-2.5-flash`.
+
+---
+
+## 4. Deploy click-through (free demo — nothing deployed on your behalf)
+
+Full detail: **`DEPLOY_DEMO.md`**. In brief:
+1. **Render** → New → Blueprint → this repo (`render.yaml` builds web + free Redis + MySQL). Set
+   `DJANGO_ALLOWED_HOSTS` + `DJANGO_CSRF_TRUSTED_ORIGINS`, and **paste `GEMINI_API_KEY`** (the only
+   hand-entered secret; `sync:false`, never in git).
+2. **Vercel** → New Project → this repo. Edit the `/api` rewrite host in `vercel.json` to your Render
+   `*.onrender.com`. Deploy.
+3. Open the Vercel URL (first hit cold-starts ~30–60s — the free web service sleeps).
+
+Free-tier tradeoffs documented honestly in `DEPLOY_DEMO.md` (ephemeral MySQL that reseeds on boot, eager
+Celery, single Redis, model override for rate limits). The path to real production is
+`docs/handoff/DEPLOYMENT.md` Part 2.
+
+---
+
+## 5. Your testing checklist (run when you have time)
+
+**Automated (green as of this run):**
+- [ ] `cd frontend && npx tsc --noEmit && npm test` → tsc clean + **125** passing. *(Run from `frontend/`
+      — a stray repo-root vitest config falsely shows 2 failures.)*
+- [ ] `docker compose run --rm web pytest apps/ai -q` → **239 passed, 5 deselected**.
+- [ ] `BASE=http://localhost:8090 ./scripts/demo_ready.sh` → **57/57 · DEMO READY**.
+
+**Manual — the Goals redesign (open http://localhost:8090, ~10 min):**
+- [ ] **Goals** — each goal leads with a big **%** + a **colored bar** + a one-word status; person line
+      reads "N of M goals on track — X% overall". **No T-score anywhere.**
+- [ ] Click **Show details** on a goal → weight ("How much this counts"), Goal (target), KPIs, direction,
+      timeline, and Approve appear; collapse hides them again.
+- [ ] Record a KPI progress value (as the owner) → the bar/% update.
+- [ ] **Profile** (People → someone), **Employee dashboard**, **Analytics**, **Manager dashboard**,
+      **a Review's Evidence panel** → confirm none show a T-score number; each shows progress %/status.
+- [ ] **Analytics** → individual trend is "Progress %", department shows On track/Behind/At risk (no
+      mean/median T-score), no calibration tab.
+- [ ] Nav has no Career / Succession / Configure; the 4 roles all still work (reviews, feedback,
+      approvals, JD, audit).
+- [ ] **Re-enable spot-check (optional):** set `V1_HIDE_TSCORE = false` in `frontend/src/app/v1.ts`,
+      rebuild → T-score numbers return; revert.
+
+**Gemini:** the § 3 verify command + Ask-AI draft (needs your key).
+
+---
+
+## 6. Honesty / partials / QUESTIONS
+
+- **Gemini is wired + unit-tested but NOT live-verified** (no key at build time). The one-step verify is
+  in § 3 / DEPLOY_DEMO. Model ids `gemini-2.5-pro` / `-flash` are sensible enterprise defaults and
+  env-overridable if your account exposes different names.
+- **Goal status thresholds** (On track ≥70 / Behind 40–69 / At risk <40) are pure-%; real tools also factor
+  cycle time elapsed — a v2 refinement (`lib/goalProgress.ts`). A goal with no recorded KPI shows "Not
+  started"; an unrecorded KPI on a partly-recorded goal counts as 0 (engine-consistent).
+- **Goals "Refresh analytics" button** — the old "Recompute scores" button is kept (manager-only) but
+  relabelled; the live bars don't need it. Could move to Analytics later.
+- **Raw tenant-config** stays hidden (not rebuilt as friendly toggles) — a v2 build.
+- **T-score re-enable caveat** — see § 2 (trend charts don't auto-revert with the flag).
+- **The two `V1_HANDOFF_REPORT.md` / handoff docs** were updated in place; the RUN 1 report was replaced
+  by this one.
+
+**Bottom line:** the Goals screen is a genuinely different, simpler screen (% + bar, detail hidden) — not
+a re-tag — and the T-score is gone from the v1 UI while fully preserved in the backend. Everything is
+green, committed per change, and one flag/one key away from where v2 or a live demo needs it.

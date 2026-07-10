@@ -9,7 +9,7 @@ each phase; final `V1_HANDOFF_REPORT.md` at the very end.
 - [x] **A — Simplify** — done. Deferred features hidden (code kept), T-score demoted, goals plain lead, reseeded. 4 commits (A1–A4). tsc + 118 vitest green.
 - [x] **B — Polish** — brand-green favicon (was off-brand blue), meta/OG, consistent Sprout login mark + v1-accurate tagline. Empty states/consistency pre-existing (EmptyState used throughout). 1 commit. 118 vitest green.
 - [x] **C — Deploy demo** — GeminiProvider wired (mirrors OpenAI, OpenAI-compat endpoint) + 5 tests; render.yaml + vercel.json + DEPLOY_DEMO.md; free-tier honest (eager Celery, ephemeral MySQL, sleep). 1 commit. 239 backend green.
-- [ ] **D — Handoff docs** (docs/handoff/ — 8 docs, code-grounded)
+- [x] **D — Handoff docs** — done. `docs/handoff/` complete: README, SYSTEM_OVERVIEW, V1_VS_V2 (+re-enable), HOW_IT_WAS_BUILT, DEVELOPER_SETUP, DEPLOYMENT (free demo + prod path), MOBILE (deferred to v2, backend-ready/frontend-needs-work), OPEN_QUESTIONS. All code-grounded (real paths/commands). 1 commit. tsc + 118 vitest green.
 
 ### Phase B/C notes
 - **B:** favicon.svg replaced (blue "R" → brand-green sprout matching APP_ICON); index.html gained

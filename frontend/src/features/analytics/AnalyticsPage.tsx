@@ -27,6 +27,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { NineBoxGrid } from "@/components/NineBoxGrid";
+import { V1_HIDE_CALIBRATION } from "@/app/v1";
 import { useCalibration, useDepartment, useIndividual } from "./useAnalytics";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
@@ -40,17 +41,22 @@ export function AnalyticsPage() {
     <div>
       <PageHeader
         eyebrow="Insights" title="Analytics"
-        description="Performance trends, department cohorts and the calibration grid. Small cohorts are aggregated for privacy."
+        description={
+          V1_HIDE_CALIBRATION
+            ? "Performance trends and department cohorts. Small cohorts are aggregated for privacy."
+            : "Performance trends, department cohorts and the calibration grid. Small cohorts are aggregated for privacy."
+        }
       />
       <Tabs defaultValue="individual">
         <TabsList>
           <TabsTrigger value="individual">Individual</TabsTrigger>
           <TabsTrigger value="department">Department</TabsTrigger>
-          {atLeast("HRBP") && <TabsTrigger value="calibration">Calibration</TabsTrigger>}
+          {/* v1: calibration / nine-box tab hidden (deferred to v2). */}
+          {!V1_HIDE_CALIBRATION && atLeast("HRBP") && <TabsTrigger value="calibration">Calibration</TabsTrigger>}
         </TabsList>
         <TabsContent value="individual"><IndividualTab /></TabsContent>
         <TabsContent value="department"><DepartmentTab /></TabsContent>
-        {atLeast("HRBP") && (
+        {!V1_HIDE_CALIBRATION && atLeast("HRBP") && (
           <TabsContent value="calibration"><CalibrationTab /></TabsContent>
         )}
       </Tabs>

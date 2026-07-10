@@ -15,6 +15,7 @@ import { SuccessionPage } from "@/features/succession/SuccessionPage";
 import { AnalyticsPage } from "@/features/analytics/AnalyticsPage";
 import { JdRoutes } from "@/features/jd/JdRoutes";
 import { CareerPage } from "@/features/career/CareerPage";
+import { isHiddenInV1 } from "@/app/v1";
 import { ProfilePage } from "@/features/people/ProfilePage";
 import { RecognitionPage } from "@/features/recognition/RecognitionPage";
 import { CheckInsPage } from "@/features/checkins/CheckInsPage";
@@ -79,7 +80,9 @@ export function AppRouter() {
               OWN scope), managers/HRBP additionally see their team. No RoleGate —
               the dashboard advertises this tile to employees, so it must not 403
               the person who clicks it (BUG 3). Scope is enforced server-side. */}
-          <Route path="career/*" element={<CareerPage />} />
+          {/* v1: career roadmaps hidden (deferred to v2). Route kept, guarded by the
+              central v1 scope switch so v2 restores it by editing app/v1.ts only. */}
+          {!isHiddenInV1("/career") && <Route path="career/*" element={<CareerPage />} />}
           {/* Employee profile — read-only growth narrative composed from existing
               scope-bound endpoints; no RoleGate (each section's endpoint enforces
               scope, 404 → friendly empty state, same D31 pattern as career/goals). */}
@@ -90,14 +93,17 @@ export function AppRouter() {
           {/* Weekly Check-ins (RW_BUILD_3) — everyday surface for ALL roles; scope
               (own / a manager's reports) is enforced server-side. */}
           <Route path="checkins/*" element={<CheckInsPage />} />
-          <Route
-            path="succession/*"
-            element={
-              <RoleGate min="MANAGER">
-                <SuccessionPage />
-              </RoleGate>
-            }
-          />
+          {/* v1: succession + nine-box hidden (deferred to v2). Route + component kept. */}
+          {!isHiddenInV1("/succession") && (
+            <Route
+              path="succession/*"
+              element={
+                <RoleGate min="MANAGER">
+                  <SuccessionPage />
+                </RoleGate>
+              }
+            />
+          )}
           <Route
             path="analytics/*"
             element={
@@ -123,14 +129,17 @@ export function AppRouter() {
               </RoleGate>
             }
           />
-          <Route
-            path="admin/tenant/*"
-            element={
-              <RoleGate min="ADMIN">
-                <TenantConfigPage />
-              </RoleGate>
-            }
-          />
+          {/* v1: raw-JSON tenant-config hidden (too technical for v1 admins). Kept for v2. */}
+          {!isHiddenInV1("/admin/tenant") && (
+            <Route
+              path="admin/tenant/*"
+              element={
+                <RoleGate min="ADMIN">
+                  <TenantConfigPage />
+                </RoleGate>
+              }
+            />
+          )}
           <Route
             path="admin/billing/*"
             element={

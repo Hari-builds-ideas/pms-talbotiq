@@ -11,6 +11,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { NAV } from "@/app/nav";
+import { isHiddenInV1 } from "@/app/v1";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useChatPanel } from "@/features/chat/ChatPanel";
 import { orgApi } from "@/lib/api/endpoints";
@@ -49,7 +50,9 @@ export function CommandPalette() {
     enabled: open && query.trim().length >= 2,
   });
 
-  const navItems = NAV.flatMap((s) => s.items).filter((i) => atLeast(i.minRole));
+  const navItems = NAV.flatMap((s) => s.items).filter(
+    (i) => atLeast(i.minRole) && !isHiddenInV1(i.to),
+  );
 
   function go(to: string) {
     setOpen(false);

@@ -19,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { ROLE_RANK, type Role } from "@/lib/enums";
+import { isHiddenInV1 } from "./v1";
 
 export interface NavItem {
   label: string;
@@ -106,7 +107,10 @@ export const NAV: NavSection[] = [
 export function navForRole(role: Role): NavSection[] {
   return NAV.map((section) => ({
     ...section,
-    items: section.items.filter((item) => ROLE_RANK[role] >= ROLE_RANK[item.minRole]),
+    items: section.items.filter(
+      // Role gate AND the v1 scope cut (Career/Succession/tenant-config hidden in v1).
+      (item) => ROLE_RANK[role] >= ROLE_RANK[item.minRole] && !isHiddenInV1(item.to),
+    ),
   })).filter((section) => section.items.length > 0);
 }
 

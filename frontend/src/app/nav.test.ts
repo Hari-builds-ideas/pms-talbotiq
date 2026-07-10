@@ -15,23 +15,33 @@ const sections = (role: Role) => navForRole(role).map((s) => s.title);
 const DASHBOARD = ["Dashboard"];
 const PERF_EMP = ["Goals & OKRs", "Reviews", "Feedback", "Check-ins", "Recognition"];
 const PERF_MGR = [...PERF_EMP, "Approvals"];
-const TALENT_EMP = ["Career Paths"];
-const TALENT_MGR = ["Employees", "Career Paths"];
-const TALENT_HRBP = ["Employees", "Career Paths", "Succession", "JD Library"];
+// v1 scope cut (app/v1.ts): Career Paths, Succession and the "Configure" (raw-JSON
+// tenant-config) are HIDDEN from the v1 nav — deferred to v2 (code retained).
+const TALENT_MGR = ["Employees"];
+const TALENT_HRBP = ["Employees", "JD Library"];
 const INSIGHTS_MGR = ["Analytics"];
 const INSIGHTS_HRBP = ["Analytics", "Audit"];
-const SETTINGS = ["Users & Roles", "Configure", "Entitlements"];
+const SETTINGS = ["Users & Roles", "Entitlements"];
 
 // Items no employee should ever see in the nav (display gating; server still enforces).
 const MANAGER_PLUS = ["Approvals", "Employees", "Analytics"];
-const HR_ADMIN = ["Succession", "JD Library", "Audit", ...SETTINGS];
+const HR_ADMIN = ["JD Library", "Audit", ...SETTINGS];
+// Deferred in v1 → no role sees them in the nav (still code-present for v2).
+const V1_HIDDEN = ["Career Paths", "Succession", "Configure"];
 
 describe("navForRole — per-role sidebar surface (TalbotIQ IA)", () => {
   it("EMPLOYEE sees ONLY the everyday set — no management/enterprise/admin items", () => {
-    expect(sections("EMPLOYEE")).toEqual(["", "Performance", "Talent"]);
-    expect(labels("EMPLOYEE")).toEqual([...DASHBOARD, ...PERF_EMP, ...TALENT_EMP]);
-    for (const hidden of [...MANAGER_PLUS, ...HR_ADMIN]) {
+    // v1: Career Paths hidden → the employee Talent section drops out entirely.
+    expect(sections("EMPLOYEE")).toEqual(["", "Performance"]);
+    expect(labels("EMPLOYEE")).toEqual([...DASHBOARD, ...PERF_EMP]);
+    for (const hidden of [...MANAGER_PLUS, ...HR_ADMIN, ...V1_HIDDEN]) {
       expect(labels("EMPLOYEE")).not.toContain(hidden);
+    }
+  });
+
+  it("no role sees a v1-deferred item (Career Paths / Succession / Configure)", () => {
+    for (const role of ["EMPLOYEE", "MANAGER", "HRBP", "ADMIN"] as Role[]) {
+      for (const hidden of V1_HIDDEN) expect(labels(role)).not.toContain(hidden);
     }
   });
 
@@ -74,7 +84,7 @@ describe("navForRole — per-role sidebar surface (TalbotIQ IA)", () => {
 
   it("employee surface is strictly minimal and a subset of every higher role", () => {
     const emp = labels("EMPLOYEE");
-    expect(emp).toHaveLength(7);
+    expect(emp).toHaveLength(6); // Dashboard + 5 Performance items (Career Paths hidden in v1)
     for (const role of ["MANAGER", "HRBP", "ADMIN"] as Role[]) {
       for (const item of emp) expect(labels(role)).toContain(item);
     }

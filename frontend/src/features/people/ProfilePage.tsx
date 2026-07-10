@@ -6,6 +6,7 @@ import { DashboardSection } from "@/features/dashboard/widgets";
 import { TrendChart } from "@/components/TrendChart";
 import { AttainmentBar } from "@/components/AttainmentBar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ScoreBar, performanceLabel, T_SCORE_PLAIN } from "@/components/ScoreBar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -74,8 +75,11 @@ export function ProfilePage() {
               <span className="text-muted-foreground">{person.direct_reports} direct report{person.direct_reports === 1 ? "" : "s"}</span>
               {latest ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="font-semibold tabular-nums text-foreground">T-score {Number(latest.t_score).toFixed(1)}</span>
+                  {/* v1: status leads; the T-score is a quiet secondary detail. */}
                   <StatusBadge status={latest.risk_status} dot />
+                  <span className="text-xs tabular-nums text-muted-foreground" title={T_SCORE_PLAIN}>
+                    Score {Number(latest.t_score).toFixed(0)}/100
+                  </span>
                 </span>
               ) : (
                 <Badge variant="muted">Not yet scored</Badge>
@@ -101,8 +105,15 @@ export function ProfilePage() {
             </div>
           ) : latest ? (
             <div>
-              <p className="text-3xl font-bold tabular-nums text-foreground">{Number(latest.t_score).toFixed(1)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Current T-score · a trend line appears after more than one scored cycle.</p>
+              {/* v1: lead with the plain status + a 0–100 bar; T-score is a caption. */}
+              <div className="flex items-center gap-2">
+                <StatusBadge status={latest.risk_status} dot />
+                <span className="text-sm font-semibold text-foreground">{performanceLabel(latest.risk_status)}</span>
+              </div>
+              <ScoreBar className="mt-3" value={Number(latest.t_score)} status={latest.risk_status} />
+              <p className="mt-2 text-xs text-muted-foreground" title={T_SCORE_PLAIN}>
+                Score {Number(latest.t_score).toFixed(0)}/100 · 50 = team average. A trend line appears after more than one scored cycle.
+              </p>
             </div>
           ) : (
             <EmptyState compact icon={TrendingUp} title="No scores yet" description="Performance scores appear once computed for a cycle." />

@@ -13,6 +13,7 @@ import {
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { isHiddenInV1 } from "@/app/v1";
+import { performanceLabel } from "@/components/ScoreBar";
 import {
   adminApi,
   approvalsApi,
@@ -141,11 +142,11 @@ export function EmployeeCockpit() {
         <StatCard label="My goals" value={goalCount} icon={Target} loading={goals.isLoading} hint="Active cycle" />
         <StatCard
           label="My performance"
-          value={score ? formatScore(score.t_score) : "—"}
+          value={score ? performanceLabel(score.risk_status) : "—"}
           icon={TrendingUp}
           tone={score?.risk_status === "CRITICAL" ? "danger" : score?.risk_status === "AT_RISK" ? "warning" : "success"}
           loading={myScore.isLoading}
-          hint={score ? `T-score · ${score.risk_status.replace("_", " ").toLowerCase()}` : "Not yet scored"}
+          hint={score ? `Score ${formatScore(score.t_score)}/100 · 50 = team average` : "Not yet scored"}
         />
         <StatCard label="Feedback requests" value={pendingReq} icon={MessageSquareText} tone={pendingReq > 0 ? "warning" : "default"} loading={requests.isLoading} hint="Awaiting your input" />
         <StatCard label="Review status" value={reviewState ? reviewState.replace(/_/g, " ").toLowerCase() : "—"} icon={FileText} loading={reviews.isLoading} hint="This cycle" />

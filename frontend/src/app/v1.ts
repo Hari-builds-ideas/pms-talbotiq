@@ -28,3 +28,17 @@ export function isHiddenInV1(to: string): boolean {
 
 /** Hide the Analytics calibration / nine-box grid tab in v1 (kept in code for v2). */
 export const V1_HIDE_CALIBRATION = true;
+
+/**
+ * Hide the T-score (our cohort-relative statistic, centered on 50) as a DISPLAYED
+ * NUMBER everywhere in the v1 UI — goals, person view, dashboards, analytics, reviews.
+ * It's too abstract for a non-technical SME manager; v1 leads with plain goal
+ * **% complete** + a colored progress bar + a plain status (On track / Behind / At
+ * risk) instead. The backend computation (`CycleScore.t_score`, the scoring engine,
+ * the API field) is UNTOUCHED — only the UI stops printing the number.
+ *
+ * To RE-ENABLE for v2: set this to `false`. Every T-score display is guarded by it
+ * (`{!V1_HIDE_TSCORE && …}`) or swapped via `V1_HIDE_TSCORE ? <plain> : <t-score>`,
+ * so flipping this one flag restores the numbers. See docs/handoff/V1_VS_V2.md.
+ */
+export const V1_HIDE_TSCORE = true;

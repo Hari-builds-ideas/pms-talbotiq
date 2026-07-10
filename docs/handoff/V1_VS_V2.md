@@ -19,7 +19,7 @@ billing `hasFeature()` lever (per-tenant AI entitlement).
 | Feature | v1 status | Where it lives |
 |---|---|---|
 | Dashboard (per role) | **Live** | `features/dashboard/` |
-| Goals & OKRs | **Live, simplified** | `features/goals/GoalsPage.tsx` |
+| Goals & OKRs | **Live, REDESIGNED** (%+bar per goal) | `features/goals/GoalsPage.tsx`, `lib/goalProgress.ts`, `components/ProgressBar.tsx` |
 | Reviews (+ AI draft, HITL) | **Live** | `features/reviews/`, `apps/reviews/` |
 | 360° Feedback (+ AI summary) | **Live** | `features/feedback/`, `apps/feedback/` |
 | Check-ins / Recognition / Approvals | **Live** | `features/{checkins,recognition,approvals}/` |
@@ -28,7 +28,7 @@ billing `hasFeature()` lever (per-tenant AI entitlement).
 | Analytics (trends + status distribution) | **Live, simplified** | `features/analytics/AnalyticsPage.tsx` |
 | Audit log | **Live** | `features/audit/`, `apps/audit/` |
 | Admin: Users & Roles, Entitlements | **Live** | `features/admin/` |
-| T-score as the headline number | **Simplified** (status leads) | `components/ScoreBar.tsx` + call sites |
+| **T-score** (cohort statistic) | **Removed from the v1 UI (hidden)** | flag `V1_HIDE_TSCORE` in `app/v1.ts`; backend `CycleScore.t_score` + engine untouched |
 | **Nine-box / calibration grid** | **Deferred to v2 (hidden)** | `components/NineBoxGrid.tsx`, `AnalyticsPage` `CalibrationTab` |
 | **Succession** (+ critical roles, bench) | **Deferred to v2 (hidden)** | `features/succession/`, `apps/succession/` |
 | **Career roadmaps** | **Deferred to v2 (hidden)** | `features/career/`, `apps/career/` |
@@ -36,6 +36,13 @@ billing `hasFeature()` lever (per-tenant AI entitlement).
 
 ## How to RE-ENABLE each deferred feature (v2)
 All are one edit to `frontend/src/app/v1.ts`, then `npm run build` (+ update `app/nav.test.ts` back).
+- **T-score numbers** — set `V1_HIDE_TSCORE = false`. Every T-score display is guarded by this flag
+  (`{!V1_HIDE_TSCORE && …}` or `V1_HIDE_TSCORE ? <plain> : <t-score>`), so flipping it restores the
+  numbers on the profile, employee cockpit, analytics (individual trend/table + department mean/median),
+  the manager dashboard (avg-score card, big number, team column) and the review evidence panel. The
+  backend `CycleScore.t_score` and the scoring engine were never touched. *Note:* the profile and
+  analytics **trend charts** plot progress % in v1; the T-score data source for those two charts is a
+  one-line swap documented in the code (they don't auto-revert with the flag) — everything else does.
 - **Career roadmaps** — remove `"/career"` from `V1_HIDDEN_PATHS`. Restores: the "Career Paths" nav item,
   the `/career` route + `CareerPage`, and the Employee `MyRoadmapTile` on the dashboard. (Backend
   `apps/career/` + endpoints were always live.)
@@ -47,17 +54,19 @@ All are one edit to `frontend/src/app/v1.ts`, then `npm run build` (+ update `ap
 - **Raw-JSON tenant config** — remove `"/admin/tenant"`. Restores the "Configure" nav + `/admin/tenant`
   route + `TenantConfigPage`. (Consider building friendlier labeled toggles instead of raw JSON for v2.)
 
-## What was SIMPLIFIED (and where the original detail still is)
-- **T-score → status-first.** Per-person headline surfaces (Employee dashboard "My performance" card;
-  the profile page) now lead with a plain **On track / At risk / Needs attention** badge + a 0–100
-  `ScoreBar`; the raw T-score is a small "Score N/100 · 50 = team average" caption with a tooltip. The
-  number itself is unchanged (from the scoring engine); it's still shown in the Analytics tables as a
-  secondary detail. Component: `frontend/src/components/ScoreBar.tsx` (`performanceLabel`, `ScoreBar`).
-- **Goals plain-language.** Each person's goals open with a one-line human lead ("On track this cycle · N
-  goals"); per-KPI shows a progress bar + relabels ("actual"→**Progress**, "target"→**Goal**, direction →
-  "Higher/Lower is better ↑/↓"); the raw weight/target detail stays on the card. `GoalsPage.tsx`.
-- **Analytics.** Leads with the trend + the plain status distribution; the calibration grid is hidden
-  (above). `AnalyticsPage.tsx`.
+## What was REDESIGNED / SIMPLIFIED (and where the original detail still is)
+- **Goals/OKR — real redesign** (not a re-tag; an earlier tag-only attempt was rejected). Each goal now
+  leads with a big **% complete**, a **colored progress bar** (green on track / amber behind / red at
+  risk), and a one-word status; the person line reads *"N of M goals on track — X% overall"*. **All**
+  technical detail — weight ("How much this counts"), target ("Goal"), the KPI breakdown, direction,
+  cycle dates, the approve button — moved behind **Show details**. The pattern copies Lattice/15Five/
+  Betterworks (see `docs/GOALS_RESEARCH.md`). The % is computed in `lib/goalProgress.ts` to mirror the
+  backend scoring engine; the shared bar is `components/ProgressBar.tsx`. No backend/data-model change —
+  KPIs, weights, targets and the create/record/approve flows are all unchanged, just relocated.
+- **T-score — removed from the v1 UI** (see the table + re-enable above). v1 shows plain goal progress %
+  and status everywhere the T-score used to appear; the statistic itself is intact in the backend.
+- **Analytics.** Leads with the per-cycle **progress %** trend + a plain **On track / Behind / At risk**
+  distribution; the calibration/nine-box grid and the mean/median T-score are hidden. `AnalyticsPage.tsx`.
 
 ## Tests adjusted to the v1 state (coverage kept, not deleted)
 - `frontend/src/app/nav.test.ts` — expects the v1 nav (no Career/Succession/Configure) + a new

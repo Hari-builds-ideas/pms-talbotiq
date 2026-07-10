@@ -35,8 +35,11 @@
   model in a trace span → validates the output against the agent's schema (`schemas.py`) → meters usage →
   attaches a confidence score → returns a structured result (never raises).
 - **Provider-agnostic.** `settings.LLM_PROVIDER` picks the class: `apps/ai/openai_provider.py`,
-  `apps/ai/groq.py`, or `apps/ai/gemini_provider.py` (all OpenAI-compatible Chat Completions). Default is
-  `NotConfiguredProvider` → agents return a clean 503 and **never fabricate** until a key is set.
+  `apps/ai/groq.py`, or `apps/ai/gemini_provider.py` (all OpenAI-compatible Chat Completions). **Gemini is
+  the configured provider for the demo** — it runs a two-model split (`gemini-2.5-pro` for the human-read
+  agents, `gemini-2.5-flash` for chat; both env-overridable via `GEMINI_MODEL_BEST`/`_FAST`). Default
+  (no key) is `NotConfiguredProvider` → agents return a clean 503 and **never fabricate** until a key is
+  set. Hari's whole action is pasting `GEMINI_API_KEY` into `.env` (or the Render dashboard).
 - **Agents** (`apps/ai/agents/`): review draft (agent1), KPI nudges (agent2, deterministic — no LLM),
   360 summary (agent3, name-free), succession narrative (agent4, name-free), career roadmap, JD generator,
   meeting summary, review-quality flags, stale-goal nudge, NL search, chat classifier.

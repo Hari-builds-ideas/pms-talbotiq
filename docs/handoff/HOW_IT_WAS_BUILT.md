@@ -32,7 +32,12 @@ The "why" behind the shape of the system, so you can extend it without relearnin
   `default`, falling back to the primary when no replica is provisioned — so adding a real replica later
   is config-only.
 - **v1 simplicity as a first-class concern.** Enterprise features are hidden behind one product switch
-  (`frontend/src/app/v1.ts`) rather than deleted — see `V1_VS_V2.md`.
+  (`frontend/src/app/v1.ts`) rather than deleted — see `V1_VS_V2.md`. The Goals/OKR screen was
+  **redesigned** to the pattern real tools use (a % + colored progress bar per goal, detail hidden until
+  expanded — `docs/GOALS_RESEARCH.md`), and the cohort-relative **T-score was removed from the UI**
+  (flag `V1_HIDE_TSCORE`) because it's a statistic a line manager shouldn't have to interpret; v1 leads
+  with plain goal progress %. The scoring engine + `t_score` field are untouched, so v2 can bring the
+  number back by flipping the flag.
 
 ## Testing (what protects what, and how to run it)
 - **Backend suite** — `pytest-django` + `factory_boy`. Run: `docker compose run --rm web pytest -q`

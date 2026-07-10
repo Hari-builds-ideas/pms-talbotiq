@@ -143,9 +143,17 @@ Celery, single Redis, model override for rate limits). The path to real producti
 
 ## 6. Honesty / partials / QUESTIONS
 
-- **Gemini is wired + unit-tested but NOT live-verified** (no key at build time). The one-step verify is
-  in § 3 / DEPLOY_DEMO. Model ids `gemini-2.5-pro` / `-flash` are sensible enterprise defaults and
-  env-overridable if your account exposes different names.
+- **Gemini is now LIVE-VERIFIED** (2026-07-11, real key). The agent did hard PMS tasks end-to-end: a
+  2-step plan (initiate_360 + draft_review) → approved → a **review drafted by the best model
+  `gemini-3.1-pro-preview`** (~20s, grounded prose, landed PENDING/HITL); an injection request planned
+  only registered actions and **executed nothing**; reads answered on the fast model. Three fixes the
+  live run forced (committed `2370ab2`): (a) `gemini-2.5-pro` is **blocked for new API projects** → best
+  default is now `gemini-pro-latest` (`gemini-3.1-pro-preview` also works); (b) Gemini pro models "think",
+  so `LLM_MAX_TOKENS` default raised 900→4096; (c) the T-score **leaked in agent TEXT** (chat answer, KPI
+  nudges, AI-drafted review prose) — now removed behind the backend `V1_HIDE_TSCORE` flag and re-verified
+  (a fresh draft has zero T-score/cohort leaks). **Not exercised live:** JD generation — the only DRAFT
+  JD lacks required `inputs` (422), published JDs can't regenerate; not a Gemini fault (same best model
+  already proven via the review draft) — flagged for a seed follow-up.
 - **Goal status thresholds** (On track ≥70 / Behind 40–69 / At risk <40) are pure-%; real tools also factor
   cycle time elapsed — a v2 refinement (`lib/goalProgress.ts`). A goal with no recorded KPI shows "Not
   started"; an unrecorded KPI on a partly-recorded goal counts as 0 (engine-consistent).

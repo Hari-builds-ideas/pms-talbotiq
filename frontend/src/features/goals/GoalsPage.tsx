@@ -27,6 +27,7 @@ import { CardGridSkeleton } from "@/components/Skeletons";
 import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
+import { performanceLabel } from "@/components/ScoreBar";
 import { PersonName } from "@/components/PersonName";
 import { WeightBar } from "@/components/WeightBar";
 import { AttainmentBar } from "@/components/AttainmentBar";
@@ -174,6 +175,14 @@ export function GoalsPage() {
                     <InfoHint label="What is weight?" text={WEIGHT_HINT} />
                   </span>
                 </div>
+                {/* v1: a plain human lead so a manager reads the answer in one line,
+                    before any weight/target/OKR detail. */}
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {score ? performanceLabel(score.risk_status) : "Not yet scored"}
+                  </span>{" "}
+                  this cycle · {empGoals.length} goal{empGoals.length === 1 ? "" : "s"}
+                </p>
                 {/* GOALS — belong to the person above (indented under them). */}
                 <div className="grid grid-cols-1 gap-4 border-l-2 border-border/60 pl-3 lg:grid-cols-2 lg:pl-4">
                   {empGoals.map((g) => (

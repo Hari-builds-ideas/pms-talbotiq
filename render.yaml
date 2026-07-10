@@ -1,0 +1,95 @@
+# render.yaml — FREE demo Blueprint for TalbotIQ PMS (backend + broker + DB).
+# NOT production infra — a free, shareable demo (see V1_C / DEPLOY_DEMO.md). The React SPA
+# deploys separately on Vercel (vercel.json). Frontend build is intentionally NOT here.
+#
+# Free-tier realities (read DEPLOY_DEMO.md before deploying):
+#   * Render free web services SLEEP after ~15 min idle and cold-start ~30–60s.
+#   * Render has NO free background worker → we run Celery EAGER in the web process
+#     (CELERY_TASK_ALWAYS_EAGER=true). AI jobs run inline; fine for a small demo cap.
+#   * Render's only free MANAGED db is PostgreSQL; this app's stack is LOCKED to MySQL 8.
+#     So MySQL runs as a private service from the mysql:8 image. A persistent disk is a
+#     PAID add-on — omitted here, so the demo DB is EPHEMERAL (resets on restart; reseed
+#     on boot). This is the documented free tradeoff, not a bug.
+#   * Never commit secrets: GEMINI_API_KEY is pasted in the Render dashboard (sync:false).
+
+services:
+  # ── Django + DRF API (gunicorn) ─────────────────────────────────────────────
+  - type: web
+    name: talbotiq-pms-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    # Migrations run ONCE per deploy via the advisory-locked command (no N-replica race;
+    # it no-ops the MySQL lock on non-MySQL). Seed the demo separately — see DEPLOY_DEMO.md.
+    preDeployCommand: "python manage.py deploy_migrate"
+    startCommand: "gunicorn config.wsgi:application -c gunicorn.conf.py"
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: DJANGO_SECRET_KEY
+        generateValue: true # Render generates a strong secret
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false # set to the Render web hostname after first deploy
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        sync: false # set to https://<your-vercel-app>.vercel.app
+      - key: DJANGO_SECURE_SSL_REDIRECT
+        value: "true"
+      # ── AI: Gemini (free tier) via its OpenAI-compatible endpoint ──
+      - key: LLM_PROVIDER
+        value: apps.ai.gemini_provider.GeminiProvider
+      - key: GEMINI_API_KEY
+        sync: false # ⚠ Hari pastes this in the dashboard — NEVER committed
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+      - key: LLM_MAX_CALLS
+        value: "200" # small demo cost cap (deployment-wide, 24h)
+      # ── Celery eager (no free worker on Render) ──
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "true"
+      # ── DB (MySQL private service below) ──
+      - key: DB_HOST
+        fromService: { type: pserv, name: talbotiq-mysql, property: host }
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_NAME
+        value: pms
+      - key: DB_USER
+        value: pms
+      - key: DB_PASSWORD
+        fromService: { type: pserv, name: talbotiq-mysql, envVarKey: MYSQL_PASSWORD }
+      # ── Redis (broker + cache + sessions on one free instance for the demo) ──
+      - key: CELERY_BROKER_URL
+        fromService: { type: keyvalue, name: talbotiq-redis, property: connectionString }
+      - key: CELERY_RESULT_BACKEND
+        fromService: { type: keyvalue, name: talbotiq-redis, property: connectionString }
+      - key: REDIS_CACHE_URL
+        fromService: { type: keyvalue, name: talbotiq-redis, property: connectionString }
+      - key: REDIS_SESSION_URL
+        fromService: { type: keyvalue, name: talbotiq-redis, property: connectionString }
+
+  # ── Redis (free Key-Value) — single instance is fine for a demo (prod splits it) ──
+  - type: keyvalue
+    name: talbotiq-redis
+    plan: free
+    maxmemoryPolicy: noeviction # broker must not evict; demo cache shares it
+    ipAllowList: [] # internal only
+
+  # ── MySQL 8 (private service; keeps the LOCKED stack). Ephemeral without a paid disk. ──
+  - type: pserv
+    name: talbotiq-mysql
+    runtime: image
+    image:
+      url: docker.io/library/mysql:8.0
+    plan: free
+    # A persistent disk is a PAID add-on. Omitted → data resets on restart (reseed on boot).
+    # To make the demo DB durable later, add:  disk: { name: mysql-data, mountPath: /var/lib/mysql, sizeGB: 1 }
+    envVars:
+      - key: MYSQL_DATABASE
+        value: pms
+      - key: MYSQL_USER
+        value: pms
+      - key: MYSQL_PASSWORD
+        generateValue: true
+      - key: MYSQL_ROOT_PASSWORD
+        generateValue: true

@@ -347,7 +347,10 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-CELERY_TASK_ALWAYS_EAGER = False
+# Normally False (real async via the worker). The FREE demo deploy sets this True so AI
+# jobs run inline in the web process — Render's free tier has no free background worker
+# (see DEPLOY_DEMO.md). Demo-only; production runs a real Celery worker.
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
 # Celery beat: the approval-escalation sweep reassigns overdue PENDING steps to
 # their escalation target (Module 5). Interval in seconds (default 5 min).
@@ -425,8 +428,14 @@ LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_BASE_URL = env("OPENAI_BASE_URL", default="https://api.openai.com/v1")
 GROQ_API_KEY = env("GROQ_API_KEY", default="")
-# Generic key fallback used by either provider when its specific key is unset.
-LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY)
+# Gemini (Google) via its OpenAI-compatible endpoint — the free-tier provider for the
+# demo deploy (LLM_PROVIDER=apps.ai.gemini_provider.GeminiProvider). Key pasted into the
+# host secret store, never committed.
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_BASE_URL = env("GEMINI_BASE_URL", default="https://generativelanguage.googleapis.com/v1beta/openai")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-1.5-flash")
+# Generic key fallback used by any provider when its specific key is unset.
+LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
 LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=900)

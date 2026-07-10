@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { Building2, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { Sprout, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,7 +78,7 @@ export function LoginPage() {
       <div className="relative hidden w-1/2 flex-col justify-between bg-sidebar p-12 text-white lg:flex">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-accent">
-            <Building2 className="h-5 w-5" />
+            <Sprout className="h-5 w-5" />
           </div>
           <span className="text-lg font-semibold">Talbotiq PMS</span>
         </div>
@@ -87,7 +87,7 @@ export function LoginPage() {
             Talent intelligence & performance management for modern teams.
           </h1>
           <p className="text-sidebar-foreground/70">
-            Reviews, succession, approvals and analytics — with a human in the
+            Goals, reviews, feedback and approvals — with a human in the
             loop on every AI decision.
           </p>
           <ul className="space-y-2 text-sm text-sidebar-foreground/80">

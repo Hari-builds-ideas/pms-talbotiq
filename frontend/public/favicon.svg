@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="#1F5BD6"/>
-  <path d="M9 22V10h4.6c2.7 0 4.4 1.4 4.4 3.8 0 1.7-.9 2.9-2.4 3.4l2.8 4.8h-2.8l-2.5-4.4H11.3V22H9Zm2.3-6.2h2.1c1.4 0 2.2-.7 2.2-1.9s-.8-1.9-2.2-1.9h-2.1v3.8Z" fill="#fff"/>
-  <circle cx="22" cy="11" r="2.4" fill="#A78BFA"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Talbotiq">
+  <rect width="32" height="32" rx="7" fill="#0d5c3a"/>
+  <!-- Sprout mark (matches the in-app brand icon), white/mint on brand green. -->
+  <path d="M16 24V13.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M15 16c0-3.3-2.7-6-6-6-.55 0-1 .45-1 1 0 3.3 2.7 6 6 6 .55 0 1-.45 1-1z" fill="#fff"/>
+  <path d="M17 14.5c0-3.3 2.7-6 6-6 .55 0 1 .45 1 1 0 3.3-2.7 6-6 6-.55 0-1-.45-1-1z" fill="#8fd6b4"/>
 </svg>

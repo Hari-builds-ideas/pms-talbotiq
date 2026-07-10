@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
+
 from apps.ai.providers import register_fake_output  # noqa: F401 (kept for symmetry)
 
 logger = logging.getLogger("pms.ai.agent2")
@@ -101,9 +103,20 @@ def _specific_message(nudge, score, weakest_goal) -> str:
     """Phrase the deterministic risk classification specifically: name the
     trajectory (T-score, pace) and the weakest goal. No LLM — nudges fire on every
     recompute, so this stays a pure deterministic string."""
-    t = f"{float(score.t_score):.0f}"
     pace = " and behind pace" if score.pace_behind else ""
     focus = f" Weakest goal: '{weakest_goal}'." if weakest_goal else ""
+    # v1: drop the T-score NUMBER from the surfaced nudge text (matches the UI); the
+    # plain risk word + pace + weakest goal carry the message. Set V1_HIDE_TSCORE=False
+    # to restore the number (v2).
+    if getattr(settings, "V1_HIDE_TSCORE", True):
+        mid = " behind pace." if score.pace_behind else ""
+        if nudge["level"] == "SUPPRESSED":
+            tail = f"{(' behind pace.' if score.pace_behind else '')}{focus}"
+            return f"{nudge['message']}{tail}".rstrip()
+        prefix = "Critical" if nudge["level"] == "CRITICAL" else "At risk"
+        close = "Immediate attention needed." if nudge["level"] == "CRITICAL" else "A check-in is recommended."
+        return f"{prefix} —{mid}{focus} {close}".replace("  ", " ")
+    t = f"{float(score.t_score):.0f}"
     if nudge["level"] == "SUPPRESSED":
         # Keep the "too late to course-correct" framing, but still name the goal.
         return f"{nudge['message']} (T-score {t}{pace}.{focus})"

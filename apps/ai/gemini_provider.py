@@ -10,7 +10,7 @@ serves the AI on the key Hari pastes into the Render dashboard.
 
 Model resolution (two-model strategy, mirroring the OpenAI provider): the human-read agents
 (review / feedback / succession / JD / career) get Gemini's **best** model
-(``settings.GEMINI_MODEL_BEST``, default ``gemini-2.5-pro``) and chat/default get a **fast** model
+(``settings.GEMINI_MODEL_BEST``, default ``gemini-pro-latest``) and chat/default get a **fast** model
 (``settings.GEMINI_MODEL_FAST``, default ``gemini-2.5-flash``) — both env-overridable. A single
 ``GEMINI_MODEL`` env var still forces one model for every agent if set. The generic
 ``LLM_MODEL_MAP`` holds OpenAI names, which Gemini rejects, so this provider NEVER reads it — it
@@ -39,8 +39,9 @@ logger = logging.getLogger("pms.ai.gemini")
 _GLOBAL_CALL_KEY = "llm:global:calls"
 #: Gemini's OpenAI-compatible base (Chat Completions).
 _DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-#: Best / fast defaults if settings are somehow unset.
-_DEFAULT_BEST = "gemini-2.5-pro"
+#: Best / fast defaults if settings are somehow unset. (`gemini-2.5-pro` is blocked for
+#: new API projects, so the best default is the stable `gemini-pro-latest` alias.)
+_DEFAULT_BEST = "gemini-pro-latest"
 _DEFAULT_FAST = "gemini-2.5-flash"
 #: The human-read agents that get the BEST model (quality where it's read by a person).
 _HUMAN_READ = frozenset({"review", "feedback", "succession", "jd", "career"})

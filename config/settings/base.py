@@ -437,7 +437,10 @@ GEMINI_BASE_URL = env("GEMINI_BASE_URL", default="https://generativelanguage.goo
 # (review/feedback/succession/JD/career) and a fast model for chat/default — the same
 # split as the OpenAI map below. Both env-overridable so the exact model id can change
 # without a code edit (e.g. if the account exposes a different name).
-GEMINI_MODEL_BEST = env("GEMINI_MODEL_BEST", default="gemini-2.5-pro")
+# NOTE: `gemini-2.5-pro` is blocked for new API projects ("no longer available to new
+# users"), so the default best is the stable `gemini-pro-latest` alias (a "thinking"
+# model — see LLM_MAX_TOKENS below). Override per env if your project exposes another id.
+GEMINI_MODEL_BEST = env("GEMINI_MODEL_BEST", default="gemini-pro-latest")
 GEMINI_MODEL_FAST = env("GEMINI_MODEL_FAST", default="gemini-2.5-flash")
 # Optional single-model override for EVERY agent (advanced/legacy). Empty = use the
 # best/fast split above. Only honored if it names a Gemini model.
@@ -445,6 +448,11 @@ GEMINI_MODEL = env("GEMINI_MODEL", default="")
 # Per-agent Gemini model map (mirrors LLM_MODEL_MAP). Honors the same LLM_MODEL_* env
 # overrides — but the provider ignores any value that isn't a Gemini model, so a stray
 # OpenAI name (from a shared override) never reaches Gemini.
+# v1 product scope: hide the cohort-relative T-score NUMBER from user-facing agent
+# TEXT too (the chat read answer + the KPI nudge messages), matching the frontend
+# `V1_HIDE_TSCORE` flag. The number stays computed/stored; only the surfaced text drops
+# it in favour of the plain risk status. Set False to restore it (v2).
+V1_HIDE_TSCORE = env.bool("V1_HIDE_TSCORE", default=True)
 GEMINI_MODEL_MAP = {
     "review": env("LLM_MODEL_REVIEW", default=GEMINI_MODEL_BEST),
     "feedback": env("LLM_MODEL_FEEDBACK", default=GEMINI_MODEL_BEST),
@@ -458,7 +466,9 @@ GEMINI_MODEL_MAP = {
 LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
-LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=900)
+# 4096 gives headroom for Gemini "thinking" models (2.5/3.x pro + -latest aliases),
+# which spend output tokens on reasoning before the JSON — 900 truncated them.
+LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=4096)
 # Run-wide safety ceiling (cache-counted across web + celery, 24h window): refuse
 # further real LLM calls once reached. This is a DEPLOYMENT-WIDE runaway-loop backstop,
 # NOT the per-tenant budget (that's DEFAULT_AGENT_BUDGETS / AgentBudget — the real cost

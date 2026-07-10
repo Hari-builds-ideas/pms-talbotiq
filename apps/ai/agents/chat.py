@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+from django.conf import settings
+
 from apps.ai.gateway import gateway
 from apps.ai.providers import register_fake_output
 from apps.rbac.scope import actor_can_access
@@ -250,11 +252,15 @@ def chat_answer(caller, query: str, session=None) -> dict:
         answer = f"{who} {verb} no goals on record."
     score = _latest_score(target)
     if score is not None:
-        answer += (
-            f" Latest cycle score: T-score {float(score.t_score):.0f}"
-            f" ({score.get_risk_status_display()})"
-            f"{' — behind pace' if score.pace_behind else ''}."
-        )
+        pace = " — behind pace" if score.pace_behind else ""
+        if getattr(settings, "V1_HIDE_TSCORE", True):
+            # v1: plain status, no T-score number (matches the UI).
+            answer += f" Latest cycle: {score.get_risk_status_display()}{pace}."
+        else:
+            answer += (
+                f" Latest cycle score: T-score {float(score.t_score):.0f}"
+                f" ({score.get_risk_status_display()}){pace}."
+            )
     return {"status": "ok", "intent": intent, "answer": answer, "data": titles}
 
 

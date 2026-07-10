@@ -51,10 +51,13 @@ Open the Vercel URL. Demo accounts (tenant `acme`, password **`Passw0rd!demo`**)
 | Employee | `akhil@acme.test` |
 
 The AI (Ask-AI plan flow, review drafts, JD generation) runs on your Gemini key. Models default to
-Gemini's **best/fast split** — `gemini-2.5-pro` for the human-read agents (review / JD / feedback /
-succession / career) and `gemini-2.5-flash` for chat. Override the ids with `GEMINI_MODEL_BEST` /
-`GEMINI_MODEL_FAST`, or force the fast model everywhere with `GEMINI_MODEL=gemini-2.5-flash` if a free
-tier limits Pro.
+Gemini's **best/fast split** — `gemini-pro-latest` for the human-read agents (review / JD / feedback /
+succession / career) and `gemini-2.5-flash` for chat. (`gemini-2.5-pro` is blocked for new API projects,
+so the default is the stable `-latest` alias; the pro models "think", so `LLM_MAX_TOKENS` defaults to
+4096.) Override with `GEMINI_MODEL_BEST`/`GEMINI_MODEL_FAST`, or force the fast model everywhere with
+`GEMINI_MODEL=gemini-2.5-flash` if a free tier limits Pro. **Verified live on this stack:** the agent
+plan→approve flow (fast model) and a review draft (best model, `gemini-3.1-pro-preview`) both produced
+real, grounded output; injection requests planned only registered actions and executed nothing.
 
 **Verify the AI end-to-end (one command, after the key is pasted):**
 ```bash

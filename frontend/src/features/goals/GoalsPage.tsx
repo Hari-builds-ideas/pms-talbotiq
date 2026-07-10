@@ -36,10 +36,10 @@ import { useDirectory } from "@/lib/hooks/useDirectory";
 import { KPI_DIRECTION, humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ProgressBar } from "@/components/ProgressBar";
 import {
   goalProgress,
   personProgress,
-  PROGRESS_BAR_CLASS,
   PROGRESS_STATUS_LABEL,
   PROGRESS_TEXT_CLASS,
 } from "@/lib/goalProgress";
@@ -207,21 +207,6 @@ export function GoalsPage() {
         existingGoals={rows}
         mutation={m.create}
       />
-    </div>
-  );
-}
-
-/** The colored, filled progress bar — the visual heart of the v1 Goals screen. */
-function ProgressBar({ pct, status }: { pct: number | null; status: keyof typeof PROGRESS_BAR_CLASS | null }) {
-  const width = pct == null ? 0 : Math.max(0, Math.min(100, pct));
-  const band = status ? PROGRESS_BAR_CLASS[status] : "bg-muted-foreground/30";
-  return (
-    <div
-      className="h-2.5 w-full overflow-hidden rounded-full bg-secondary"
-      role="img"
-      aria-label={pct == null ? "Not started" : `${status ? PROGRESS_STATUS_LABEL[status] : ""} — ${Math.round(pct)}% complete`}
-    >
-      <div className={cn("h-full rounded-full transition-all", band)} style={{ width: `${width}%` }} />
     </div>
   );
 }

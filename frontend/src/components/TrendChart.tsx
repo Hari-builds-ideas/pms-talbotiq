@@ -15,10 +15,19 @@ export interface TrendPoint {
 
 /**
  * A compact area trend chart (recharts) in the indigo chart-1 token. Pure
- * presentation — the caller passes real, already-scoped data points. Used for
- * the individual performance trend (per-cycle T-scores).
+ * presentation — the caller passes real, already-scoped data points. Used for the
+ * individual performance trend; `seriesName` labels the series in the tooltip
+ * (v1 plots "Progress %", the v2 T-score view plots "T-score").
  */
-export function TrendChart({ data, height = 220 }: { data: TrendPoint[]; height?: number }) {
+export function TrendChart({
+  data,
+  height = 220,
+  seriesName = "T-score",
+}: {
+  data: TrendPoint[];
+  height?: number;
+  seriesName?: string;
+}) {
   return (
     <div style={{ width: "100%", height }} className="text-2xs">
       <ResponsiveContainer width="100%" height="100%">
@@ -56,7 +65,7 @@ export function TrendChart({ data, height = 220 }: { data: TrendPoint[]; height?
           <Area
             type="monotone"
             dataKey="value"
-            name="T-score"
+            name={seriesName}
             stroke="hsl(var(--chart-1))"
             strokeWidth={2}
             fill="url(#trendFill)"

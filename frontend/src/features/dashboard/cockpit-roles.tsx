@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { isHiddenInV1 } from "@/app/v1";
+import { isHiddenInV1, V1_HIDE_TSCORE } from "@/app/v1";
 import { performanceLabel } from "@/components/ScoreBar";
 import {
   adminApi,
@@ -146,7 +146,7 @@ export function EmployeeCockpit() {
           icon={TrendingUp}
           tone={score?.risk_status === "CRITICAL" ? "danger" : score?.risk_status === "AT_RISK" ? "warning" : "success"}
           loading={myScore.isLoading}
-          hint={score ? `Score ${formatScore(score.t_score)}/100 · 50 = team average` : "Not yet scored"}
+          hint={score ? (V1_HIDE_TSCORE ? "How your goals are tracking this cycle" : `Score ${formatScore(score.t_score)}/100 · 50 = team average`) : "Not yet scored"}
         />
         <StatCard label="Feedback requests" value={pendingReq} icon={MessageSquareText} tone={pendingReq > 0 ? "warning" : "default"} loading={requests.isLoading} hint="Awaiting your input" />
         <StatCard label="Review status" value={reviewState ? reviewState.replace(/_/g, " ").toLowerCase() : "—"} icon={FileText} loading={reviews.isLoading} hint="This cycle" />

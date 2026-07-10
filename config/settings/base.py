@@ -433,7 +433,27 @@ GROQ_API_KEY = env("GROQ_API_KEY", default="")
 # host secret store, never committed.
 GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 GEMINI_BASE_URL = env("GEMINI_BASE_URL", default="https://generativelanguage.googleapis.com/v1beta/openai")
-GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-1.5-flash")
+# Gemini two-model strategy (enterprise key): a strong model for the human-read agents
+# (review/feedback/succession/JD/career) and a fast model for chat/default — the same
+# split as the OpenAI map below. Both env-overridable so the exact model id can change
+# without a code edit (e.g. if the account exposes a different name).
+GEMINI_MODEL_BEST = env("GEMINI_MODEL_BEST", default="gemini-2.5-pro")
+GEMINI_MODEL_FAST = env("GEMINI_MODEL_FAST", default="gemini-2.5-flash")
+# Optional single-model override for EVERY agent (advanced/legacy). Empty = use the
+# best/fast split above. Only honored if it names a Gemini model.
+GEMINI_MODEL = env("GEMINI_MODEL", default="")
+# Per-agent Gemini model map (mirrors LLM_MODEL_MAP). Honors the same LLM_MODEL_* env
+# overrides — but the provider ignores any value that isn't a Gemini model, so a stray
+# OpenAI name (from a shared override) never reaches Gemini.
+GEMINI_MODEL_MAP = {
+    "review": env("LLM_MODEL_REVIEW", default=GEMINI_MODEL_BEST),
+    "feedback": env("LLM_MODEL_FEEDBACK", default=GEMINI_MODEL_BEST),
+    "succession": env("LLM_MODEL_SUCCESSION", default=GEMINI_MODEL_BEST),
+    "jd": env("LLM_MODEL_JD", default=GEMINI_MODEL_BEST),
+    "career": env("LLM_MODEL_CAREER", default=GEMINI_MODEL_BEST),
+    "chat": env("LLM_MODEL_CHAT", default=GEMINI_MODEL_FAST),
+    "default": env("LLM_MODEL_DEFAULT", default=GEMINI_MODEL_FAST),
+}
 # Generic key fallback used by any provider when its specific key is unset.
 LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only

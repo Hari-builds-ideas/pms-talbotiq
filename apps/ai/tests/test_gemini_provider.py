@@ -78,10 +78,22 @@ def test_http_error_raises_without_leaking_body():
     assert "400" in str(exc.value)
 
 
-def test_model_resolution_prefers_gemini_names_else_default():
-    # An OpenAI name in the map → replaced by the Gemini default.
-    with override_settings(LLM_MODEL_MAP={"review": "gpt-4o"}, GEMINI_MODEL="gemini-1.5-flash"):
-        assert _model_for("review") == "gemini-1.5-flash"
-    # A Gemini name in the map → used as-is (v2 could add a per-agent Gemini map).
-    with override_settings(LLM_MODEL_MAP={"review": "gemini-1.5-pro"}, GEMINI_MODEL="gemini-1.5-flash"):
+def test_model_resolution_best_fast_split_and_ignores_non_gemini():
+    base = {"GEMINI_MODEL": "", "GEMINI_MODEL_BEST": "gemini-2.5-pro", "GEMINI_MODEL_FAST": "gemini-2.5-flash"}
+    # No overrides → human-read agents get BEST, chat/default get FAST.
+    with override_settings(GEMINI_MODEL_MAP={}, **base):
+        assert _model_for("review") == "gemini-2.5-pro"
+        assert _model_for("feedback") == "gemini-2.5-pro"
+        assert _model_for("chat") == "gemini-2.5-flash"
+        assert _model_for("default") == "gemini-2.5-flash"
+    # A Gemini name in the per-agent map is used as-is.
+    with override_settings(GEMINI_MODEL_MAP={"review": "gemini-1.5-pro"}, **base):
         assert _model_for("review") == "gemini-1.5-pro"
+    # A stray OpenAI name (leaked via a shared LLM_MODEL_* override) is IGNORED → the
+    # Gemini default, so an OpenAI id never reaches Gemini.
+    with override_settings(GEMINI_MODEL_MAP={"review": "gpt-4o"}, **base):
+        assert _model_for("review") == "gemini-2.5-pro"
+    # A single GEMINI_MODEL override forces one model for EVERY agent.
+    with override_settings(GEMINI_MODEL="gemini-1.5-flash", GEMINI_MODEL_MAP={"review": "gemini-2.5-pro"}):
+        assert _model_for("review") == "gemini-1.5-flash"
+        assert _model_for("chat") == "gemini-1.5-flash"

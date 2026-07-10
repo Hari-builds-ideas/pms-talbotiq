@@ -8,10 +8,13 @@ unchanged from the OpenAI path — only the base URL, the key (``GEMINI_API_KEY`
 names differ. This is the free-tier provider for the demo deploy (V1_C): Gemini's free tier
 serves the AI on the key Hari pastes into the Render dashboard.
 
-Model resolution: the per-agent ``settings.LLM_MODEL_MAP`` values are OpenAI names (gpt-4o…),
-which Gemini won't accept — so this provider maps every logical agent to a Gemini model, using
-``settings.GEMINI_MODEL`` (default ``gemini-1.5-flash`` — fast + free-tier friendly). Override per
-env if you want a stronger model for human-read agents.
+Model resolution (two-model strategy, mirroring the OpenAI provider): the human-read agents
+(review / feedback / succession / JD / career) get Gemini's **best** model
+(``settings.GEMINI_MODEL_BEST``, default ``gemini-2.5-pro``) and chat/default get a **fast** model
+(``settings.GEMINI_MODEL_FAST``, default ``gemini-2.5-flash``) — both env-overridable. A single
+``GEMINI_MODEL`` env var still forces one model for every agent if set. The generic
+``LLM_MODEL_MAP`` holds OpenAI names, which Gemini rejects, so this provider NEVER reads it — it
+uses ``GEMINI_MODEL_MAP`` and ignores any value that isn't a Gemini model.
 
 Unset key → ``configured`` False, so every agent stays on the graceful 503 path and NOTHING is
 fabricated. Any failure raises ``LLMProviderError`` (gateway → PROVIDER_ERROR).
@@ -36,17 +39,31 @@ logger = logging.getLogger("pms.ai.gemini")
 _GLOBAL_CALL_KEY = "llm:global:calls"
 #: Gemini's OpenAI-compatible base (Chat Completions).
 _DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-#: Free-tier-friendly default; override via settings.GEMINI_MODEL.
-_DEFAULT_MODEL = "gemini-1.5-flash"
+#: Best / fast defaults if settings are somehow unset.
+_DEFAULT_BEST = "gemini-2.5-pro"
+_DEFAULT_FAST = "gemini-2.5-flash"
+#: The human-read agents that get the BEST model (quality where it's read by a person).
+_HUMAN_READ = frozenset({"review", "feedback", "succession", "jd", "career"})
 
 
 def _model_for(logical: str) -> str:
-    """Resolve any logical agent name to a Gemini model id. If ``LLM_MODEL_MAP`` already
-    holds a Gemini name (starts with ``gemini``) use it; otherwise use ``GEMINI_MODEL``."""
-    mapped = (getattr(settings, "LLM_MODEL_MAP", {}) or {}).get(logical) or ""
+    """Resolve a logical agent name (e.g. 'review', 'chat') to a Gemini model id.
+
+    Precedence: a single ``GEMINI_MODEL`` override (if it names a Gemini model) →
+    the per-agent ``GEMINI_MODEL_MAP`` value (if it names a Gemini model) → the
+    best/fast split (best for human-read agents, fast otherwise). Any non-Gemini name
+    (an OpenAI/Groq id leaked via a shared ``LLM_MODEL_*`` override) is ignored so it
+    never reaches Gemini.
+    """
+    forced = getattr(settings, "GEMINI_MODEL", "") or ""
+    if forced.startswith("gemini"):
+        return forced
+    mapped = (getattr(settings, "GEMINI_MODEL_MAP", {}) or {}).get(logical) or ""
     if mapped.startswith("gemini"):
         return mapped
-    return getattr(settings, "GEMINI_MODEL", "") or _DEFAULT_MODEL
+    best = getattr(settings, "GEMINI_MODEL_BEST", "") or _DEFAULT_BEST
+    fast = getattr(settings, "GEMINI_MODEL_FAST", "") or _DEFAULT_FAST
+    return best if logical in _HUMAN_READ else fast
 
 
 class GeminiProvider(LLMProvider):

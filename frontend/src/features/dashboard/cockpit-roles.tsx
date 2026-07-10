@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { isHiddenInV1 } from "@/app/v1";
 import {
   adminApi,
   approvalsApi,
@@ -48,7 +49,8 @@ export function HrbpCockpit() {
   const inbox = useQuery({ queryKey: ["approvals", "inbox"], queryFn: approvalsApi.inbox });
   const nudges = useQuery({ queryKey: ["ai", "nudges"], queryFn: aiApi.nudges, enabled: hasFeature("agent2") });
   const summaries = useQuery({ queryKey: ["feedback", "summaries", "review"], queryFn: () => feedbackApi.summariesReview() });
-  const succession = useQuery({ queryKey: ["succession", "dashboard"], queryFn: successionApi.dashboard });
+  // v1: succession hidden — don't even fetch it (query retained for v2 via app/v1.ts).
+  const succession = useQuery({ queryKey: ["succession", "dashboard"], queryFn: successionApi.dashboard, enabled: !isHiddenInV1("/succession") });
 
   const toRelease = summaries.data?.results.length ?? 0;
   const redRoles = succession.data?.critical_roles.filter((r) => r.coverage_status === "RED").length ?? 0;
@@ -59,14 +61,18 @@ export function HrbpCockpit() {
     <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Summaries to release" value={toRelease} icon={MessageSquareText} tone={toRelease > 0 ? "warning" : "default"} loading={summaries.isLoading} hint="360 feedback (HITL)" to="/feedback" />
-        <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" to="/succession" />
+        {/* v1: "Coverage gaps" (succession) hidden — kept for v2 (app/v1.ts). */}
+        {!isHiddenInV1("/succession") && (
+          <StatCard label="Coverage gaps" value={redRoles} icon={GitBranch} tone={redRoles > 0 ? "danger" : "success"} loading={succession.isLoading} hint="Critical roles at RED" to="/succession" />
+        )}
         <StatCard label="Pending approvals" value={pending} icon={ClipboardCheck} tone={pending > 0 ? "warning" : "default"} loading={inbox.isLoading} hint="Awaiting your decision" to="/approvals" />
         <StatCard label="At-risk people" value={hasFeature("agent2") ? atRisk : "—"} icon={TrendingUp} tone={atRisk > 0 ? "danger" : "default"} loading={hasFeature("agent2") && nudges.isLoading} hint="Across your scope" />
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <FeedbackSummariesTile />
-          <SuccessionRiskTile />
+          {/* v1: succession-risk tile hidden — kept for v2 (app/v1.ts). */}
+          {!isHiddenInV1("/succession") && <SuccessionRiskTile />}
         </div>
         <div className="space-y-5">
           <ApprovalsInboxTile />
@@ -82,7 +88,7 @@ export function HrbpCockpit() {
 export function AdminCockpit() {
   const users = useQuery({ queryKey: ["admin", "users", "stats"], queryFn: adminApi.userStats });
   const ent = useQuery({ queryKey: ["billing", "entitlement"], queryFn: billingApi.entitlement });
-  const succession = useQuery({ queryKey: ["succession", "dashboard"], queryFn: successionApi.dashboard });
+  const succession = useQuery({ queryKey: ["succession", "dashboard"], queryFn: successionApi.dashboard, enabled: !isHiddenInV1("/succession") });
 
   const activeUsers = users.data?.active ?? 0;
   const seats = ent.data?.seat_count ?? 0;
@@ -95,7 +101,10 @@ export function AdminCockpit() {
         <StatCard label="Active users" value={activeUsers} icon={Users} loading={users.isLoading} hint={`${seats} seats`} />
         <StatCard label="Plan" value={tier} icon={CreditCard} tone={tier === "Full AI" ? "success" : "info"} loading={ent.isLoading} hint="Entitlements" />
         <StatCard label="Seats" value={seats} icon={Users} loading={ent.isLoading} hint="Billed independently" />
-        <StatCard label="Critical roles" value={roles} icon={GitBranch} loading={succession.isLoading} hint="Tracked for succession" />
+        {/* v1: "Critical roles" (succession) hidden — kept for v2 (app/v1.ts). */}
+        {!isHiddenInV1("/succession") && (
+          <StatCard label="Critical roles" value={roles} icon={GitBranch} loading={succession.isLoading} hint="Tracked for succession" />
+        )}
       </div>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
@@ -145,7 +154,8 @@ export function EmployeeCockpit() {
         <MyGoalsTile />
         <MyReviewTile />
         <MyFeedbackRequestsTile />
-        <MyRoadmapTile />
+        {/* v1: career roadmap tile hidden — kept for v2 (app/v1.ts). */}
+        {!isHiddenInV1("/career") && <MyRoadmapTile />}
       </div>
       <div className="rounded-lg border border-dashed border-border bg-card/40 px-4 py-3 text-xs text-muted-foreground">
         <GraduationCap className="mr-1.5 inline h-3.5 w-3.5" />

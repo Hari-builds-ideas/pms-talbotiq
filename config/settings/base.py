@@ -317,6 +317,13 @@ SIMPLE_JWT = {
     # serializer already preserves them across rotation — no override needed.
 }
 
+# ─── Media (PHASE2 L1.1 — avatar/logo uploads) ───────────────────────────────
+# Files land under MEDIA_ROOT (a mounted volume in prod; object storage is the
+# documented production path — see docs/PHASE2/DEPLOYMENT_HANDOVER.md). They are
+# NEVER static-served: reads go through authenticated, scope-checked endpoints.
+MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+MEDIA_URL = "/media/"  # unused for serving (endpoint-streamed); Django requires it
+
 # ─── Login lockout (PHASE2 L1.3 — additive account-level brute-force guard) ──
 # Attempts per (tenant, email) window before login answers 429. Counts ATTEMPTS
 # and resets on success; keyed by the attempted email whether or not the account

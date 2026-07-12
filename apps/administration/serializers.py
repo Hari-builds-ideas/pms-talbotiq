@@ -73,6 +73,16 @@ class DisplayNameSerializer(serializers.Serializer):
     display_name = serializers.CharField(allow_null=True, allow_blank=True)
 
 
+class OrgProfileFieldsSerializer(serializers.Serializer):
+    """Body for ``PATCH /users/<id>/profile`` (PHASE2 L1.1) — the ORG-controlled
+    profile fields an Admin sets (a person doesn't set their own job title)."""
+
+    title = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    department = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    employee_id = serializers.CharField(max_length=64, required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=32, required=False, allow_blank=True)
+
+
 class ReportingLineSerializer(serializers.Serializer):
     """Body for ``POST /users/<id>/reporting-line``. ``manager`` is the new
     manager's UUID, resolved in the view to a tenant-scoped ``User``."""

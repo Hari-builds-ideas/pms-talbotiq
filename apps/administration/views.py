@@ -131,6 +131,35 @@ class UserDisplayNameView(RBACMixin, APIView):
         return Response(UserAdminSerializer(user).data)
 
 
+class UserOrgProfileView(RBACMixin, APIView):
+    """``PATCH /api/admin/users/<pk>/profile`` (MANAGE_USERS_ROLES — Admin) — set
+    the ORG-controlled profile fields (title/department/employee_id/phone). The
+    self-service fields live on /api/auth/profile (PHASE2 L1.1). Audited."""
+
+    required_capability = Capability.MANAGE_USERS_ROLES
+
+    def patch(self, request, pk):
+        from apps.audit.services import record
+
+        from .serializers import OrgProfileFieldsSerializer
+
+        user = get_object_or_404(User.objects.all(), pk=pk)
+        serializer = OrgProfileFieldsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        changed = []
+        for field, value in serializer.validated_data.items():
+            setattr(user, field, value)
+            changed.append(field)
+        if changed:
+            record(
+                action="admin.user_profile_updated", actor=request.user,
+                target_type="user", target_id=user.id,
+                metadata={"fields": sorted(changed)}, tenant=request.user.tenant_id,
+            )
+            user.save(update_fields=changed)
+        return Response(UserAdminSerializer(user).data)
+
+
 class UserDeactivateView(RBACMixin, APIView):
     """``POST /api/admin/users/<pk>/deactivate`` (MANAGE_USERS_ROLES — Admin) — set
     the user inactive. The target is resolved through the tenant-scoped manager

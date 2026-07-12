@@ -79,6 +79,22 @@ class User(AbstractBaseUser, PermissionsMixin, TenantScopedModel):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
+    # ─── Profile (PHASE2 L1.1 — all additive/optional) ───
+    #: SELF-editable: phone, timezone, language, photo, preferences.
+    #: ORG-controlled (Admin via /api/admin/users/<id>/profile): title, department,
+    #: employee_id — a person doesn't set their own job title.
+    phone = models.CharField(max_length=32, blank=True, default="")
+    title = models.CharField(max_length=128, blank=True, default="")
+    department = models.CharField(max_length=128, blank=True, default="")
+    employee_id = models.CharField(max_length=64, blank=True, default="")
+    timezone = models.CharField(max_length=64, blank=True, default="UTC")
+    language = models.CharField(max_length=16, blank=True, default="en")
+    #: Avatar file (validated magic-bytes + size at upload; served ONLY through the
+    #: authenticated, scope-checked photo endpoint — never a public static URL).
+    photo = models.FileField(upload_to="avatars/", null=True, blank=True)
+    #: Free-form user preferences bag: {"notifications": {channel: bool, ...}, ...}.
+    preferences = models.JSONField(default=dict, blank=True)
+
     objects = UserManager()
     all_objects = UserManager(include_deleted=True)
 

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import profile_views, views
 from .saml import views as saml_views
 
 app_name = "identity"
@@ -16,6 +16,19 @@ urlpatterns = [
     path("sessions/revoke-others", views.SessionRevokeOthersView.as_view(), name="sessions-revoke-others"),
     path("sessions/<uuid:pk>/revoke", views.SessionRevokeView.as_view(), name="session-revoke"),
     path("login-history", views.LoginHistoryView.as_view(), name="login-history"),
+    # ─── self-service profile & account security (PHASE2 L1.1) ───
+    path("profile", profile_views.ProfileView.as_view(), name="profile"),
+    path("profile/photo", profile_views.ProfilePhotoView.as_view(), name="profile-photo"),
+    path("users/<uuid:pk>/photo", profile_views.UserPhotoView.as_view(), name="user-photo"),
+    path("password-change", profile_views.PasswordChangeView.as_view(), name="password-change"),
+    path("email-change", profile_views.EmailChangeRequestView.as_view(), name="email-change"),
+    path(
+        "email-change/confirm",
+        profile_views.EmailChangeConfirmView.as_view(),
+        name="email-change-confirm",
+    ),
+    path("mfa/disable", profile_views.MfaDisableView.as_view(), name="mfa-disable"),
+    path("my-activity", profile_views.MyActivityView.as_view(), name="my-activity"),
     # ─── self-service password reset (no enumeration; emailed single-use link) ───
     path("password-reset", views.PasswordResetRequestView.as_view(), name="password-reset"),
     path(

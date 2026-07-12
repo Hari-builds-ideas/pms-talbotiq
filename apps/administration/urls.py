@@ -11,6 +11,7 @@ from .views import (
     UserDeactivateView,
     UserDisplayNameView,
     UserListCreateView,
+    UserOrgProfileView,
     UserReactivateView,
     UserReportingLineView,
     UserRoleView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("users/stats", UserStatsView.as_view(), name="user-stats"),
     path("users/<uuid:pk>/role", UserRoleView.as_view(), name="user-role"),
     path("users/<uuid:pk>/display-name", UserDisplayNameView.as_view(), name="user-display-name"),
+    path("users/<uuid:pk>/profile", UserOrgProfileView.as_view(), name="user-org-profile"),
     path("users/<uuid:pk>/deactivate", UserDeactivateView.as_view(), name="user-deactivate"),
     path("users/<uuid:pk>/reactivate", UserReactivateView.as_view(), name="user-reactivate"),
     path(

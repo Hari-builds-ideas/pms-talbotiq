@@ -99,14 +99,19 @@ export interface AdminUserParams extends PageParams {
 export const authApi = {
   login: (body: { email: string; password: string; tenant_slug: string }) =>
     unwrap<import("../types").LoginResponse>(api.post("/auth/login", body)),
-  mfaChallenge: (body: { challenge?: string; code: string }) =>
+  // Field names match the REAL backend contract (apps/identity): the login
+  // response's `mfa_token` is posted back with the TOTP code.
+  mfaChallenge: (body: { mfa_token: string; code: string }) =>
     unwrap<TokenPair>(api.post("/auth/mfa/challenge", body)),
   mfaEnroll: () =>
-    unwrap<{ secret: string; otpauth_url: string }>(api.post("/auth/mfa/enroll", {})),
+    unwrap<{ secret: string; config_url: string }>(api.post("/auth/mfa/enroll", {})),
   mfaEnrollConfirm: (body: { code: string }) =>
     unwrap<{ ok: boolean }>(api.post("/auth/mfa/enroll/confirm", body)),
   me: () => unwrap<Me>(api.get("/auth/me")),
-  logout: () => unwrap<unknown>(api.post("/auth/logout", {})),
+  // Server-side revocation needs the refresh token in the body (the server
+  // blacklists it) — callers pass it BEFORE clearing local storage.
+  logout: (refresh?: string | null) =>
+    unwrap<unknown>(api.post("/auth/logout", refresh ? { refresh } : {})),
 };
 
 // ---- Billing ---------------------------------------------------------------

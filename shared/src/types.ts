@@ -98,8 +98,9 @@ export interface TokenPair {
 export interface LoginResponse extends Partial<TokenPair> {
   /** Present + true when the user must complete an MFA challenge. */
   mfa_required?: boolean;
-  /** Opaque challenge handle echoed back to /mfa/challenge (mock convenience). */
-  challenge?: string;
+  /** Signed, short-lived MFA handle (the REAL backend field) — echoed back to
+   *  /auth/mfa/challenge as `mfa_token` together with the TOTP code. */
+  mfa_token?: string;
 }
 
 // ---- Billing / entitlements ------------------------------------------------

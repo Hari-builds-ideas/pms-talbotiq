@@ -55,7 +55,7 @@ export function LoginPage() {
         tenant_slug: values.tenant,
       });
       if (res.mfa_required) {
-        setChallenge(res.challenge ?? "");
+        setChallenge(res.mfa_token ?? "");
         return;
       }
       if (res.access && res.refresh) {
@@ -225,7 +225,7 @@ function MfaStep({
     }
     setLoading(true);
     try {
-      const tokens = await authApi.mfaChallenge({ challenge, code });
+      const tokens = await authApi.mfaChallenge({ mfa_token: challenge, code });
       await onVerified(tokens);
     } catch {
       setError("That code wasn't valid. Try again.");

@@ -85,8 +85,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = React.useCallback(async () => {
+    // Capture the refresh token BEFORE clearing so the server can blacklist it
+    // (without it, "logout" leaves a valid 7-day refresh token in the wild).
+    const refresh = tokenStore.getRefresh();
     try {
-      await authApi.logout();
+      await authApi.logout(refresh);
     } catch {
       /* best-effort — clear locally regardless */
     }

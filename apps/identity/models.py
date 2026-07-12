@@ -205,6 +205,37 @@ class DeviceSession(TenantScopedModel):
         return f"session {self.id} for {self.user_id} ({'active' if self.active else 'revoked'})"
 
 
+class Invitation(TenantScopedModel):
+    """Invitation-based onboarding (PHASE2 L1.2) — the B2B pattern: an Admin/HRBP
+    invites by email; the invitee sets a password and joins THIS tenant with the
+    assigned role. No secret is stored — the emailed link carries a signed,
+    time-limited token naming this row; acceptance re-checks the row status, so
+    revocation always wins over an already-sent link."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        ACCEPTED = "ACCEPTED", "Accepted"
+        REVOKED = "REVOKED", "Revoked"
+
+    email = models.EmailField()
+    role = models.CharField(max_length=16, choices=User.Role.choices, default=User.Role.EMPLOYEE)
+    manager = models.ForeignKey(
+        "identity.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    invited_by = models.ForeignKey(
+        "identity.User", on_delete=models.PROTECT, related_name="sent_invitations"
+    )
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "identity_invitation"
+        indexes = [models.Index(fields=["tenant", "status", "-created_at"])]
+
+    def __str__(self):
+        return f"invite {self.email} → {self.role} [{self.status}]"
+
+
 class LoginEvent(TenantScopedModel):
     """Login history (PHASE2 L1.3) — success/failure/lockout/logout/revocation per
     attempt, with best-effort ip/user-agent. ``user`` is null for failed attempts

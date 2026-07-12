@@ -97,6 +97,16 @@ export interface ActivityRow {
   created_at: string;
 }
 
+export interface InvitationRow {
+  id: UUID;
+  email: string;
+  role: Role;
+  status: "PENDING" | "ACCEPTED" | "REVOKED";
+  invited_by?: UUID;
+  created_at?: string;
+  invite_url: string | null;
+}
+
 export interface AdminUser {
   id: UUID;
   email: string;

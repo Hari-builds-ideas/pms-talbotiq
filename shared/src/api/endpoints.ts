@@ -166,6 +166,14 @@ export const billingApi = {
 export const adminApi = {
   users: (params: AdminUserParams = {}) =>
     unwrap<Paginated<AdminUser>>(api.get("/admin/users", { params })),
+  // ── invitations (PHASE2 L1.2; HRBP+) ──
+  invitations: () => unwrap<import("../types").InvitationRow[]>(api.get("/admin/invitations")),
+  invite: (body: { email: string; role: Role; manager?: string | null }) =>
+    unwrap<import("../types").InvitationRow & { emailed: boolean }>(
+      api.post("/admin/invitations", body),
+    ),
+  inviteRevoke: (id: string) =>
+    unwrap<{ ok: boolean }>(api.post(`/admin/invitations/${id}/revoke`, {})),
   userStats: () => unwrap<AdminUserStats>(api.get("/admin/users/stats")),
   createUser: (body: {
     email: string;

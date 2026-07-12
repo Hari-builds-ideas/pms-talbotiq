@@ -4,6 +4,7 @@ import { AuthGuard, RoleGate } from "@/app/guards";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ForgotPasswordPage, ResetPasswordPage } from "@/features/auth/PasswordResetPages";
 import { SettingsPage } from "@/features/settings/SettingsPage";
+import { AcceptInvitePage } from "@/features/auth/AcceptInvitePage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
@@ -37,6 +38,7 @@ export function AppRouter() {
         {/* Public self-service password reset (FINAL F). */}
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
 
         <Route
           element={

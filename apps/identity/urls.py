@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import profile_views, views
+from . import invite_views, profile_views, views
 from .saml import views as saml_views
 
 app_name = "identity"
@@ -29,6 +29,17 @@ urlpatterns = [
     ),
     path("mfa/disable", profile_views.MfaDisableView.as_view(), name="mfa-disable"),
     path("my-activity", profile_views.MyActivityView.as_view(), name="my-activity"),
+    # ─── invitation onboarding — PUBLIC accept surface (PHASE2 L1.2) ───
+    path(
+        "invitations/<str:token>/accept",
+        invite_views.InvitationAcceptView.as_view(),
+        name="invitation-accept",
+    ),
+    path(
+        "invitations/<str:token>",
+        invite_views.InvitationDetailView.as_view(),
+        name="invitation-detail",
+    ),
     # ─── self-service password reset (no enumeration; emailed single-use link) ───
     path("password-reset", views.PasswordResetRequestView.as_view(), name="password-reset"),
     path(

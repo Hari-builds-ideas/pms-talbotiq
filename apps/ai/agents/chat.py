@@ -127,6 +127,113 @@ def _scoped_goal_titles(caller, target):
     return list(Goal.objects.filter(employee_id=target.id).values_list("title", flat=True))
 
 
+# ── conversation memory (C2) ─────────────────────────────────────────────────
+#: Words that never identify a person — so "how are my goals doing" can't
+#: accidentally name-match an employee called e.g. "Doing".
+_NAME_STOP_WORDS = frozenset(
+    "how what who when where why are is was were the a an my our your their his her its "
+    "doing do does did have has had many much status this that with for and or about of "
+    "on in at to from team report reports goal goals kpi kpis review reviews feedback "
+    "score scores cycle cycles progress performance risk open active pending count number "
+    "me i we you they show tell give latest current last week month quarter year today "
+    "track On track behind ahead risk please can could would".lower().split()
+)
+
+_COUNT_Q_RE = re.compile(r"\bhow many\b|\bcount of\b|\bnumber of\b", re.I)
+
+
+def _classification_prompt(query: str, session) -> str:
+    """The classifier prompt: recent conversation as CONTEXT + the current message.
+    The user turn for ``query`` is already persisted by the view, so it is dropped
+    from the context block. PII scrubbing happens in the gateway as usual."""
+    if session is None:
+        return query
+    from apps.ai import sessions as chat_sessions
+
+    turns = chat_sessions.recent_turns(session, limit=7)
+    if turns and turns[-1].role == "user" and turns[-1].text == (query or "")[:8000]:
+        turns = turns[:-1]
+    lines = [f"{t.role}: {t.text[:200]}" for t in turns if (t.text or "").strip()]
+    if not lines:
+        return query
+    return (
+        "Conversation so far (context ONLY — classify the current message):\n"
+        + "\n".join(lines[-6:])
+        + f"\n\nCurrent message: {query}"
+    )
+
+
+def _resolve_named_person(caller, query):
+    """A person NAMED in the query — a unique, whole-token match on a tenant user's
+    display name (or email local-part). Returns ``(user|None, ambiguous_names)``.
+    Access is NOT granted here — the caller's scope is re-checked downstream
+    exactly like an email mention (out-of-scope → the same empty answer)."""
+    from django.db.models import Q
+
+    from apps.identity.models import User
+
+    words = [
+        w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
+        if w not in _NAME_STOP_WORDS
+    ][:8]
+    if not words:
+        return None, []
+    cond = None
+    for w in words:
+        c = Q(display_name__icontains=w) | Q(email__istartswith=w)
+        cond = c if cond is None else (cond | c)
+    matches = []
+    wordset = set(words)
+    for u in User.objects.filter(cond)[:20]:  # tenant-scoped manager
+        name_tokens = set(re.findall(r"[a-z]{3,}", (u.display_name or "").lower()))
+        email_local = u.email.split("@")[0].lower()
+        if (name_tokens & wordset) or (email_local in wordset):
+            matches.append(u)
+    if len(matches) == 1:
+        return matches[0], []
+    if len(matches) > 1:
+        return None, sorted({u.display for u in matches})
+    return None, []
+
+
+def _answer_counts(caller, target, query, intent):
+    """Deterministic counts for 'how many reviews/goals/feedback …' — real scoped
+    querysets, never a goals-only misroute. Scope-checked like every read."""
+    if target is None or not actor_can_access(caller, target):
+        return {"status": "ok", "intent": intent, "answer": "No data in your scope.", "data": []}
+    from apps.feedback.models import FeedbackRequest
+    from apps.goals.models import Goal
+    from apps.reviews.models import Review
+
+    q = (query or "").lower()
+    want_reviews = "review" in q
+    want_goals = ("goal" in q) or ("kpi" in q) or ("objective" in q)
+    want_feedback = "feedback" in q
+    if not (want_reviews or want_goals or want_feedback):
+        want_reviews = want_goals = want_feedback = True
+
+    parts = []
+    if want_reviews:
+        qs = Review.objects.filter(employee_id=target.id)
+        parts.append(f"{qs.count()} review(s), {qs.exclude(state='FINALIZED').count()} open")
+    if want_goals:
+        gs = Goal.objects.filter(employee_id=target.id)
+        parts.append(f"{gs.filter(status='ACTIVE').count()} active goal(s) of {gs.count()} total")
+    if want_feedback:
+        pending = FeedbackRequest.objects.filter(giver_id=target.id, status="PENDING").count()
+        parts.append(f"{pending} pending feedback request(s)")
+
+    is_self = target.id == caller.id
+    who, verb = ("You", "have") if is_self else (target.display, "has")
+    return {
+        "status": "ok",
+        "intent": intent,
+        "answer": f"{who} {verb} {'; '.join(parts)}.",
+        "data": parts,
+        "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+    }
+
+
 def _latest_score(target):
     """The target's latest CycleScore (for grounding the answer). The caller's
     access to ``target`` is already gated by ``_scoped_goal_titles`` upstream, so
@@ -148,8 +255,15 @@ def chat_answer(caller, query: str, session=None) -> dict:
     bound memory); without one (legacy/direct callers) the old single-proposal path
     still applies — the gate itself is identical either way.
     """
+    # C2: classification sees the CONVERSATION (recent turns as context) so a
+    # follow-up ("and her reviews?") keeps its meaning. The context block is
+    # explicitly marked context-only; the current message is what's classified.
     result = gateway.run(
-        tenant=caller.tenant_id, agent_code=AGENT_CODE, prompt=query, model="chat", schema=SCHEMA
+        tenant=caller.tenant_id,
+        agent_code=AGENT_CODE,
+        prompt=_classification_prompt(query, session),
+        model="chat",
+        schema=SCHEMA,
     )
     if result.status == "NOT_CONFIGURED":
         return {"status": "not_configured"}
@@ -222,8 +336,10 @@ def chat_answer(caller, query: str, session=None) -> dict:
         # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.
         return {"status": "ok", "intent": "general", "answer": _GENERAL_ANSWER, "data": []}
 
-    # PERFORMANCE intent. Resolve a target person from the RAW query (if any); the
-    # fetch is ALWAYS scope-checked, so this can never surface out-of-scope data.
+    # PERFORMANCE intent. Resolve a target person: an explicit email → a remembered
+    # person from THIS conversation ("she", "her" — session refs, access re-checked)
+    # → a person NAMED in the query (unique tenant match). The fetch is ALWAYS
+    # scope-checked, so memory/names can never surface out-of-scope data (C2).
     from apps.identity.models import User
 
     match = _EMAIL_RE.search(query or "")
@@ -231,9 +347,31 @@ def chat_answer(caller, query: str, session=None) -> dict:
     if match:
         found = User.objects.filter(email=match.group(0)).first()  # tenant-scoped
         target = found  # may be None (cross-tenant / unknown) → empty answer
+    else:
+        remembered = None
+        if session is not None:
+            from apps.ai.sessions import resolve_person_reference
+
+            remembered = resolve_person_reference(caller, session, query)
+        if remembered is not None:
+            target = remembered
+        else:
+            named, ambiguous = _resolve_named_person(caller, query)
+            if named is not None:
+                target = named
+            elif ambiguous:
+                return {
+                    "status": "ok", "intent": intent, "data": [],
+                    "answer": f"Several people match that name: {', '.join(ambiguous)}. "
+                              "Try their email address.",
+                }
 
     if target is None:
         return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
+
+    # Count-questions get REAL counts (reviews/goals/feedback), not a goals dump.
+    if _COUNT_Q_RE.search(query or ""):
+        return _answer_counts(caller, target, query, intent)
 
     titles = _scoped_goal_titles(caller, target)
     if titles is None:
@@ -261,7 +399,12 @@ def chat_answer(caller, query: str, session=None) -> dict:
                 f" Latest cycle score: T-score {float(score.t_score):.0f}"
                 f" ({score.get_risk_status_display()}){pace}."
             )
-    return {"status": "ok", "intent": intent, "answer": answer, "data": titles}
+    return {
+        "status": "ok", "intent": intent, "answer": answer, "data": titles,
+        # Ground the answered person on the assistant turn so a follow-up
+        # ("what about her reviews?") resolves — access re-checked on use (C2).
+        "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+    }
 
 
 def _fake(prompt, model):
@@ -269,6 +412,10 @@ def _fake(prompt, model):
     write → capability → performance → general. Write is checked FIRST (safety), so
     'approve this review' is a write even though it mentions 'review'."""
     lowered = (prompt or "").lower()
+    # C2: the prompt may carry a conversation-context block; classify ONLY the
+    # current message (mirrors the instruction the real LLM receives).
+    if "current message:" in lowered:
+        lowered = lowered.rsplit("current message:", 1)[-1]
     if any(w in lowered for w in _WRITE_WORDS):
         return {"intent": "write"}
     if "360" in lowered and any(v in lowered for v in ("start", "begin", "launch", "set up", "kick off")):

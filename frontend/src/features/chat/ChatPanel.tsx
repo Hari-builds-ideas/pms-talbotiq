@@ -114,6 +114,8 @@ function ResizeHandle({ onResize }: { onResize: (w: number) => void }) {
   );
 }
 
+const CHAT_SESSION_KEY = "pms.chat.session";
+
 function ChatSheet() {
   const { open, setOpen, width, setWidth } = useChatPanel();
   const { hasFeature } = useAuth();
@@ -123,13 +125,57 @@ function ChatSheet() {
   const sessionId = React.useRef<string | undefined>(undefined);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
+  const rememberSession = React.useCallback((id: string) => {
+    sessionId.current = id;
+    try {
+      localStorage.setItem(CHAT_SESSION_KEY, id);
+    } catch {
+      /* storage unavailable → session is tab-only */
+    }
+  }, []);
+
+  // C2: resume the conversation across full reloads. The 24h server session is the
+  // source of truth — rehydrate its turns (text history; plans re-render as their
+  // summaries). An expired/foreign id 404s server-side → start fresh, key cleared.
+  React.useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = localStorage.getItem(CHAT_SESSION_KEY);
+    } catch {
+      stored = null;
+    }
+    if (!stored) return;
+    let cancelled = false;
+    aiApi
+      .getSession(stored)
+      .then((s) => {
+        if (cancelled) return;
+        sessionId.current = s.id;
+        setTurns(
+          (s.turns ?? [])
+            .filter((t) => (t.text ?? "").trim())
+            .map((t) => ({ role: t.role === "user" ? "user" : "assistant", text: t.text }) as Turn),
+        );
+      })
+      .catch(() => {
+        try {
+          localStorage.removeItem(CHAT_SESSION_KEY);
+        } catch {
+          /* ignore */
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // AGENT_UX_V3 §A — ONE send path. /ai/chat answers reads and, for a write intent,
   // returns an inert PLAN (status:"plan") the human approves step by step. Session id
   // is threaded across turns for short-term memory.
   const mutation = useMutation({
     mutationFn: (q: string) => aiApi.chat(q, sessionId.current),
     onSuccess: (res) => {
-      if (res.session_id) sessionId.current = res.session_id;
+      if (res.session_id) rememberSession(res.session_id);
       setTurns((t) => [
         ...t,
         {

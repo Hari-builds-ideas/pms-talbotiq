@@ -83,7 +83,12 @@ class ChatView(RBACMixin, APIView):
                 "plan": ChatPlanSerializer(plan).data,
             })
         # ok / blocked-write / legacy-proposal → 200 (record the assistant turn).
-        sessions.append_turn(session, ChatTurn.Role.ASSISTANT, result.get("answer", ""))
+        # C2: read answers ground the person they answered about (`refs`) so later
+        # turns can resolve "she"/"her" — access is re-checked on every use.
+        sessions.append_turn(
+            session, ChatTurn.Role.ASSISTANT, result.get("answer", ""),
+            refs=result.pop("refs", None),
+        )
         return Response({**result, "session_id": str(session.id)})
 
 

@@ -137,7 +137,10 @@ _CHAT = (
     "- \"general\": greetings, small talk, or anything outside performance data "
     "(e.g. \"what day is today?\", \"I feel lonely\").\n"
     "Do NOT answer the message — only classify it. When unsure between performance and "
-    "general, prefer \"general\"."
+    "general, prefer \"general\". The input may start with a 'Conversation so far' "
+    "block followed by 'Current message:' — use the conversation ONLY as context to "
+    "interpret the current message (e.g. what a pronoun refers to); classify ONLY the "
+    "current message, never an earlier one."
 )
 
 _PLANNER = (

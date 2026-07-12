@@ -158,6 +158,48 @@ export const LOGIN_IDENTITIES = [
   { id: "u-2", label: "Employee", email: "reza@acme.test" },
 ] as const;
 
+// Mirrors the server's role→capability ladder (apps/rbac/matrix.py) for the
+// capabilities the UI gates on — /me carries this list in production, so the
+// mock must too or capability-gated controls would vanish in tests.
+const EVERYONE_CAPS = [
+  "view_own", "view_own_goals", "update_own_actuals", "view_own_review",
+  "submit_self_assessment", "give_feedback", "view_own_feedback_summary",
+  "manage_one_on_one", "view_approval_status", "view_jd_library",
+  "view_org_chart", "select_target_role", "view_career_roadmap",
+  "manage_career_roadmap", "use_chat", "give_recognition", "view_recognition",
+  "manage_own_checkin", "view_individual_analytics", "submit_self_eval",
+];
+const MANAGER_UP_CAPS = [
+  "manage_reports_goals", "approve_goals", "view_team_scores", "manage_reviews",
+  "approve_review", "finalize_review", "run_ai_review_draft", "submit_assessment",
+  "manage_feedback_cycle", "act_on_approval_step", "request_jd", "manage_bench",
+  "assess_nine_box", "view_succession", "view_team_analytics",
+  "view_department_analytics", "view_recognition_analytics",
+  "view_team_checkins", "respond_checkin",
+];
+const HRBP_UP_CAPS = [
+  "bu_analytics_calibration", "succession_bench_full", "generate_jd",
+  "manage_jd_library", "read_private_data", "manage_kpi_templates",
+  "manage_cycles", "calibrate_reviews", "approve_feedback_summary",
+  "configure_approval_workflow", "manage_positions", "reassign_reporting_line",
+  "manage_critical_roles", "override_nine_box", "generate_succession_analysis",
+  "publish_succession_plan", "view_audit_console", "view_calibration_grid",
+];
+const ADMIN_ONLY_CAPS = [
+  "manage_tenant", "configure_scoring", "manage_entitlements",
+  "manage_tenant_config", "manage_users_roles", "manage_integrations",
+];
+
+export function capabilitiesFor(role: Me["role"]): string[] {
+  const rank = { EMPLOYEE: 0, MANAGER: 1, HRBP: 2, ADMIN: 3 }[role] ?? 0;
+  return [
+    ...EVERYONE_CAPS,
+    ...(rank >= 1 ? MANAGER_UP_CAPS : []),
+    ...(rank >= 2 ? HRBP_UP_CAPS : []),
+    ...(rank >= 3 ? ADMIN_ONLY_CAPS : []),
+  ].sort();
+}
+
 export function meFor(id: string): Me | undefined {
   const u = userById(id);
   if (!u) return undefined;
@@ -170,6 +212,7 @@ export function meFor(id: string): Me | undefined {
     tenant_id: TENANT.id,
     manager_id: u.manager,
     mfa_enabled: u.mfa_enabled,
+    capabilities: capabilitiesFor(u.role),
   };
 }
 

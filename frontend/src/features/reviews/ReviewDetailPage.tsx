@@ -74,7 +74,7 @@ export function ReviewDetailPage() {
 }
 
 function ReviewDetail({ reviewId }: { reviewId: string }) {
-  const { hasFeature, atLeast } = useAuth();
+  const { hasFeature, can } = useAuth();
   const { nameOf: cycleName } = useCycles();
   const review = useReview(reviewId);
   const timeline = useReviewTimeline(reviewId);
@@ -101,7 +101,12 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
     setBody(r.draft_body);
   }, [r.draft_body, r.state]);
 
-  const isEditing = r.state === "EDITING";
+  // D2: the editor + every transition control are capability-gated off the
+  // server-provided grants on /me (the SAME matrix the API enforces) — a role
+  // that can't perform an action never sees its button. An employee viewing
+  // their own review gets a clean read-only page, not 403 walls.
+  const canManage = can("manage_reviews");
+  const isEditing = r.state === "EDITING" && canManage;
   const isPending = r.state === "PENDING_HUMAN_REVIEW";
   const isDrafting = r.state === "AI_DRAFTING";
   const isFinalized = r.state === "FINALIZED";
@@ -187,8 +192,8 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
                     placeholder="Write the review narrative…"
                     className="min-h-56"
                   />
-                  {/* Advisory AI quality/bias check — Manager+ only, never blocks submit. */}
-                  {atLeast("MANAGER") && <ReviewQualityCheck text={body} />}
+                  {/* Advisory AI quality/bias check — same capability as the endpoint. */}
+                  {canManage && <ReviewQualityCheck text={body} />}
                   <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
@@ -215,10 +220,16 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
               )}
             </Panel>
 
-            {/* State-driven action bar */}
+            {/* State-driven action bar — every button capability-gated (D2). */}
             <ActionBar
               state={r.state}
               hasAgent1={hasFeature("agent1")}
+              caps={{
+                manage: canManage,
+                approve: can("approve_review"),
+                finalize: can("finalize_review"),
+                aiDraft: can("run_ai_review_draft"),
+              }}
               pending={{
                 startEdit: t.startEdit.isPending,
                 approve: t.approve.isPending,
@@ -297,9 +308,34 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
   );
 }
 
+/** Which review actions are visible for a state given the caller's server-provided
+ *  capability grants. Pure + exported for tests. Mirrors the server exactly:
+ *  start-edit/submit → manage_reviews · approve/reject → approve_review ·
+ *  finalize → finalize_review · AI draft → run_ai_review_draft. A caller with no
+ *  grants gets an empty list (clean read-only page — no 403 walls). */
+export function visibleReviewActions(
+  state: string,
+  caps: { manage: boolean; approve: boolean; finalize: boolean; aiDraft: boolean },
+): string[] {
+  const out: string[] = [];
+  if (state === "DRAFT") {
+    if (caps.aiDraft) out.push("ai");
+    if (caps.manage) out.push("start-edit");
+  } else if (state === "PENDING_HUMAN_REVIEW") {
+    if (caps.manage) out.push("edit");
+    if (caps.approve) out.push("reject", "approve");
+  } else if (state === "APPROVED") {
+    if (caps.finalize) out.push("finalize");
+  } else if (state === "REJECTED") {
+    if (caps.manage) out.push("revise");
+  }
+  return out;
+}
+
 function ActionBar({
   state,
   hasAgent1,
+  caps,
   pending,
   onStartEdit,
   onApprove,
@@ -309,6 +345,7 @@ function ActionBar({
 }: {
   state: string;
   hasAgent1: boolean;
+  caps: { manage: boolean; approve: boolean; finalize: boolean; aiDraft: boolean };
   pending: { startEdit: boolean; approve: boolean; finalize: boolean; ai: boolean };
   onStartEdit: () => void;
   onApprove: () => void;
@@ -316,9 +353,19 @@ function ActionBar({
   onFinalize: () => void;
   onRequestAi: () => void;
 }) {
+  if (state === "FINALIZED") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success-subtle px-4 py-3 text-sm text-success">
+        <Check className="h-4 w-4" />
+        Finalized — this review is final and read-only.
+      </div>
+    );
+  }
+
+  const visible = visibleReviewActions(state, caps);
   const buttons: React.ReactNode[] = [];
 
-  if (state === "DRAFT") {
+  if (visible.includes("ai")) {
     buttons.push(
       hasAgent1 ? (
         <Button key="ai" variant="outline" onClick={onRequestAi} loading={pending.ai}>
@@ -336,40 +383,48 @@ function ActionBar({
           <TooltipContent>Review Assistant is a Full AI feature — upgrade to unlock.</TooltipContent>
         </Tooltip>
       ),
+    );
+  }
+  if (visible.includes("start-edit")) {
+    buttons.push(
       <Button key="edit" onClick={onStartEdit} loading={pending.startEdit}>
         <Pencil className="h-4 w-4" /> Start editing
       </Button>,
     );
-  } else if (state === "PENDING_HUMAN_REVIEW") {
+  }
+  if (visible.includes("edit")) {
     buttons.push(
       <Button key="edit" variant="outline" onClick={onStartEdit} loading={pending.startEdit}>
         <Pencil className="h-4 w-4" /> Edit
       </Button>,
+    );
+  }
+  if (visible.includes("reject")) {
+    buttons.push(
       <Button key="reject" variant="outline" className="text-danger" onClick={onReject}>
         <X className="h-4 w-4" /> Reject
       </Button>,
+    );
+  }
+  if (visible.includes("approve")) {
+    buttons.push(
       <Button key="approve" onClick={onApprove} loading={pending.approve}>
         <Check className="h-4 w-4" /> Approve
       </Button>,
     );
-  } else if (state === "APPROVED") {
+  }
+  if (visible.includes("finalize")) {
     buttons.push(
       <Button key="finalize" onClick={onFinalize} loading={pending.finalize}>
         <Check className="h-4 w-4" /> Finalize
       </Button>,
     );
-  } else if (state === "REJECTED") {
+  }
+  if (visible.includes("revise")) {
     buttons.push(
       <Button key="edit" onClick={onStartEdit} loading={pending.startEdit}>
         <Pencil className="h-4 w-4" /> Revise
       </Button>,
-    );
-  } else if (state === "FINALIZED") {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success-subtle px-4 py-3 text-sm text-success">
-        <Check className="h-4 w-4" />
-        Finalized — this review is final and read-only.
-      </div>
     );
   }
 

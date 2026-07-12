@@ -33,6 +33,30 @@ def test_me_returns_caller(api):
     assert body["tenant_id"] == str(user.tenant_id)
 
 
+def test_me_includes_server_computed_capabilities(api):
+    """/me carries the caller's capability grants from the SAME matrix the server
+    enforces (FINAL D2) — the client gates controls off this list, so it must
+    exactly mirror role_has_capability for the caller's role."""
+    from apps.rbac.matrix import CAPABILITIES, capabilities_for_role, role_has_capability
+
+    fixture_login = "pw12345!"  # the file-wide test fixture credential (not a secret)
+    t = TenantFactory(slug="acme")
+    for role, present, absent in [
+        ("EMPLOYEE", "view_own_goals", "approve_review"),
+        ("MANAGER", "approve_review", "manage_users_roles"),
+        ("ADMIN", "manage_users_roles", "bypass_tenant_isolation"),
+    ]:
+        email = f"{role.lower()}@acme.test"
+        UserFactory(tenant=t, email=email, password=fixture_login, role=role)
+        data = _login(api, email=email)
+        api.credentials(HTTP_AUTHORIZATION=f"Bearer {data['access']}")
+        caps = api.get("/api/auth/me").json()["capabilities"]
+        assert caps == capabilities_for_role(role)
+        assert present in caps and absent not in caps
+        # exact mirror of the enforcement matrix — no drift possible
+        assert set(caps) == {c for c in CAPABILITIES if role_has_capability(role, c)}
+
+
 def test_me_requires_auth(api):
     resp = api.get("/api/auth/me")
     assert resp.status_code == 401

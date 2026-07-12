@@ -49,6 +49,10 @@ export interface Me {
   tenant_slug?: string;
   manager_id?: UUID | null;
   mfa_enabled: boolean;
+  /** The caller's capability grants, computed server-side from the SAME matrix
+   *  RBAC enforces (apps/rbac/matrix.py) — the client's single source of truth
+   *  for hiding controls the role can't use. Absent → treat as no grants. */
+  capabilities?: string[];
 }
 
 export interface AdminUser {

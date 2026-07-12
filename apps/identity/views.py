@@ -23,6 +23,8 @@ from .serializers import (
     MfaChallengeSerializer,
     MfaCodeSerializer,
 )
+from apps.rbac.matrix import capabilities_for_role
+
 from .services import establish_session
 from .tokens import issue_tokens_for_user
 
@@ -159,6 +161,10 @@ class MeView(APIView):
                 "tenant_slug": u.tenant.slug,
                 "mfa_enabled": u.mfa_enabled,
                 "manager_id": str(u.manager_id) if u.manager_id else None,
+                # The caller's capability grants, from the SAME matrix the server
+                # enforces (apps/rbac/matrix.py) — the client's single source of
+                # truth for hiding controls a role can't use (FINAL D2).
+                "capabilities": capabilities_for_role(u.role),
             }
         )
 

@@ -32,8 +32,7 @@ import { WeightBar } from "@/components/WeightBar";
 import { AttainmentBar } from "@/components/AttainmentBar";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useCycles } from "@/lib/hooks/useCycles";
-import { useDirectory } from "@/lib/hooks/useDirectory";
-import { subtreeIds } from "@/lib/org";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { KPI_DIRECTION, humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -397,20 +396,9 @@ function NewGoalDialog({
   existingGoals: Goal[];
   mutation: ReturnType<typeof useGoalMutations>["create"];
 }) {
-  const { nodes } = useDirectory();
-  const { atLeast, me } = useAuth();
-  // Only offer people the caller can actually create a goal for — mirroring the
-  // server's scope rule (`actor_can_access`): HRBP/Admin (tenant scope) → everyone;
-  // a Manager → self + their reporting subtree. The org tree also returns the
-  // manager's own line UPWARD (their director/HRBP/admin), and creating for those
-  // 403s "outside your access scope" — so we exclude them from the picker (BUG 1).
-  const people = React.useMemo(() => {
-    const all = Object.values(nodes);
-    if (atLeast("HRBP")) return all;
-    if (!me) return [];
-    const allowed = subtreeIds(me.id, nodes);
-    return all.filter((p) => allowed.has(p.id));
-  }, [nodes, me, atLeast]);
+  // Only people the caller can actually create a goal for — the shared scope rule
+  // (see useScopedPeople; mirrors the server's actor_can_access). BUG 1 / FINAL D2.
+  const people = useScopedPeople();
   const [employee, setEmployee] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [objective, setObjective] = React.useState("");

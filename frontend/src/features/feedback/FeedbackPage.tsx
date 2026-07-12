@@ -34,7 +34,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { LinesSkeleton } from "@/components/Skeletons";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { humanize } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { notifyError, notifySuccess } from "@/lib/toast";
@@ -239,7 +239,9 @@ function CyclesTab() {
 }
 
 function CreateCycleDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { nodes } = useDirectory();
+  // Only subjects the caller can open a cycle for (server scope rule on create) —
+  // an out-of-subtree pick would 403 "outside your access scope" (FINAL D2).
+  const subjects = useScopedPeople();
   const { createCycle, openCycle } = useFeedbackMutations();
   const [subject, setSubject] = React.useState("");
   const [minVolume, setMinVolume] = React.useState("3");
@@ -272,7 +274,7 @@ function CreateCycleDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <Select value={subject} onValueChange={setSubject}>
               <SelectTrigger><SelectValue placeholder="Select a person…" /></SelectTrigger>
               <SelectContent>
-                {Object.values(nodes).map((p) => (
+                {subjects.map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.display}</SelectItem>
                 ))}
               </SelectContent>

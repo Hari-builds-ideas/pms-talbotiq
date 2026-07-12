@@ -29,7 +29,7 @@ import {
 import { Field } from "@/components/Field";
 import { useReviews } from "./useReviews";
 import { useCycles } from "@/lib/hooks/useCycles";
-import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { reviewsApi } from "@/lib/api/endpoints";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -154,9 +154,10 @@ function CreateReviewDialog({
   defaultCycle?: string;
   onCreated: (id: string) => void;
 }) {
-  const { nodes } = useDirectory();
   const { cycles, active } = useCycles();
-  const people = Object.values(nodes);
+  // Only people the caller can actually create a review for (server scope rule) —
+  // an out-of-subtree pick would 403 "outside your access scope" (FINAL D2).
+  const people = useScopedPeople();
   const qc = useQueryClient();
   const [employee, setEmployee] = React.useState<string>("");
   const [cycle, setCycle] = React.useState<string>(defaultCycle ?? "");

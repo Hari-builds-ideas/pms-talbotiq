@@ -31,6 +31,7 @@ import { V1_HIDE_CALIBRATION, V1_HIDE_TSCORE } from "@/app/v1";
 import { useCalibration, useDepartment, useIndividual } from "./useAnalytics";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { useCycles } from "@/lib/hooks/useCycles";
 import { formatScore } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
@@ -65,7 +66,10 @@ export function AnalyticsPage() {
 }
 
 function IndividualTab() {
-  const { nameOf, nodes } = useDirectory();
+  const { nameOf } = useDirectory();
+  // Only people whose analytics the caller may read (server scope rule) — an
+  // out-of-scope pick would 403/404 (FINAL D2).
+  const people = useScopedPeople();
   const { nameOf: cycleName } = useCycles();
   const [employee, setEmployee] = React.useState<string>("self");
   const q = useIndividual(employee === "self" ? undefined : employee);
@@ -79,7 +83,7 @@ function IndividualTab() {
           <SelectTrigger className="w-56" aria-label="Select employee"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="self">Myself</SelectItem>
-            {Object.values(nodes).map((n) => (
+            {people.map((n) => (
               <SelectItem key={n.id} value={n.id}>{n.display}</SelectItem>
             ))}
           </SelectContent>
@@ -148,7 +152,9 @@ function IndividualTab() {
 }
 
 function DepartmentTab() {
-  const { nodes } = useDirectory();
+  // Only heads within the caller's scope (the server confines `head` and 404s
+  // otherwise) — an out-of-scope pick would dead-end (FINAL D2).
+  const heads = useScopedPeople();
   const { cycles, active, nameOf: cycleName } = useCycles();
   const [head, setHead] = React.useState<string>("");
   const [cycle, setCycle] = React.useState<string>("");
@@ -157,7 +163,7 @@ function DepartmentTab() {
     if (active && !cycle) setCycle(active.id);
   }, [active, cycle]);
 
-  const effectiveHead = head || Object.values(nodes)[0]?.id;
+  const effectiveHead = head || heads[0]?.id;
   const q = useDepartment(effectiveHead, cycle);
   const d = q.data;
 
@@ -169,7 +175,7 @@ function DepartmentTab() {
           <Select value={head || effectiveHead || ""} onValueChange={setHead}>
             <SelectTrigger className="w-52" aria-label="Select head of org"><SelectValue placeholder="Select…" /></SelectTrigger>
             <SelectContent>
-              {Object.values(nodes).map((n) => (
+              {heads.map((n) => (
                 <SelectItem key={n.id} value={n.id}>{n.display}</SelectItem>
               ))}
             </SelectContent>

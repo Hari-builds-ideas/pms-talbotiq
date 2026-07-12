@@ -272,3 +272,12 @@ def role_has_capability(role: str, capability: str) -> bool:
     if allowed is None:
         return False
     return role in allowed
+
+
+def capabilities_for_role(role: str) -> list[str]:
+    """Every capability ``role`` may exercise, sorted — derived from the SAME
+    matrix ``HasCapability`` enforces. Served to the client on ``/api/auth/me``
+    so the UI gates controls off the server's truth (a role that can't perform
+    an action never sees its button) instead of re-deriving from the role
+    ladder. Unknown role → empty list (fails closed)."""
+    return sorted(cap for cap, allowed in CAPABILITIES.items() if role in allowed)

@@ -178,6 +178,13 @@ DATABASES = {
     }
 }
 
+# Optional TLS to MySQL (managed DBs — RDS/Cloud SQL etc.): set DB_SSL_CA to the
+# provider's CA-bundle path and connections require TLS. The replica inherits the
+# same OPTIONS dict below, so it is covered too. Unset → plain connection (dev).
+_DB_SSL_CA = env("DB_SSL_CA", default="")
+if _DB_SSL_CA:
+    DATABASES["default"]["OPTIONS"]["ssl"] = {"ca": _DB_SSL_CA}
+
 # ─── Read replica (BUILD_3) — replica-ready, default-fallback ──────────────
 # The `replica` alias takes reads (see apps.core.dbrouter). With NO replica DSN
 # configured (today) it is a SECOND connection to the SAME primary — so the

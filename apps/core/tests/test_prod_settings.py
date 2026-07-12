@@ -23,6 +23,9 @@ def _setup(extra_env=None, *, drop=()):
     env = {k: v for k, v in os.environ.items() if k not in drop}
     env.update(extra_env or {})
     env["DJANGO_SETTINGS_MODULE"] = "config.settings.prod"
+    # Hermetic: do NOT inherit a developer's local .env (which would re-supply a
+    # dropped DJANGO_SECRET_KEY / DJANGO_ALLOWED_HOSTS and mask the fail-closed check).
+    env["PMS_DOTENV_PATH"] = "/nonexistent/.env"
     return subprocess.run(
         [sys.executable, "-c", _SMOKE], env=env, capture_output=True, text=True
     )

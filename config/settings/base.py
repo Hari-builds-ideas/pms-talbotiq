@@ -5,6 +5,7 @@ Environment-specific modules (dev/prod/test) import * from here and override.
 All secrets and environment-dependent values are read from the environment via
 django-environ; see .env.example for the full documented variable list.
 """
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -15,7 +16,10 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 
 env = environ.Env()
 # Load .env if present (no-op when absent, e.g. inside containers using env vars).
-environ.Env.read_env(BASE_DIR / ".env")
+# The path is overridable via PMS_DOTENV_PATH so hermetic tests (e.g. the prod
+# "fails closed without a secret" checks) can point it at a nonexistent file and
+# NOT silently inherit a developer's local .env. Default behaviour is unchanged.
+environ.Env.read_env(os.environ.get("PMS_DOTENV_PATH", str(BASE_DIR / ".env")))
 
 # ─── Core ──────────────────────────────────────────────────────────────
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="insecure-dev-key-change-me")

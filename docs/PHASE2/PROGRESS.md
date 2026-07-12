@@ -26,11 +26,14 @@ designed only (payments + auth-rewrite deliberately NOT implemented — the huma
 ### Finish
 - [x] ROADMAP.md · [x] FINAL_TESTING_CHECKLIST.md · `.env.example` extended (lockout, MEDIA_ROOT).
 
-## Verification
-- Per-feature suites green throughout (identity 57→68, billing 149→154+, administration incl. new
-  org-settings + headcount tests, rbac matrix updated for `invite_users`); frontend tsc clean +
-  132 vitest after every UI change; migrations additive-only and applied to the running stack.
-- Full backend suite + demo_ready smoke: final run recorded in ROADMAP/commit trail.
+## Verification (final)
+- **Full backend suite: 1473 passed, 7 deselected** (1445 pre-PHASE2 → +28 new tests, zero
+  regressions). Frontend: tsc clean + **132 vitest** after every UI change.
+- **E2E smoke: 57/57 DEMO READY** on the recreated + reseeded stack (migrations applied).
+- **10/10 live probes** of the new surfaces against :8090 (profile GET/PATCH, sessions+history,
+  HRBP invite→link / employee 403, subscription GET + instant flag flip on plan change,
+  Enterprise branding accepted + served on /me).
+- The :8090 frontend was rebuilt and serves the PHASE2 UI (My settings, Invite user, Subscription).
 
 ## The line that was respected
 Payments and any auth token/session rewrite were NOT implemented. They are complete, reviewable

@@ -33,7 +33,14 @@ from .validators import assert_weights_sum_to_100, validate_target_value
 
 class KpiSerializer(serializers.ModelSerializer):
     """Read/write a :class:`Kpi`. ``target_value`` must be strictly > 0 (the same
-    rule the engine relies on to never divide by zero)."""
+    rule the engine relies on to never divide by zero).
+
+    ``latest_actual`` is a read-only convenience field: the value of the KPI's most
+    recent measurement — the SAME actual the scoring engine reads — so the client can
+    render progress without a per-KPI actuals fetch. It is null until an actual is
+    recorded. (The list view prefetches measurements so this is O(1) — no N+1.)"""
+
+    latest_actual = serializers.SerializerMethodField()
 
     class Meta:
         model = Kpi
@@ -48,8 +55,21 @@ class KpiSerializer(serializers.ModelSerializer):
             "unit",
             "source",
             "external_ref",
+            "latest_actual",
         ]
         read_only_fields = ["id", "goal", "external_ref"]
+
+    def get_latest_actual(self, obj) -> str | None:
+        """Latest measurement value (str Decimal) or None. Uses the prefetched,
+        desc-ordered ``measurements`` when present (list view → O(1)); otherwise a
+        scoped ordered query (single-object views)."""
+        cache = getattr(obj, "_prefetched_objects_cache", None)
+        if cache is not None and "measurements" in cache:
+            ms = cache["measurements"]
+            m = ms[0] if ms else None
+        else:
+            m = obj.measurements.order_by("-recorded_at", "-created_at").first()
+        return str(m.value) if m is not None else None
 
     def validate_target_value(self, value):
         try:
@@ -73,6 +93,7 @@ class _NestedKpiSerializer(KpiSerializer):
             "direction",
             "unit",
             "source",
+            "latest_actual",
         ]
         read_only_fields = ["id"]
 

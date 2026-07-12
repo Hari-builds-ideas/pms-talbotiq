@@ -25,6 +25,9 @@ interface ChatContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
   toggle: () => void;
+  /** Panel width in px (persisted) — the shell reads it to shrink content beside the chat. */
+  width: number;
+  setWidth: (w: number) => void;
 }
 const ChatContext = React.createContext<ChatContextValue | null>(null);
 
@@ -32,6 +35,23 @@ export function useChatPanel() {
   const ctx = React.useContext(ChatContext);
   if (!ctx) throw new Error("useChatPanel must be used within <ChatProvider>");
   return ctx;
+}
+
+// ── panel width (E1: resizable, persisted) ────────────────────────────────────
+const CHAT_WIDTH_KEY = "pms.chat.width";
+const CHAT_MIN_W = 320;
+const CHAT_MAX_W = 720;
+const CHAT_DEFAULT_W = 400;
+const clampWidth = (w: number) => Math.min(CHAT_MAX_W, Math.max(CHAT_MIN_W, Math.round(w)));
+
+function initialWidth(): number {
+  try {
+    const saved = Number(localStorage.getItem(CHAT_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved > 0) return clampWidth(saved);
+  } catch {
+    /* storage unavailable → default */
+  }
+  return CHAT_DEFAULT_W;
 }
 
 interface Turn {
@@ -45,9 +65,21 @@ interface Turn {
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
+  // E1: width lives on the provider so the shell can shrink content beside the
+  // panel (true side-by-side copilot), persisted so the user's choice sticks.
+  const [width, setWidthRaw] = React.useState(initialWidth);
+  const setWidth = React.useCallback((w: number) => {
+    const clamped = clampWidth(w);
+    setWidthRaw(clamped);
+    try {
+      localStorage.setItem(CHAT_WIDTH_KEY, String(clamped));
+    } catch {
+      /* storage unavailable → width is session-only */
+    }
+  }, []);
   const value = React.useMemo(
-    () => ({ open, setOpen, toggle: () => setOpen((v) => !v) }),
-    [open],
+    () => ({ open, setOpen, toggle: () => setOpen((v) => !v), width, setWidth }),
+    [open, width, setWidth],
   );
   return (
     <ChatContext.Provider value={value}>
@@ -57,8 +89,33 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** E1: the drag handle on the panel's left edge — pointer-driven, clamped by setWidth. */
+function ResizeHandle({ onResize }: { onResize: (w: number) => void }) {
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const move = (ev: PointerEvent) => onResize(window.innerWidth - ev.clientX);
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "col-resize";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize chat panel"
+      onPointerDown={onPointerDown}
+      className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize touch-none select-none transition-colors hover:bg-primary/30 active:bg-primary/40"
+    />
+  );
+}
+
 function ChatSheet() {
-  const { open, setOpen } = useChatPanel();
+  const { open, setOpen, width, setWidth } = useChatPanel();
   const { hasFeature } = useAuth();
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [input, setInput] = React.useState("");
@@ -114,15 +171,19 @@ function ChatSheet() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen} modal={false}>
-      {/* Non-blocking dockable panel: no overlay + non-modal so the rest of the PMS stays
-          usable while the assistant is open, and interacting with the app doesn't dismiss
-          it (close via the X or the Ask-AI toggle). BUGS_FOUND #11. */}
+      {/* Non-blocking dockable copilot (E2): no overlay + non-modal so the rest of the
+          PMS stays usable while the assistant is open; interacting with the app or
+          navigating never dismisses it (close via the X or the Ask-AI toggle). The shell
+          shrinks content by `width` so page + chat sit truly side by side. E1: the left
+          edge is a drag handle; width is clamped 320–720 and persisted. */}
       <SheetContent
         side="right"
         overlay={false}
         onInteractOutside={(e) => e.preventDefault()}
-        className="w-full sm:max-w-md"
+        className="w-full"
+        style={{ width, maxWidth: "100vw" }}
       >
+        <ResizeHandle onResize={setWidth} />
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-ai" />

@@ -21,8 +21,11 @@ services:
     plan: free
     healthCheckPath: /healthz
     # Migrations run ONCE per deploy via the advisory-locked command (no N-replica race;
-    # it no-ops the MySQL lock on non-MySQL). Seed the demo separately — see DEPLOY_DEMO.md.
-    preDeployCommand: "python manage.py deploy_migrate"
+    # it no-ops the MySQL lock on non-MySQL). Then seed the (ephemeral, free-tier) demo DB
+    # so the demo comes up POPULATED — `|| true` makes seeding best-effort so a seed hiccup
+    # never blocks the deploy. (If the free DB service restarts between deploys, re-run
+    # `seed_demo_rich` from the Render shell — see DEPLOY_DEMO.md.)
+    preDeployCommand: "python manage.py deploy_migrate && (python manage.py seed_demo_rich || true)"
     startCommand: "gunicorn config.wsgi:application -c gunicorn.conf.py"
     envVars:
       - key: DJANGO_SETTINGS_MODULE

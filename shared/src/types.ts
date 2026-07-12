@@ -55,6 +55,48 @@ export interface Me {
   capabilities?: string[];
 }
 
+// ── PHASE2 L1.1/L1.3 — self-service profile + sessions ──
+export interface Profile {
+  id: UUID;
+  email: string;
+  display_name: string | null;
+  display: string;
+  role: Role;
+  manager_id?: UUID | null;
+  phone: string;
+  title: string;
+  department: string;
+  employee_id: string;
+  timezone: string;
+  language: string;
+  preferences: Record<string, unknown>;
+  mfa_enabled: boolean;
+  has_photo: boolean;
+}
+
+export interface DeviceSessionRow {
+  id: UUID;
+  ip: string | null;
+  user_agent: string;
+  created_at: string;
+  last_seen: string;
+  current: boolean;
+}
+
+export interface LoginEventRow {
+  event: string;
+  ip: string | null;
+  user_agent: string;
+  created_at: string;
+}
+
+export interface ActivityRow {
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  created_at: string;
+}
+
 export interface AdminUser {
   id: UUID;
   email: string;

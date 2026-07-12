@@ -121,6 +121,31 @@ export const authApi = {
     token: string;
     new_password: string;
   }) => unwrap<{ ok: boolean }>(api.post("/auth/password-reset/confirm", body)),
+  // ── PHASE2 L1.1/L1.3 — profile, security, sessions (all self-scoped) ──
+  profile: () => unwrap<import("../types").Profile>(api.get("/auth/profile")),
+  profileUpdate: (body: Partial<Pick<import("../types").Profile, "display_name" | "phone" | "timezone" | "language" | "preferences">>) =>
+    unwrap<import("../types").Profile>(api.patch("/auth/profile", body)),
+  photoUpload: (file: File | Blob) => {
+    const form = new FormData();
+    form.append("photo", file);
+    return unwrap<{ ok: boolean }>(api.put("/auth/profile/photo", form));
+  },
+  photoDelete: () => unwrap<{ ok: boolean }>(api.delete("/auth/profile/photo")),
+  passwordChange: (body: { current_password: string; new_password: string }) =>
+    unwrap<{ ok: boolean } & TokenPair>(api.post("/auth/password-change", body)),
+  emailChangeRequest: (body: { new_email: string; current_password: string }) =>
+    unwrap<{ ok: boolean }>(api.post("/auth/email-change", body)),
+  emailChangeConfirm: (token: string) =>
+    unwrap<{ ok: boolean; email: string }>(api.post("/auth/email-change/confirm", { token })),
+  mfaDisable: (current_password: string) =>
+    unwrap<{ ok: boolean }>(api.post("/auth/mfa/disable", { current_password })),
+  sessions: () => unwrap<import("../types").DeviceSessionRow[]>(api.get("/auth/sessions")),
+  sessionRevoke: (id: string) =>
+    unwrap<{ ok: boolean }>(api.post(`/auth/sessions/${id}/revoke`, {})),
+  sessionsRevokeOthers: () =>
+    unwrap<{ ok: boolean; revoked: number }>(api.post("/auth/sessions/revoke-others", {})),
+  loginHistory: () => unwrap<import("../types").LoginEventRow[]>(api.get("/auth/login-history")),
+  myActivity: () => unwrap<import("../types").ActivityRow[]>(api.get("/auth/my-activity")),
 };
 
 // ---- Billing ---------------------------------------------------------------

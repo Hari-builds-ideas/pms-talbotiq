@@ -3,6 +3,7 @@ import { AppLayout } from "@/app/shell/AppLayout";
 import { AuthGuard, RoleGate } from "@/app/guards";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ForgotPasswordPage, ResetPasswordPage } from "@/features/auth/PasswordResetPages";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
@@ -97,6 +98,8 @@ export function AppRouter() {
           {/* Weekly Check-ins (RW_BUILD_3) — everyday surface for ALL roles; scope
               (own / a manager's reports) is enforced server-side. */}
           <Route path="checkins/*" element={<CheckInsPage />} />
+          {/* My settings — self-service profile/security, all roles (PHASE2 L1.1). */}
+          <Route path="settings" element={<SettingsPage />} />
           {/* v1: succession + nine-box hidden (deferred to v2). Route + component kept. */}
           {!isHiddenInV1("/succession") && (
             <Route

@@ -191,6 +191,10 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <UserCog className="h-4 w-4" />
+              My settings
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void logout()}>
               <LogOut className="h-4 w-4" />
               Sign out

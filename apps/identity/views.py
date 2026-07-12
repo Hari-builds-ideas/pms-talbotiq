@@ -15,12 +15,15 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.audit.services import record
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import Tenant
 
+from . import security
 from .exceptions import InvalidCredentials
+from .models import DeviceSession, LoginEvent
 from .mfa import (
     base32_secret,
     confirmed_device,
@@ -45,6 +48,18 @@ from .tokens import issue_tokens_for_user
 logger = logging.getLogger("pms.identity")
 
 
+def _log_for_slug(tenant_slug: str, email: str, event: str, request) -> None:
+    """Record a login-history row for an UNAUTHENTICATED attempt: the tenant is
+    resolved by slug (unknown slug → nothing to record, no probe oracle)."""
+    tenant = Tenant.objects.filter(slug=tenant_slug).first()
+    if tenant is not None:
+        with tenant_context(tenant):
+            user = User.objects.filter(email=User.objects.normalize_email(email)).first()
+        security.log_event(
+            tenant_id=tenant.id, email=email, event=event, user=user, request=request
+        )
+
+
 class LoginView(APIView):
     """Step 1 of login. Validates tenant-scoped credentials. If MFA is enabled,
     returns an mfa_required marker + short-lived MFA token instead of issuing
@@ -58,15 +73,37 @@ class LoginView(APIView):
     throttle_classes = [AtomicAnonThrottle]
 
     def post(self, request):
+        # L1.3 — account-level lockout BEFORE touching credentials. Counts
+        # attempts per (tenant, email) whether or not the account exists; the
+        # same 429 either way (no enumeration). Cleared on success below.
+        tenant_slug = str(request.data.get("tenant_slug") or "")
+        email = str(request.data.get("email") or "")
+        if security.register_attempt(tenant_slug, email):
+            _log_for_slug(tenant_slug, email, LoginEvent.Event.LOCKOUT, request)
+            return Response(
+                {"detail": "Too many login attempts. Try again later."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
         serializer = LoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except InvalidCredentials:
+            _log_for_slug(tenant_slug, email, LoginEvent.Event.LOGIN_FAILED, request)
+            raise
         user = serializer.validated_data["user"]
 
         if user.mfa_enabled:
+            # Not a completed login yet — the attempt counter stays until MFA passes.
             return Response({"mfa_required": True, "mfa_token": make_mfa_token(user)})
 
-        access, refresh = issue_tokens_for_user(user)
+        security.clear_attempts(tenant_slug, email)
+        session = security.start_device_session(request, user)
+        access, refresh = issue_tokens_for_user(user, device_id=session.id)
         establish_session(request, user)
+        security.log_event(
+            tenant_id=user.tenant_id, email=user.email,
+            event=LoginEvent.Event.LOGIN_OK, user=user, request=request,
+        )
         return Response({"mfa_required": False, "access": access, "refresh": refresh})
 
 
@@ -87,10 +124,20 @@ class MfaChallengeView(APIView):
 
         device = confirmed_device(user)
         if device is None or not device.verify_token(serializer.validated_data["code"]):
+            security.log_event(
+                tenant_id=user.tenant_id, email=user.email,
+                event=LoginEvent.Event.MFA_FAILED, user=user, request=request,
+            )
             raise InvalidCredentials("Invalid MFA code.", "mfa_invalid")
 
-        access, refresh = issue_tokens_for_user(user)
+        security.clear_attempts(user.tenant.slug, user.email)
+        session = security.start_device_session(request, user)
+        access, refresh = issue_tokens_for_user(user, device_id=session.id)
         establish_session(request, user)
+        security.log_event(
+            tenant_id=user.tenant_id, email=user.email,
+            event=LoginEvent.Event.LOGIN_OK, user=user, request=request,
+        )
         return Response({"access": access, "refresh": refresh})
 
 
@@ -144,12 +191,23 @@ class LogoutView(APIView):
         serializer = LogoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            RefreshToken(serializer.validated_data["refresh"]).blacklist()
+            token = RefreshToken(serializer.validated_data["refresh"])
+            token.blacklist()
         except TokenError:
             return Response(
                 {"detail": "Invalid or expired refresh token."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # L1.3 — close the device session this refresh token belonged to.
+        did = token.payload.get("did")
+        if did:
+            session = DeviceSession.objects.filter(id=did, user=request.user).first()
+            if session is not None and session.revoked_at is None:
+                security.revoke_session(session, request=request)
+        security.log_event(
+            tenant_id=request.user.tenant_id, email=request.user.email,
+            event=LoginEvent.Event.LOGOUT, user=request.user, request=request,
+        )
         request.session.flush()
         return Response(status=status.HTTP_205_RESET_CONTENT)
 
@@ -322,3 +380,113 @@ class OidcCompleteView(APIView):
                 "role": user.role,
             }
         )
+
+
+# ─── PHASE2 L1.3 — device sessions, login history, device-aware refresh ───────
+
+
+class DeviceAwareTokenRefreshView(TokenRefreshView):
+    """Drop-in replacement for the stock refresh view: identical rotation +
+    blacklist behavior, PLUS the ``did`` (device-session) claim is re-checked —
+    a REVOKED session cannot rotate, so revocation takes effect within the
+    access-token lifetime. Tokens without a did claim refresh as before
+    (additive rollout — no auth rewrite)."""
+
+    def post(self, request, *args, **kwargs):
+        did = None
+        raw = request.data.get("refresh")
+        if raw:
+            try:
+                did = RefreshToken(raw).payload.get("did")
+            except TokenError:
+                pass  # the stock serializer rejects it properly below
+        if did and security.session_is_revoked(did):
+            return Response(
+                {"detail": "This session has been revoked. Sign in again."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            security.touch_session(did)
+        return response
+
+
+def _current_did(request) -> str | None:
+    """The device-session id of the CALLING token (request.auth is the validated
+    access token)."""
+    payload = getattr(request.auth, "payload", None) or {}
+    return payload.get("did")
+
+
+class SessionListView(APIView):
+    """``GET /api/auth/sessions`` — the caller's ACTIVE device sessions (self-only)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        current = _current_did(request)
+        rows = (
+            DeviceSession.objects.filter(user=request.user, revoked_at__isnull=True)
+            .order_by("-last_seen")[:50]
+        )
+        return Response([
+            {
+                "id": str(s.id),
+                "ip": s.ip,
+                "user_agent": s.user_agent,
+                "created_at": s.created_at,
+                "last_seen": s.last_seen,
+                "current": str(s.id) == current,
+            }
+            for s in rows
+        ])
+
+
+class SessionRevokeView(APIView):
+    """``POST /api/auth/sessions/<pk>/revoke`` — revoke ONE of the caller's own
+    sessions (404 for anyone else's — no existence leak)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        session = DeviceSession.objects.filter(id=pk, user=request.user).first()
+        if session is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        security.revoke_session(session, request=request)
+        return Response({"ok": True})
+
+
+class SessionRevokeOthersView(APIView):
+    """``POST /api/auth/sessions/revoke-others`` — sign out everywhere else:
+    revokes every active session of the caller EXCEPT the current one."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current = _current_did(request)
+        others = DeviceSession.objects.filter(user=request.user, revoked_at__isnull=True)
+        if current:
+            others = others.exclude(id=current)
+        count = 0
+        for session in others:
+            security.revoke_session(session, request=request)
+            count += 1
+        return Response({"ok": True, "revoked": count})
+
+
+class LoginHistoryView(APIView):
+    """``GET /api/auth/login-history`` — the caller's own recent auth events."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = LoginEvent.objects.filter(user=request.user).order_by("-created_at")[:50]
+        return Response([
+            {
+                "event": e.event,
+                "ip": e.ip,
+                "user_agent": e.user_agent,
+                "created_at": e.created_at,
+            }
+            for e in rows
+        ])

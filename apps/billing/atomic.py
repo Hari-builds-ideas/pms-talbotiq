@@ -101,3 +101,13 @@ def incr_window(logical_key: str, *, ttl_ms: int) -> int:
     """Atomically increment a fixed-window counter (TTL set on first hit) and
     return the new count. The caller enforces the limit against the return."""
     return int(_eval(_INCR_WINDOW, 1, _full_key(logical_key), int(ttl_ms)))
+
+
+def reset_window(logical_key: str) -> None:
+    """Drop a fixed-window counter early (e.g. clear a login-lockout counter after
+    a successful login). Best-effort: a Redis outage must not break the caller —
+    the same soft posture as the budget fail-open."""
+    try:
+        get_redis_connection("default").delete(_full_key(logical_key))
+    except Exception:  # noqa: BLE001
+        pass

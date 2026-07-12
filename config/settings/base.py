@@ -317,6 +317,13 @@ SIMPLE_JWT = {
     # serializer already preserves them across rotation — no override needed.
 }
 
+# ─── Login lockout (PHASE2 L1.3 — additive account-level brute-force guard) ──
+# Attempts per (tenant, email) window before login answers 429. Counts ATTEMPTS
+# and resets on success; keyed by the attempted email whether or not the account
+# exists (no enumeration). 0 disables. The per-IP anon throttle still applies.
+LOGIN_LOCKOUT_ATTEMPTS = env.int("LOGIN_LOCKOUT_ATTEMPTS", default=8)
+LOGIN_LOCKOUT_WINDOW_SECONDS = env.int("LOGIN_LOCKOUT_WINDOW_SECONDS", default=900)
+
 # ─── Email / SMTP (password reset + notifications) ─────────────────────
 # Default is the console backend (dev: mail prints to the web container log).
 # PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus

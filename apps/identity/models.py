@@ -160,3 +160,64 @@ class SamlIdpConfig(TenantScopedModel):
 
     def __str__(self):
         return f"SAML config for tenant {self.tenant_id} ({'on' if self.enabled else 'off'})"
+
+
+class DeviceSession(TenantScopedModel):
+    """A login session/device (PHASE2 L1.3). Created at token issue; its id rides
+    the JWTs as the ``did`` claim (which survives simplejwt refresh rotation, like
+    the tenant/role claims). Revocation is enforced at REFRESH time — a revoked
+    session cannot rotate, so it dies within the access-token lifetime (≤15 min).
+    Additive: the token scheme itself is unchanged."""
+
+    user = models.ForeignKey(
+        "identity.User", on_delete=models.CASCADE, related_name="device_sessions"
+    )
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+    last_seen = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "identity_device_session"
+        indexes = [models.Index(fields=["tenant", "user", "-last_seen"])]
+
+    @property
+    def active(self) -> bool:
+        return self.revoked_at is None
+
+    def __str__(self):
+        return f"session {self.id} for {self.user_id} ({'active' if self.active else 'revoked'})"
+
+
+class LoginEvent(TenantScopedModel):
+    """Login history (PHASE2 L1.3) — success/failure/lockout/logout/revocation per
+    attempt, with best-effort ip/user-agent. ``user`` is null for failed attempts
+    against unknown emails (the attempted email is still recorded, tenant-scoped)."""
+
+    class Event(models.TextChoices):
+        LOGIN_OK = "LOGIN_OK", "Login succeeded"
+        LOGIN_FAILED = "LOGIN_FAILED", "Login failed"
+        LOCKOUT = "LOCKOUT", "Locked out (too many attempts)"
+        MFA_FAILED = "MFA_FAILED", "MFA code rejected"
+        LOGOUT = "LOGOUT", "Logged out"
+        SESSION_REVOKED = "SESSION_REVOKED", "Session revoked"
+        PASSWORD_CHANGED = "PASSWORD_CHANGED", "Password changed"
+
+    user = models.ForeignKey(
+        "identity.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="login_events",
+    )
+    email = models.EmailField()
+    event = models.CharField(max_length=20, choices=Event.choices)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+
+    class Meta:
+        db_table = "identity_login_event"
+        indexes = [models.Index(fields=["tenant", "user", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.event} {self.email} @ {self.created_at}"

@@ -73,6 +73,12 @@ class UserListCreateView(RBACMixin, APIView):
         serializer = CreateUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        # Headcount gate (PHASE2 L1.4): seats + the plan's employee limit.
+        from apps.billing.services import can_add_user
+
+        allowed, reason = can_add_user(request.user.tenant_id)
+        if not allowed:
+            return Response({"detail": reason}, status=status.HTTP_409_CONFLICT)
         manager = None
         if data.get("manager") is not None:
             manager = get_object_or_404(User.objects.all(), pk=data["manager"])

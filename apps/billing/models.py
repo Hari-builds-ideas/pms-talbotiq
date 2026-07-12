@@ -144,3 +144,55 @@ class AgentBudget(TenantScopedModel):
 
     def __str__(self):
         return f"budget(tenant={self.tenant_id}, {self.agent_code}/{self.window})={self.limit}"
+
+
+class Subscription(TenantScopedModel):
+    """The tenant's INTERNAL subscription (PHASE2 L1.4) — plan + lifecycle status,
+    driven by an admin (no payment gateway; that's the human-reviewed payments
+    lane, docs/PHASE2/PAYMENTS_DESIGN.md). The subscription is the single source
+    of truth: setting the plan syncs the Entitlement's packs, and the feature
+    flags flip immediately. Features stay on through TRIAL/ACTIVE/PAST_DUE/GRACE
+    and turn off in CANCELLED/EXPIRED (the core PMS itself is never gated)."""
+
+    class Plan(models.TextChoices):
+        STARTER = "STARTER", "Starter"
+        PROFESSIONAL = "PROFESSIONAL", "Professional"
+        ENTERPRISE = "ENTERPRISE", "Enterprise"
+
+    class Status(models.TextChoices):
+        TRIAL = "TRIAL", "Trial"
+        ACTIVE = "ACTIVE", "Active"
+        PAST_DUE = "PAST_DUE", "Past due"
+        GRACE = "GRACE", "Grace period"
+        CANCELLED = "CANCELLED", "Cancelled"
+        EXPIRED = "EXPIRED", "Expired"
+
+    #: from → the set of allowed next states (same-state is always allowed).
+    TRANSITIONS = {
+        Status.TRIAL: {Status.ACTIVE, Status.CANCELLED, Status.EXPIRED},
+        Status.ACTIVE: {Status.PAST_DUE, Status.CANCELLED, Status.EXPIRED},
+        Status.PAST_DUE: {Status.ACTIVE, Status.GRACE, Status.CANCELLED},
+        Status.GRACE: {Status.ACTIVE, Status.EXPIRED},
+        Status.CANCELLED: {Status.ACTIVE},
+        Status.EXPIRED: {Status.ACTIVE},
+    }
+
+    plan = models.CharField(max_length=16, choices=Plan.choices, default=Plan.STARTER)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    current_period_end = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "billing_subscription"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], name="uq_subscription_tenant"),
+        ]
+
+    @property
+    def features_active(self) -> bool:
+        return self.status in (
+            self.Status.TRIAL, self.Status.ACTIVE, self.Status.PAST_DUE, self.Status.GRACE
+        )
+
+    def __str__(self):
+        return f"subscription(tenant={self.tenant_id}, {self.plan}/{self.status})"

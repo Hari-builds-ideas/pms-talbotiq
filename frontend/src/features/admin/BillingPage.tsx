@@ -32,7 +32,9 @@ import {
 } from "./useAdmin";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { FEATURE_KEYS, FEATURE_META, type FeatureKey } from "@/lib/enums";
-import { notifySuccess } from "@/lib/toast";
+import { notifyError, notifySuccess } from "@/lib/toast";
+import { billingApi } from "@/lib/api/endpoints";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { mapApiError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +66,9 @@ export function BillingPage() {
           )
         }
       />
+
+      {/* PHASE2 L1.4 — the internal subscription (plan + lifecycle; no gateway). */}
+      <SubscriptionCard onChanged={() => void refreshFeatures()} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
@@ -336,5 +341,56 @@ function ErrorWrap({ error, retry }: { error: unknown; retry: () => void }) {
       <PageHeader eyebrow="Settings" title="Entitlements" />
       <ErrorState error={error} onRetry={retry} />
     </div>
+  );
+}
+
+/** PHASE2 L1.4 — plan picker + lifecycle status (internal, admin-driven). */
+function SubscriptionCard({ onChanged }: { onChanged: () => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["billing", "subscription"], queryFn: billingApi.subscription });
+  const update = useMutation({
+    mutationFn: (body: { plan?: string; status?: string }) => billingApi.subscriptionUpdate(body),
+    onSuccess: () => {
+      notifySuccess("Subscription updated", "Feature access changed immediately.");
+      void qc.invalidateQueries({ queryKey: ["billing"] });
+      onChanged();
+    },
+    onError: (e: unknown) => notifyError(e),
+  });
+  const s = q.data;
+  return (
+    <Panel title="Subscription">
+      {q.isLoading || !s ? (
+        <LinesSkeleton lines={3} />
+      ) : (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm text-muted-foreground">Plan</span>
+            {Object.entries(s.plans).map(([code, meta]) => (
+              <Button
+                key={code}
+                size="sm"
+                variant={s.plan === code ? "default" : "outline"}
+                onClick={() => code !== s.plan && update.mutate({ plan: code })}
+                loading={update.isPending && update.variables?.plan === code}
+              >
+                {meta.label}
+              </Button>
+            ))}
+            <Badge variant={s.features_active ? "success" : "danger"} className="ml-auto">
+              {s.status}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {s.employee_limit
+              ? `Up to ${s.employee_limit} employees on this plan.`
+              : "Unlimited employees on this plan."}{" "}
+            Plan features: {s.plan_features.length ? s.plan_features.join(", ") : "AI packs only"}.
+            Status changes (trial/past-due/grace/cancel) follow the internal lifecycle — payments
+            arrive in a later, human-reviewed build.
+          </p>
+        </div>
+      )}
+    </Panel>
   );
 }

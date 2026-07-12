@@ -97,6 +97,18 @@ export interface ActivityRow {
   created_at: string;
 }
 
+export interface SubscriptionInfo {
+  plan: string;
+  status: string;
+  features_active: boolean;
+  employee_limit: number;
+  plan_features: string[];
+  packs: string[];
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+  plans: Record<string, { label: string; employee_limit: number; features: string[] }>;
+}
+
 export interface InvitationRow {
   id: UUID;
   email: string;

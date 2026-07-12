@@ -11,6 +11,7 @@ from .views import (
     FeatureFlagsView,
     MyFeaturesView,
     SeatsView,
+    SubscriptionView,
     UpgradePromptView,
     UpgradeView,
 )
@@ -24,4 +25,6 @@ urlpatterns = [
     path("feature-flags", FeatureFlagsView.as_view(), name="feature-flags"),
     path("my-features", MyFeaturesView.as_view(), name="my-features"),
     path("upgrade-prompt", UpgradePromptView.as_view(), name="upgrade-prompt"),
+    # ─── PHASE2 L1.4 — the internal subscription (plan + lifecycle; no gateway) ───
+    path("subscription", SubscriptionView.as_view(), name="subscription"),
 ]

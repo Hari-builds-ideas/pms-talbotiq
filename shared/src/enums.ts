@@ -140,7 +140,9 @@ export const ROADMAP_SOURCE = ["DETERMINISTIC", "AI"] as const;
 export const FEATURE_PACKS = ["STARTER", "FULL_AI"] as const;
 export type FeaturePack = (typeof FEATURE_PACKS)[number];
 
-/** Every gated feature key (billing/feature-flags + my-features map). */
+/** Every gated feature key (billing/feature-flags + my-features map).
+ *  The last five are PLAN-tier features (PHASE2 L1.4) — granted by the tenant's
+ *  subscription plan, not the AI packs. */
 export const FEATURE_KEYS = [
   "agent1",
   "agent2",
@@ -150,8 +152,17 @@ export const FEATURE_KEYS = [
   "chat",
   "jd_generator",
   "career_roadmap",
+  "advanced_analytics",
+  "custom_branding",
+  "sso",
+  "api_access",
+  "audit_access",
 ] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
+
+/** The internal subscription plans (PHASE2 L1.4 — no payment gateway yet). */
+export const PLANS = ["STARTER", "PROFESSIONAL", "ENTERPRISE"] as const;
+export type Plan = (typeof PLANS)[number];
 
 /** Human-readable names + what each gated feature does (for upgrade UI). */
 export const FEATURE_META: Record<
@@ -196,6 +207,32 @@ export const FEATURE_META: Record<
   career_roadmap: {
     label: "Career Roadmap AI",
     description: "AI-enriched development roadmaps.",
+    pack: "FULL_AI",
+  },
+  // ── PLAN-tier features (PHASE2 L1.4) — granted by the subscription plan. ──
+  advanced_analytics: {
+    label: "Advanced Analytics",
+    description: "Department analytics, calibration and history (Professional+).",
+    pack: "FULL_AI",
+  },
+  custom_branding: {
+    label: "Custom Branding",
+    description: "Your logo and colors across the workspace (Enterprise).",
+    pack: "FULL_AI",
+  },
+  sso: {
+    label: "Enterprise SSO",
+    description: "SAML / OIDC single sign-on (Enterprise).",
+    pack: "FULL_AI",
+  },
+  api_access: {
+    label: "API Access",
+    description: "Programmatic access to the tenant API (Enterprise).",
+    pack: "FULL_AI",
+  },
+  audit_access: {
+    label: "Audit Export",
+    description: "Extended audit console access (Enterprise).",
     pack: "FULL_AI",
   },
 };

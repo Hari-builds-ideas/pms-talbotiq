@@ -195,16 +195,13 @@ class InvitationAcceptView(APIView):
             return Response({"password": exc.messages}, status=400)
 
         with tenant_context(row.tenant):
-            # Seat enforcement (server-side, at join time).
-            from apps.billing.services import get_or_create_entitlement
+            # Headcount enforcement (server-side, at join time): seats AND the
+            # plan's employee limit (PHASE2 L1.4).
+            from apps.billing.services import can_add_user
 
-            entitlement = get_or_create_entitlement(row.tenant_id)
-            active = User.objects.filter(is_active=True).count()
-            if active >= entitlement.seat_count:
-                return Response(
-                    {"detail": "No seats available — ask your admin to add seats."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            allowed, reason = can_add_user(row.tenant_id)
+            if not allowed:
+                return Response({"detail": reason}, status=status.HTTP_409_CONFLICT)
             try:
                 user = User.objects.create_user(
                     row.email,

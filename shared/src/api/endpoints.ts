@@ -152,6 +152,11 @@ export const authApi = {
 
 export const billingApi = {
   myFeatures: () => unwrap<FeatureFlags>(api.get("/billing/my-features")),
+  // ── PHASE2 L1.4 — the internal subscription (Admin) ──
+  subscription: () =>
+    unwrap<import("../types").SubscriptionInfo>(api.get("/billing/subscription")),
+  subscriptionUpdate: (body: { plan?: string; status?: string }) =>
+    unwrap<import("../types").SubscriptionInfo>(api.patch("/billing/subscription", body)),
   featureFlags: () => unwrap<FeatureFlags>(api.get("/billing/feature-flags")),
   entitlement: () => unwrap<Entitlement>(api.get("/billing/entitlement")),
   upgradePrompt: () => unwrap<UpgradePrompt>(api.get("/billing/upgrade-prompt")),

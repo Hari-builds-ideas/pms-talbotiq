@@ -25,9 +25,9 @@ from apps.core.cache import invalidate_tenant_cache, tenant_cache_key
 from apps.core.metrics import record_budget_outcome
 from apps.tenancy.context import tenant_context
 
-from . import atomic
+from . import atomic, packs
 from .exceptions import BudgetExceeded
-from .models import DEFAULT_PACKS, AgentBudget, Entitlement, TokenLedger
+from .models import DEFAULT_PACKS, AgentBudget, Entitlement, Subscription, TokenLedger
 from .packs import (
     ALL_FEATURES,
     FULL_AI,
@@ -286,8 +286,14 @@ def feature_flags_for(tenant) -> dict:
     if cached is not None:
         return cached
     entitlement = get_entitlement_cached(tenant)
-    unlocked = entitlement.unlocked_features()
-    flags = {feature: (feature in unlocked) for feature in sorted(ALL_FEATURES)}
+    unlocked = set(entitlement.unlocked_features())
+    # PHASE2 L1.4 — the subscription adds plan-tier features and acts as the kill
+    # switch: CANCELLED/EXPIRED turns every gated feature off (the core PMS is
+    # never gated). Plan features come from the server-side catalogue only.
+    subscription = get_or_create_subscription(tenant)
+    unlocked |= set(packs.PLAN_CATALOG.get(subscription.plan, {}).get("features", ()))
+    active = subscription.features_active
+    flags = {feature: (active and feature in unlocked) for feature in sorted(ALL_FEATURES)}
     cache.set(key, flags, _FEATURE_FLAGS_CACHE_TTL)
     return flags
 
@@ -421,3 +427,98 @@ def release_budget(tenant, agent_code, *, window=AgentBudget.Window.DAILY, now=N
     period = _budget_period(window, now)
     key = tenant_cache_key(tid, _BUDGET_COUNTER_PART, agent_code, window, period)
     return atomic.release(key)
+
+
+# ── subscriptions & plans (PHASE2 L1.4 — internal; NO payment gateway) ─────────
+
+
+class InvalidSubscriptionTransition(Exception):
+    """A status change outside Subscription.TRANSITIONS."""
+
+
+def get_or_create_subscription(tenant) -> Subscription:
+    """The tenant's subscription; a missing row defaults to STARTER/ACTIVE (matches
+    the historical entitlement default, so existing tenants are unaffected)."""
+    tid = _tenant_id(tenant)
+    with tenant_context(tid):
+        subscription = Subscription.objects.filter(tenant_id=tid).first()
+        if subscription is None:
+            subscription = Subscription.objects.create(tenant_id=tid)
+        return subscription
+
+
+def set_plan(tenant, plan: str, *, actor=None) -> Subscription:
+    """Change the tenant's plan (admin-driven; payments later drive this same
+    call from verified events). SYNCS the entitlement's packs from the plan
+    catalogue — the subscription is the single source of truth — audits, and
+    invalidates the tenant cache so access flips immediately."""
+    catalog = packs.PLAN_CATALOG.get(plan)
+    if catalog is None:
+        raise ValueError(f"Unknown plan: {plan}")
+    tid = _tenant_id(tenant)
+    with tenant_context(tid):
+        subscription = get_or_create_subscription(tid)
+        previous = subscription.plan
+        record(
+            action="billing.plan_changed",
+            actor=actor,
+            target_type="subscription",
+            target_id=subscription.id,
+            metadata={"from": previous, "to": plan},
+            tenant=tid,
+        )
+        subscription.plan = plan
+        subscription.save(update_fields=["plan"])
+        entitlement = get_or_create_entitlement(tid)
+        entitlement.feature_packs = list(catalog["packs"])
+        entitlement.save(update_fields=["feature_packs"])
+    invalidate_tenant_cache(tid)
+    return subscription
+
+
+def set_subscription_status(tenant, status: str, *, actor=None) -> Subscription:
+    """Move the subscription through its lifecycle (validated transitions;
+    same-state is a no-op). Audited; cache invalidated (the kill switch —
+    CANCELLED/EXPIRED — takes effect immediately)."""
+    tid = _tenant_id(tenant)
+    with tenant_context(tid):
+        subscription = get_or_create_subscription(tid)
+        if status != subscription.status:
+            allowed = Subscription.TRANSITIONS.get(subscription.status, set())
+            if status not in allowed:
+                raise InvalidSubscriptionTransition(
+                    f"{subscription.status} → {status} is not a valid transition."
+                )
+            record(
+                action="billing.subscription_status_changed",
+                actor=actor,
+                target_type="subscription",
+                target_id=subscription.id,
+                metadata={"from": subscription.status, "to": status},
+                tenant=tid,
+            )
+            subscription.status = status
+            subscription.save(update_fields=["status"])
+    invalidate_tenant_cache(tid)
+    return subscription
+
+
+def can_add_user(tenant) -> tuple[bool, str]:
+    """Server-side headcount gate for onboarding (admin create + invite accept):
+    BOTH the entitlement's seat_count AND the plan's employee_limit must allow
+    another active user. Returns (allowed, reason-when-denied)."""
+    from apps.identity.models import User
+
+    tid = _tenant_id(tenant)
+    with tenant_context(tid):
+        active = User.objects.filter(is_active=True).count()
+        entitlement = get_or_create_entitlement(tid)
+        # seat_count == 0 means "not configured" (the provisioning default), NOT
+        # zero seats — same convention as the plan employee_limit below.
+        if entitlement.seat_count and active >= entitlement.seat_count:
+            return False, "No seats available — add seats in Entitlements."
+        subscription = get_or_create_subscription(tid)
+        limit = int(packs.PLAN_CATALOG.get(subscription.plan, {}).get("employee_limit", 0))
+        if limit and active >= limit:
+            return False, f"The {subscription.plan.title()} plan allows {limit} employees — upgrade the plan."
+    return True, ""

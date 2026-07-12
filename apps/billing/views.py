@@ -23,9 +23,13 @@ from apps.rbac.mixins import RBACMixin
 
 from .serializers import EntitlementSerializer
 from .services import (
+    InvalidSubscriptionTransition,
     feature_flags_for,
     get_entitlement_cached,
+    get_or_create_subscription,
+    set_plan,
     set_seats,
+    set_subscription_status,
     upgrade_prompt,
     upgrade_to_full_ai,
 )
@@ -131,3 +135,58 @@ class MyFeaturesView(APIView):
 
     def get(self, request):
         return Response(feature_flags_for(request.user.tenant))
+
+
+class SubscriptionView(RBACMixin, APIView):
+    """``GET, PATCH /api/billing/subscription`` (MANAGE_TENANT — Admin).
+
+    PHASE2 L1.4 — the INTERNAL subscription: an admin sets the tenant's plan
+    and/or lifecycle status; the entitlement packs sync from the plan catalogue
+    and access flips immediately. No payment gateway (that's the human-reviewed
+    payments lane)."""
+
+    required_capability = Capability.MANAGE_TENANT
+
+    @staticmethod
+    def _payload(subscription):
+        from .packs import PLAN_CATALOG
+
+        catalog = PLAN_CATALOG.get(subscription.plan, {})
+        return {
+            "plan": subscription.plan,
+            "status": subscription.status,
+            "features_active": subscription.features_active,
+            "employee_limit": catalog.get("employee_limit", 0),
+            "plan_features": sorted(catalog.get("features", ())),
+            "packs": list(catalog.get("packs", ())),
+            "trial_ends_at": subscription.trial_ends_at,
+            "current_period_end": subscription.current_period_end,
+            "plans": {
+                code: {
+                    "label": c["label"],
+                    "employee_limit": c["employee_limit"],
+                    "features": sorted(c["features"]),
+                }
+                for code, c in PLAN_CATALOG.items()
+            },
+        }
+
+    def get(self, request):
+        return Response(self._payload(get_or_create_subscription(request.user.tenant_id)))
+
+    def patch(self, request):
+        subscription = get_or_create_subscription(request.user.tenant_id)
+        plan = request.data.get("plan")
+        new_status = request.data.get("status")
+        try:
+            if plan and plan != subscription.plan:
+                subscription = set_plan(request.user.tenant_id, plan, actor=request.user)
+            if new_status and new_status != subscription.status:
+                subscription = set_subscription_status(
+                    request.user.tenant_id, new_status, actor=request.user
+                )
+        except ValueError as exc:
+            return Response({"plan": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+        except InvalidSubscriptionTransition as exc:
+            return Response({"status": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self._payload(subscription))

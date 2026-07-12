@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useAuth } from "@/lib/auth/AuthContext";
 import { ChatProvider, useChatPanel } from "@/features/chat/ChatPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CommandPalette } from "@/features/command/CommandPalette";
@@ -29,13 +30,46 @@ export function AppLayout() {
   );
 }
 
+/** hex "#RRGGBB" → the "H S% L%" triple the CSS tokens use. */
+function hexToHslTriple(hex: string): string | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+  }
+  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
 /** The shell body. Reads the chat panel state so the content column shrinks by the
  * panel's width when it's open (≥sm) — page and copilot truly side by side (E2);
- * on mobile the panel overlays instead (it's full-width there anyway). */
+ * on mobile the panel overlays instead (it's full-width there anyway). Applies the
+ * tenant's primary brand color when the plan includes custom_branding (L1.5). */
 function ShellFrame() {
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(true);
   const { open: chatOpen, width: chatWidth } = useChatPanel();
+  const { me } = useAuth();
+  const brandColor = me?.tenant_branding?.primary_color;
+  useEffect(() => {
+    const triple = brandColor ? hexToHslTriple(brandColor) : null;
+    if (triple) document.documentElement.style.setProperty("--primary", triple);
+    return () => {
+      document.documentElement.style.removeProperty("--primary");
+    };
+  }, [brandColor]);
   return (
     <div
       className={cn(

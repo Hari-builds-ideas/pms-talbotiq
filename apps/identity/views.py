@@ -48,6 +48,23 @@ from .tokens import issue_tokens_for_user
 logger = logging.getLogger("pms.identity")
 
 
+def _tenant_branding(user) -> dict | None:
+    """The tenant's branding hooks (PHASE2 L1.5) — served only when the plan's
+    ``custom_branding`` feature is on. Best-effort: never breaks /me."""
+    try:
+        from apps.administration.models import TenantConfig
+        from apps.billing.services import feature_flags_for
+
+        if not feature_flags_for(user.tenant).get("custom_branding"):
+            return None
+        config = TenantConfig.objects.filter(tenant_id=user.tenant_id).first()
+        org = (config.settings if config else {}).get("org", {}) or {}
+        branding = {k: org[k] for k in ("logo_url", "primary_color") if org.get(k)}
+        return branding or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _log_for_slug(tenant_slug: str, email: str, event: str, request) -> None:
     """Record a login-history row for an UNAUTHENTICATED attempt: the tenant is
     resolved by slug (unknown slug → nothing to record, no probe oracle)."""
@@ -344,6 +361,9 @@ class MeView(APIView):
                 # enforces (apps/rbac/matrix.py) — the client's single source of
                 # truth for hiding controls a role can't use (FINAL D2).
                 "capabilities": capabilities_for_role(u.role),
+                # PHASE2 L1.5 — tenant branding (logo/color), only when the plan
+                # includes custom_branding; else null (the default brand shows).
+                "tenant_branding": _tenant_branding(u),
             }
         )
 

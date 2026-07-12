@@ -18,6 +18,8 @@ cross-tenant referenced id → 404 (``get_object_or_404`` over the scoped manage
 """
 from __future__ import annotations
 
+import re
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -212,6 +214,68 @@ class UserReportingLineView(RBACMixin, APIView):
 
 
 # ── tenant config ────────────────────────────────────────────────────────────
+
+
+#: Org-settings keys (PHASE2 L1.5) stored under TenantConfig.settings["org"].
+_ORG_KEYS = ("name", "timezone", "language", "logo_url", "primary_color")
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+class OrgSettingsView(RBACMixin, APIView):
+    """``GET, PATCH /api/admin/org-settings`` (MANAGE_TENANT — Admin).
+
+    PHASE2 L1.5 — plain, typed org settings (name/timezone/language defaults) +
+    the branding hooks (logo_url/primary_color), stored in the existing
+    TenantConfig bag under ``org``. Branding fields are gated server-side by the
+    plan's ``custom_branding`` feature. Served to every user via /me
+    (``tenant_branding``) so the shell can theme. Custom domains are a designed
+    future item (docs/PHASE2/FUTURE_INTEGRATIONS.md), not built."""
+
+    _caps = {"GET": Capability.MANAGE_TENANT, "PATCH": Capability.MANAGE_TENANT}
+
+    def get_permissions(self):
+        self.required_capability = self._caps.get(self.request.method)
+        return super().get_permissions()
+
+    def get(self, request):
+        config = services.get_tenant_config(request.user)
+        return Response(config.settings.get("org", {}))
+
+    def patch(self, request):
+        import zoneinfo
+
+        from apps.audit.services import record
+        from apps.billing.services import feature_flags_for
+
+        updates = {k: request.data[k] for k in _ORG_KEYS if k in request.data}
+        if not updates:
+            return Response({"detail": "Nothing to update."}, status=400)
+        if "timezone" in updates:
+            try:
+                zoneinfo.ZoneInfo(str(updates["timezone"]))
+            except Exception:
+                return Response({"timezone": ["Unknown timezone."]}, status=400)
+        if "primary_color" in updates and updates["primary_color"]:
+            if not _HEX_COLOR_RE.match(str(updates["primary_color"])):
+                return Response({"primary_color": ["Use a #RRGGBB hex color."]}, status=400)
+        if ("logo_url" in updates or "primary_color" in updates) and not feature_flags_for(
+            request.user.tenant
+        ).get("custom_branding"):
+            return Response(
+                {"detail": "Custom branding is an Enterprise-plan feature."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        config = services.get_tenant_config(request.user)
+        org = dict(config.settings.get("org", {}))
+        org.update({k: str(v) for k, v in updates.items()})
+        config.settings["org"] = org
+        record(
+            action="admin.org_settings_updated", actor=request.user,
+            target_type="tenant_config", target_id=config.id,
+            metadata={"keys": sorted(updates)}, tenant=request.user.tenant_id,
+        )
+        config.save(update_fields=["settings"])
+        return Response(org)
 
 
 class TenantConfigView(RBACMixin, APIView):

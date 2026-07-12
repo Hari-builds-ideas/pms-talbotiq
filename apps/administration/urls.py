@@ -9,6 +9,7 @@ from django.urls import path
 from apps.identity.invite_views import InvitationAdminView, InvitationRevokeView
 
 from .views import (
+    OrgSettingsView,
     TenantConfigView,
     UserDeactivateView,
     UserDisplayNameView,
@@ -39,4 +40,6 @@ urlpatterns = [
         name="user-reporting-line",
     ),
     path("tenant-config", TenantConfigView.as_view(), name="tenant-config"),
+    # ─── org settings + branding hooks (PHASE2 L1.5; MANAGE_TENANT — Admin) ───
+    path("org-settings", OrgSettingsView.as_view(), name="org-settings"),
 ]

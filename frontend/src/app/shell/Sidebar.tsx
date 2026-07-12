@@ -22,11 +22,20 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-      {/* Brand lockup */}
+      {/* Brand lockup — a tenant logo (PHASE2 L1.5 branding hook) replaces the
+          default mark when the plan includes custom_branding. */}
       <div className="flex h-16 items-center gap-2.5 px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <APP_ICON className="h-5 w-5" />
-        </div>
+        {me?.tenant_branding?.logo_url ? (
+          <img
+            src={me.tenant_branding.logo_url}
+            alt="Organization logo"
+            className="h-9 w-9 rounded-xl object-contain"
+          />
+        ) : (
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <APP_ICON className="h-5 w-5" />
+          </div>
+        )}
         <div className="leading-tight">
           <div className="text-base font-bold tracking-tight text-foreground">TalbotIQ</div>
           <div className="text-[11px] text-sidebar-muted">Performance Management System</div>

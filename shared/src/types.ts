@@ -53,6 +53,9 @@ export interface Me {
    *  RBAC enforces (apps/rbac/matrix.py) — the client's single source of truth
    *  for hiding controls the role can't use. Absent → treat as no grants. */
   capabilities?: string[];
+  /** Tenant branding hooks (PHASE2 L1.5) — present only when the plan includes
+   *  custom_branding; null/absent → the default brand. */
+  tenant_branding?: { logo_url?: string; primary_color?: string } | null;
 }
 
 // ── PHASE2 L1.1/L1.3 — self-service profile + sessions ──

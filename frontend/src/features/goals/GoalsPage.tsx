@@ -33,6 +33,7 @@ import { AttainmentBar } from "@/components/AttainmentBar";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useCycles } from "@/lib/hooks/useCycles";
 import { useDirectory } from "@/lib/hooks/useDirectory";
+import { subtreeIds } from "@/lib/org";
 import { KPI_DIRECTION, humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -397,7 +398,19 @@ function NewGoalDialog({
   mutation: ReturnType<typeof useGoalMutations>["create"];
 }) {
   const { nodes } = useDirectory();
-  const people = Object.values(nodes);
+  const { atLeast, me } = useAuth();
+  // Only offer people the caller can actually create a goal for — mirroring the
+  // server's scope rule (`actor_can_access`): HRBP/Admin (tenant scope) → everyone;
+  // a Manager → self + their reporting subtree. The org tree also returns the
+  // manager's own line UPWARD (their director/HRBP/admin), and creating for those
+  // 403s "outside your access scope" — so we exclude them from the picker (BUG 1).
+  const people = React.useMemo(() => {
+    const all = Object.values(nodes);
+    if (atLeast("HRBP")) return all;
+    if (!me) return [];
+    const allowed = subtreeIds(me.id, nodes);
+    return all.filter((p) => allowed.has(p.id));
+  }, [nodes, me, atLeast]);
   const [employee, setEmployee] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [objective, setObjective] = React.useState("");

@@ -112,6 +112,15 @@ export const authApi = {
   // blacklists it) — callers pass it BEFORE clearing local storage.
   logout: (refresh?: string | null) =>
     unwrap<unknown>(api.post("/auth/logout", refresh ? { refresh } : {})),
+  // Self-service password reset — always 200 (no account enumeration).
+  passwordResetRequest: (body: { tenant_slug: string; email: string }) =>
+    unwrap<{ ok: boolean }>(api.post("/auth/password-reset", body)),
+  passwordResetConfirm: (body: {
+    tenant_slug: string;
+    uid: string;
+    token: string;
+    new_password: string;
+  }) => unwrap<{ ok: boolean }>(api.post("/auth/password-reset/confirm", body)),
 };
 
 // ---- Billing ---------------------------------------------------------------

@@ -10,6 +10,13 @@ urlpatterns = [
     path("login", views.LoginView.as_view(), name="login"),
     path("token/refresh", TokenRefreshView.as_view(), name="token-refresh"),
     path("logout", views.LogoutView.as_view(), name="logout"),
+    # ─── self-service password reset (no enumeration; emailed single-use link) ───
+    path("password-reset", views.PasswordResetRequestView.as_view(), name="password-reset"),
+    path(
+        "password-reset/confirm",
+        views.PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
+    ),
     path("mfa/enroll", views.MfaEnrollView.as_view(), name="mfa-enroll"),
     path("mfa/enroll/confirm", views.MfaEnrollConfirmView.as_view(), name="mfa-enroll-confirm"),
     path("mfa/challenge", views.MfaChallengeView.as_view(), name="mfa-challenge"),

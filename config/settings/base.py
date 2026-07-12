@@ -310,6 +310,23 @@ SIMPLE_JWT = {
     # serializer already preserves them across rotation — no override needed.
 }
 
+# ─── Email / SMTP (password reset + notifications) ─────────────────────
+# Default is the console backend (dev: mail prints to the web container log).
+# PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus
+# the EMAIL_HOST/PORT/USER/PASSWORD/TLS of a real provider — password reset for
+# local (non-SSO) accounts depends on this being configured.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="TalbotIQ PMS <no-reply@localhost>")
+#: The public base URL of the SPA — used to build password-reset links in email.
+PUBLIC_APP_URL = env("PUBLIC_APP_URL", default="http://localhost:8080")
+
 # ─── allauth / OIDC ────────────────────────────────────────────────────
 SITE_ID = 1
 ACCOUNT_EMAIL_VERIFICATION = "none"

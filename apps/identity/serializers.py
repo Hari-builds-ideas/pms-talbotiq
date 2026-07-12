@@ -71,3 +71,24 @@ class MfaCodeSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    """Self-service reset, step 1. Tenant-qualified like login (email is unique
+    per tenant). The VIEW always answers 200 whether or not the account exists —
+    no enumeration."""
+
+    tenant_slug = serializers.SlugField()
+    email = serializers.EmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Self-service reset, step 2: the uid+token pair from the emailed link plus
+    the new password (checked by the configured password validators in the view)."""
+
+    tenant_slug = serializers.SlugField()
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(
+        write_only=True, trim_whitespace=False, style={"input_type": "password"}
+    )

@@ -2,7 +2,7 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { Link, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { Sprout, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -144,6 +144,11 @@ export function LoginPage() {
                     {...form.register("password")}
                   />
                 </Field>
+                <p className="text-right text-xs">
+                  <Link to="/forgot-password" className="font-medium text-primary hover:underline">
+                    Forgot password?
+                  </Link>
+                </p>
 
                 <Button
                   type="submit"

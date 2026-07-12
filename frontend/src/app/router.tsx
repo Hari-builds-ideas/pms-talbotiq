@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/app/shell/AppLayout";
 import { AuthGuard, RoleGate } from "@/app/guards";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { ForgotPasswordPage, ResetPasswordPage } from "@/features/auth/PasswordResetPages";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
@@ -32,6 +33,9 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* Public self-service password reset (FINAL F). */}
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         <Route
           element={

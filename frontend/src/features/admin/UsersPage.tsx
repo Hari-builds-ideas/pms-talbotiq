@@ -573,6 +573,18 @@ function InviteDialog() {
     },
     onError: (e: unknown) => notifyError(e),
   });
+  const resend = useMutation({
+    mutationFn: (id: string) => adminApi.inviteResend(id),
+    onSuccess: (r) => {
+      setLastUrl(r.invite_url);
+      notifySuccess(
+        r.emailed ? "Invitation re-sent" : "New link ready",
+        r.emailed ? "A fresh link was emailed — it's also below." : "Email isn't configured — copy the fresh link below.",
+      );
+      refresh();
+    },
+    onError: (e: unknown) => notifyError(e),
+  });
   const pending = (invitesQ.data ?? []).filter((i) => i.status === "PENDING");
 
   return (
@@ -637,14 +649,24 @@ function InviteDialog() {
                     <span className="truncate">
                       {i.email} <Badge variant="muted" className="ml-1">{ROLE_LABEL[i.role]}</Badge>
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-danger"
-                      onClick={() => revoke.mutate(i.id)}
-                    >
-                      Revoke
-                    </Button>
+                    <span className="flex shrink-0 items-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => resend.mutate(i.id)}
+                        disabled={resend.isPending}
+                      >
+                        Resend
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-danger"
+                        onClick={() => revoke.mutate(i.id)}
+                      >
+                        Revoke
+                      </Button>
+                    </span>
                   </li>
                 ))}
               </ul>

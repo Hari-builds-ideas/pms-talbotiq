@@ -64,6 +64,25 @@ def _load_pending(token: str) -> Invitation | None:
     return row
 
 
+def _send_invite_email(request, invitation: Invitation, url: str) -> bool:
+    """Best-effort invite email; the link is always returned to the inviter."""
+    try:
+        send_mail(
+            subject=f"You're invited to {request.user.tenant.name} on TalbotIQ PMS",
+            message=(
+                f"{request.user.display} invited you to join {request.user.tenant.name} "
+                f"as {invitation.get_role_display()}.\n\nAccept here: {url}\n\n"
+                "The link expires in 7 days."
+            ),
+            from_email=None,
+            recipient_list=[invitation.email],
+        )
+        return True
+    except Exception:  # noqa: BLE001 — email is best-effort; the link is returned
+        logger.exception("invitation email send failed")
+        return False
+
+
 class InvitationCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(choices=User.Role.choices, default=User.Role.EMPLOYEE)
@@ -113,21 +132,7 @@ class InvitationAdminView(RBACMixin, APIView):
             tenant=request.user.tenant_id,
         )
         url = _invite_url(invitation)
-        try:
-            send_mail(
-                subject=f"You're invited to {request.user.tenant.name} on TalbotIQ PMS",
-                message=(
-                    f"{request.user.display} invited you to join {request.user.tenant.name} "
-                    f"as {invitation.get_role_display()}.\n\nAccept here: {url}\n\n"
-                    "The link expires in 7 days."
-                ),
-                from_email=None,
-                recipient_list=[email],
-            )
-            emailed = True
-        except Exception:  # noqa: BLE001 — email is best-effort; the link is returned
-            logger.exception("invitation email send failed")
-            emailed = False
+        emailed = _send_invite_email(request, invitation, url)
         return Response(
             {"id": str(invitation.id), "email": email, "role": invitation.role,
              "status": invitation.status, "invite_url": url, "emailed": emailed},
@@ -153,6 +158,39 @@ class InvitationRevokeView(RBACMixin, APIView):
                 metadata={"email": invitation.email}, tenant=request.user.tenant_id,
             )
         return Response({"ok": True, "status": invitation.status})
+
+
+class InvitationResendView(RBACMixin, APIView):
+    """``POST /api/admin/invitations/<pk>/resend`` (INVITE_USERS — HRBP+).
+
+    Re-sends the invite email with a FRESHLY signed link (a new 7-day window —
+    the signature timestamp is the expiry clock) and returns the new URL for
+    copy-paste. Only a PENDING invite can be resent; anything else is a 409 so
+    a revoked/accepted invite can never be revived."""
+
+    required_capability = Capability.INVITE_USERS
+
+    def post(self, request, pk):
+        invitation = Invitation.objects.filter(pk=pk).first()
+        if invitation is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        if invitation.status != Invitation.Status.PENDING:
+            return Response(
+                {"detail": f"Only a pending invitation can be resent (status: {invitation.status})."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        url = _invite_url(invitation)
+        emailed = _send_invite_email(request, invitation, url)
+        record(
+            action="admin.invitation_resent", actor=request.user,
+            target_type="invitation", target_id=invitation.id,
+            metadata={"email": invitation.email, "emailed": emailed},
+            tenant=request.user.tenant_id,
+        )
+        return Response(
+            {"id": str(invitation.id), "email": invitation.email,
+             "status": invitation.status, "invite_url": url, "emailed": emailed}
+        )
 
 
 class InvitationDetailView(APIView):

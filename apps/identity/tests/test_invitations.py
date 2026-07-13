@@ -87,6 +87,34 @@ def test_only_hrbp_up_can_invite_and_revocation_wins(org3):
                     {"password": NEW_PW}, format="json").status_code == 404
 
 
+@override_settings(**LOCMEM)
+def test_resend_reissues_a_working_link_and_is_pending_only(org3):
+    from django.core import mail
+
+    t, hrbp, emp = org3
+    c = _client(hrbp)
+    body = c.post(ADMIN_INVITES, {"email": "slow@acme.test", "role": "EMPLOYEE"}, format="json").json()
+    # Employee cannot resend (capability gate).
+    assert _client(emp).post(f"{ADMIN_INVITES}/{body['id']}/resend", {}, format="json").status_code == 403
+    r = c.post(f"{ADMIN_INVITES}/{body['id']}/resend", {}, format="json")
+    assert r.status_code == 200, r.content
+    resent = r.json()
+    assert resent["emailed"] is True and len(mail.outbox) == 2
+    assert mail.outbox[1].to == ["slow@acme.test"]
+    # The re-sent link is valid and accepts.
+    token = resent["invite_url"].split("token=")[1]
+    api = APIClient()
+    assert api.get(f"/api/auth/invitations/{token}").status_code == 200
+    assert api.post(f"/api/auth/invitations/{token}/accept",
+                    {"password": NEW_PW}, format="json").status_code == 201
+    # Non-pending (now ACCEPTED) can NOT be resent — no revival.
+    assert c.post(f"{ADMIN_INVITES}/{body['id']}/resend", {}, format="json").status_code == 409
+    # A revoked invite can't be resent either.
+    body2 = c.post(ADMIN_INVITES, {"email": "gone@acme.test"}, format="json").json()
+    c.post(f"{ADMIN_INVITES}/{body2['id']}/revoke", {}, format="json")
+    assert c.post(f"{ADMIN_INVITES}/{body2['id']}/resend", {}, format="json").status_code == 409
+
+
 def test_duplicate_email_and_pending_dup_rejected(org3):
     t, hrbp, emp = org3
     c = _client(hrbp)

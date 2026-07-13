@@ -179,6 +179,10 @@ export const adminApi = {
     ),
   inviteRevoke: (id: string) =>
     unwrap<{ ok: boolean }>(api.post(`/admin/invitations/${id}/revoke`, {})),
+  inviteResend: (id: string) =>
+    unwrap<import("../types").InvitationRow & { emailed: boolean }>(
+      api.post(`/admin/invitations/${id}/resend`, {}),
+    ),
   userStats: () => unwrap<AdminUserStats>(api.get("/admin/users/stats")),
   createUser: (body: {
     email: string;

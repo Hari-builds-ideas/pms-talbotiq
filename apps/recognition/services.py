@@ -71,6 +71,10 @@ def create_recognition(sender, *, recipient_id, value, message, visibility, badg
         raise ValidationError({"visibility": "Invalid visibility."})
     if not (message or "").strip():
         raise ValidationError({"message": "Add a short message."})
+    if len(message.strip()) > 1000:
+        # The model declares max_length=1000 but TextField length is not
+        # DB-enforced — without this check an oversized card lands in the feed.
+        raise ValidationError({"message": "Keep the message under 1000 characters."})
 
     recipient = User.objects.filter(id=recipient_id, is_active=True).first()  # tenant-scoped
     if recipient is None:

@@ -91,8 +91,11 @@ export function GoalsPage() {
   // only — gated so an employee never sees a button the server would deny (D31).
   const { atLeast } = useAuth();
   const goalsAll = useGoals(undefined);
-  const rows = goalsAll.data?.results ?? [];
-  const cycle = active?.id ?? rows[0]?.cycle;
+  const allRows = goalsAll.data?.results ?? [];
+  const cycle = active?.id ?? allRows[0]?.cycle;
+  // This screen is "this cycle" — hide prior-cycle history (kept for analytics
+  // trends) and archived strays, which would read as duplicate goals here.
+  const rows = allRows.filter((g) => g.cycle === cycle && g.status !== "ARCHIVED");
 
   const goals = goalsAll;
   const m = useGoalMutations(cycle);

@@ -63,6 +63,27 @@ def test_active_workflow_routes_finalize_instead_of_finalising(org):
     assert route.status == "IN_PROGRESS" and route.artifact_type == "review"
 
 
+def test_second_finalize_cannot_bypass_an_in_flight_route(org):
+    # QA-NIGHT: with a route IN_PROGRESS, a repeat finalize used to fall through
+    # to _finalize_apply — FINALIZING the review and bypassing the approval
+    # matrix. It must 409 (ActiveRouteExists) and change nothing.
+    from apps.approvals.exceptions import ActiveRouteExists
+
+    _review_workflow(org)
+    review = _approved_review(org)
+    sm.finalize(review, org.manager)            # enters the route
+    review.refresh_from_db()
+    assert review.state == S.APPROVED and review.approval_route_id is not None
+    with pytest.raises(ActiveRouteExists):
+        sm.finalize(review, org.manager)        # the bypass attempt
+    review.refresh_from_db()
+    assert review.state == S.APPROVED           # still waiting on the route
+    assert review.finalized_at is None
+    with tenant_context(org.tenant):
+        route = ApprovalRoute.objects.get(id=review.approval_route_id)
+    assert route.status == "IN_PROGRESS"
+
+
 def test_route_completion_finalises_review_via_existing_path(org):
     _review_workflow(org)
     review = _approved_review(org)

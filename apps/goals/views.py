@@ -18,6 +18,8 @@ Every consequential action audits BEFORE the side effect.
 """
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
@@ -315,6 +317,13 @@ class KpiActualsView(RBACMixin, APIView):
         value = request.data.get("value")
         if value is None:
             raise ValidationError({"value": "This field is required."})
+        # Validate BEFORE the audit record — junk input must neither 500 in
+        # record_actual's Decimal coercion nor leave an audit row for a write
+        # that never happened. (Same rule as the AI record_actual action.)
+        try:
+            Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError({"value": "Enter a number."})
         # Audit BEFORE the write.
         record(
             action="actual.recorded",

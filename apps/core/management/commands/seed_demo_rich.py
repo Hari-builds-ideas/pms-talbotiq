@@ -147,6 +147,13 @@ class Command(BaseCommand):
                 changed = True
             if changed:
                 ent.save(update_fields=["feature_packs", "seat_count"])
+        # ACME has 200+ people — the demo tenant must sit on ENTERPRISE
+        # (unlimited employees) or the invite-accept demo 409s on the
+        # STARTER 25-employee cap. Idempotent; syncs packs from the catalog.
+        from apps.billing.services import get_or_create_subscription, set_plan
+
+        if get_or_create_subscription(tenant.id).plan != "ENTERPRISE":
+            set_plan(tenant.id, "ENTERPRISE", actor=None)
 
     # ── user helper (reuse-by-email; keeps named accounts stable) ───────────────
     def _user(self, tenant, local, display_name, role, manager, *, department=None, hire_offset_days=0):

@@ -359,6 +359,13 @@ class Command(BaseCommand):
             Goal.objects.filter(
                 tenant_id=tenant.id, employee=emp, cycle=cycle, status="ACTIVE",
             ).exclude(title__in=spec_titles).update(status="ARCHIVED")
+            # DELETE test junk outright: non-spec DRAFT goals (e.g. "BUG1 repro
+            # goal" left by manual API testing) never belong in the demo — the
+            # goals screens must look real. Deleting a DRAFT cascades its KPIs;
+            # nothing scored/approved is ever deleted (those are ARCHIVED above).
+            Goal.objects.filter(
+                tenant_id=tenant.id, employee=emp, cycle=cycle, status="DRAFT",
+            ).exclude(title__in=spec_titles).delete()
         compute_cycle_scores(tenant.id, cycle.id)
 
     # ── goal Updates timeline (AGENT_UX_V3 Part 2.3): 2–4 realistic progress notes

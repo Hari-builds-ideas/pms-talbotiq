@@ -141,6 +141,54 @@ _NAME_STOP_WORDS = frozenset(
 
 _COUNT_Q_RE = re.compile(r"\bhow many\b|\bcount of\b|\bnumber of\b", re.I)
 
+#: An "open/show the <thing we just made>" imperative — DEFINITE reference only
+#: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
+_OPEN_REF_RE = re.compile(
+    r"^\s*(open|show me|show|go to|take me to)\s+(the|that|this|it\b|her\b|his\b)", re.I
+)
+
+#: ref type → the SPA route for "open it" (mirrors execute_action's artifacts).
+_REF_DEEPLINK = {
+    "review": lambda obj: f"/reviews/{obj.id}",
+    "user": lambda obj: f"/people/{obj.id}",
+    "feedback_cycle": lambda obj: "/feedback",
+    "recognition": lambda obj: "/recognition",
+    "goal": lambda obj: "/goals",
+    "checkin": lambda obj: "/checkins",
+    "roadmap": lambda obj: "/career",
+    "succession_plan": lambda obj: "/succession",
+}
+
+
+def _answer_open_reference(caller, session, query):
+    """Deterministic navigation for "open the draft / that review / it": resolve
+    the most recent matching, access-rechecked session ref and answer with its
+    deeplink. Returns None when nothing resolves (caller decides the fallback) —
+    this must NEVER fall into a goals summary."""
+    if session is None:
+        return None
+    from apps.ai.sessions import resolve_reference
+
+    rtype, obj = resolve_reference(caller, session, query)
+    if obj is None:
+        return None
+    link_fn = _REF_DEEPLINK.get(rtype)
+    if link_fn is None:
+        return None
+    label = (
+        getattr(obj, "display", None)
+        or getattr(obj, "title", None)
+        or rtype.replace("_", " ")
+    )
+    return {
+        "status": "ok",
+        "intent": "navigate",
+        "answer": f"Here it is — opening {label}.",
+        "data": [],
+        "deeplink": link_fn(obj),
+        "refs": [{"type": rtype, "id": str(obj.id), "label": str(label)}],
+    }
+
 
 def _classification_prompt(query: str, session) -> str:
     """The classifier prompt: recent conversation as CONTEXT + the current message.
@@ -255,6 +303,22 @@ def chat_answer(caller, query: str, session=None) -> dict:
     bound memory); without one (legacy/direct callers) the old single-proposal path
     still applies — the gate itself is identical either way.
     """
+    # "Open the draft / that review / it" — a definite-reference navigation ask,
+    # resolved deterministically from the session's access-rechecked refs BEFORE
+    # any LLM call. A definite reference is ALWAYS navigation (new-thing writes
+    # say "open A check-in" and are untouched), so when nothing resolves we say
+    # so honestly — never a goals dump, never a spurious plan.
+    if _OPEN_REF_RE.search(query or ""):
+        opened = _answer_open_reference(caller, session, query)
+        if opened is not None:
+            return opened
+        return {
+            "status": "ok", "intent": "general", "data": [],
+            "answer": "I don't see a recent record like that in this conversation — "
+                      "tell me what to open (e.g. “open Vera's review”), or use the "
+                      "Open button on the result card above.",
+        }
+
     # C2: classification sees the CONVERSATION (recent turns as context) so a
     # follow-up ("and her reviews?") keeps its meaning. The context block is
     # explicitly marked context-only; the current message is what's classified.

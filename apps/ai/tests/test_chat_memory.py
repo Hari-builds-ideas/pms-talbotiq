@@ -88,6 +88,51 @@ def test_memory_never_widens_access(org):
 
 
 @override_settings(**FAKE)
+def test_open_the_draft_navigates_to_the_grounded_review_not_goals(org):
+    """The Hari bug: after a draft, "Open the draft to review it" typed as chat
+    must resolve the session's review ref → a navigate answer with the deeplink —
+    NEVER a goals summary."""
+    from apps.ai import sessions
+    from apps.ai.models import ChatTurn
+
+    with tenant_context(org.tenant):
+        cycle = CycleFactory(tenant=org.tenant)
+        review = ReviewFactory(tenant=org.tenant, employee=org.report, reviewer=org.manager, cycle=cycle)
+        session = sessions.get_session(org.manager)
+        # Ground the review on the session (what a draft_review approve records).
+        sessions.append_turn(
+            session, ChatTurn.Role.ASSISTANT, "Drafted the review.",
+            refs=[{"type": "review", "id": str(review.id), "label": "Review"}],
+        )
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "Open the draft to review it", "session_id": str(session.id)}, format="json")
+    body = r.json()
+    assert body["status"] == "ok" and body["intent"] == "navigate", body
+    assert body["deeplink"] == f"/reviews/{review.id}"
+    assert "goal(s):" not in body["answer"]
+
+
+@override_settings(**FAKE)
+def test_open_with_nothing_to_resolve_is_honest_not_a_goals_dump(org):
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "open the draft to review it"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "goal(s):" not in body["answer"]
+    assert "don't see a recent record" in body["answer"]
+
+
+@override_settings(**FAKE)
+def test_open_a_new_thing_is_not_hijacked_by_the_navigation_intercept(org):
+    """Indefinite "open A check-in" (a new-thing ask) must NOT be captured by the
+    definite-reference navigation intercept — it flows to normal classification."""
+    c = _client(org.report)
+    r = c.post(CHAT, {"query": "open a check-in for this week"}, format="json")
+    body = r.json()
+    assert body.get("intent") != "navigate" and "deeplink" not in body
+
+
+@override_settings(**FAKE)
 def test_pronoun_without_any_grounding_falls_back_to_caller(org):
     c = _client(org.report)
     r = c.post(CHAT, {"query": "how am I doing on my goals?"}, format="json")

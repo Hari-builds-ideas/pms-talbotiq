@@ -630,6 +630,8 @@ export interface ChatResponse {
   answer: string;
   data?: unknown;
   proposal?: ChatProposal;
+  /** Present on a navigation answer ("open the draft") — the SPA route to open. */
+  deeplink?: string;
   /** Present when status === "plan": the ordered, inert plan to approve step by step. */
   type?: "plan";
   plan?: ChatPlan;

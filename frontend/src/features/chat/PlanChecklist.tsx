@@ -252,9 +252,13 @@ export function PlanChecklist({
   const anyPendingConfirmOrNav = plan.steps.some(
     (s) => (statuses[s.id] ?? "pending") === "pending" && s.feel !== "clarify",
   );
-  // A suggestion for the first executed step that maps to a next action.
+  // A suggestion for the first executed step that maps to a next action. When
+  // that step produced a deeplinked artifact (e.g. draft_review → the review),
+  // the chip NAVIGATES there — it must never paste its label into the chat as a
+  // message (that read as a broken button and misrouted the conversation).
   const suggestSource = plan.steps.find((s) => statuses[s.id] === "done" && SUGGEST_NEXT[s.action]);
   const suggestion = suggestSource ? SUGGEST_NEXT[suggestSource.action] : null;
+  const suggestDeeplink = suggestSource ? results[suggestSource.id]?.artifact?.deeplink : undefined;
 
   return (
     <div className="mt-1.5 space-y-1.5 rounded-md border border-ai/30 bg-card/60 p-2 text-xs">
@@ -345,7 +349,15 @@ export function PlanChecklist({
             <Check className="h-3.5 w-3.5 text-success" />
             {doneCount} of {plan.steps.length} done.
           </p>
-          {suggestion && onSuggest && (
+          {suggestion && suggestDeeplink ? (
+            <button
+              type="button"
+              onClick={() => navigate(suggestDeeplink)}
+              className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-ai/40 bg-ai-subtle px-2.5 py-1 text-2xs font-medium text-ai hover:bg-ai/10"
+            >
+              <ArrowUpRight className="h-3 w-3" /> {suggestion}
+            </button>
+          ) : suggestion && onSuggest ? (
             <button
               type="button"
               onClick={() => onSuggest(suggestion)}
@@ -353,7 +365,7 @@ export function PlanChecklist({
             >
               <Sparkles className="h-3 w-3" /> {suggestion}
             </button>
-          )}
+          ) : null}
         </div>
       )}
     </div>

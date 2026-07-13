@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Bot, Send, Sparkles, User as UserIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ArrowUpRight, Bot, Send, Sparkles, User as UserIcon } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -61,6 +62,8 @@ interface Turn {
   data?: unknown;
   proposal?: ChatProposal;
   plan?: ChatPlan;
+  /** A navigation answer ("open the draft") — rendered as an Open button. */
+  deeplink?: string;
 }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
@@ -185,6 +188,7 @@ function ChatSheet() {
           data: res.data,
           proposal: res.proposal,
           plan: res.plan,
+          deeplink: res.deeplink,
         },
       ]);
     },
@@ -343,6 +347,7 @@ function ChatBubble({ turn, onSuggest }: { turn: Turn; onSuggest?: (text: string
           <Badge variant="warning" className="mb-1">Read-only</Badge>
         )}
         <p className="whitespace-pre-wrap">{turn.text}</p>
+        {turn.deeplink && <DeeplinkButton to={turn.deeplink} />}
         {turn.proposal && <ProposalCard proposal={turn.proposal} />}
         {turn.plan && <PlanChecklist plan={turn.plan} onSuggest={onSuggest} />}
         {Array.isArray(turn.data) && turn.data.length > 0 && (
@@ -360,5 +365,15 @@ function ChatBubble({ turn, onSuggest }: { turn: Turn; onSuggest?: (text: string
 function Dot() {
   return (
     <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+  );
+}
+
+/** A navigation answer's Open button — actually navigates (never chat input). */
+function DeeplinkButton({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return (
+    <Button size="sm" variant="outline" className="mt-1" onClick={() => navigate(to)}>
+      Open <ArrowUpRight className="h-3.5 w-3.5" />
+    </Button>
   );
 }

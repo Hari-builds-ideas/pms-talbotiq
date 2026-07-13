@@ -50,7 +50,10 @@ plan gating, agent Open-navigation, chat session isolation, cross-user step appr
 `test_oversized_message_rejected`,
 `test_resend_reissues_a_working_link_and_is_pending_only`.
 
-Backend suite at end of night: see PROGRESS.md (full run + demo_ready 57/57).
+Backend suite at end of night: **1480 passed, 0 failed** (full clean run) ·
+demo_ready smoke **57/57 — DEMO READY**. (One mid-night suite run showed mass
+failures — root-caused to demo_ready force-recreating containers concurrently
+with the run, not to code; the isolated re-run is fully green.)
 
 ## Commits tonight
 

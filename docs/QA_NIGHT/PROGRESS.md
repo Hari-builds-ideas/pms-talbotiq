@@ -41,4 +41,6 @@ isolation; safe fixes committed per fix; risky findings written up in BUGS_FOUND
   don't cross; AI schema role-filtered, session/plan isolation holds, destructive ask
   refused, **Open-the-draft navigation fix holds live**, colleague ask leaks nothing.
 - Cross-tenant 29/29; Phase-2 re-run 49/49.
-- Final: full backend suite + demo_ready at end of night (see QA_NIGHT_REPORT.md).
+- Final gates: backend **1480 passed / 0 failed** (clean isolated run; one earlier
+  run failed en masse purely from demo_ready recreating containers mid-suite) ·
+  demo_ready **57/57 DEMO READY** · stale-route repair applied · reseeded.

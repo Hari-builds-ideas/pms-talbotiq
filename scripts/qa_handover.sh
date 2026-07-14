@@ -30,28 +30,27 @@ step() { echo "${BOLD}▶ $*${RESET}"; }
 die()  { echo "${RED}${BOLD}✗ $*${RESET}"; exit 1; }
 
 # ── 1. Preflight ──────────────────────────────────────────────────────────────
-step "1/5  Preflight — Docker, web health, SPA on :8090"
+step "1/5  Preflight — Docker, web + nginx health, SPA on :8090"
 docker info >/dev/null 2>&1 || die "Docker daemon isn't running. Start Docker Desktop, then re-run."
 docker compose up -d >/dev/null 2>&1 || true   # frontend-1 (:8080) may conflict; harmless — we use :8090
 
-# Wait for the Django tier to answer (via the container, independent of :8090).
-ready=""
-for _ in $(seq 1 30); do
-  if docker compose exec -T web curl -s -o /dev/null http://localhost:8000/healthz >/dev/null 2>&1; then ready="yes"; break; fi
-  sleep 2
-done
-[ -n "$ready" ] || die "web tier did not become healthy. Check: docker compose logs web"
-
-# Ensure the :8090 SPA helper is serving the latest built image.
-if ! curl -s -o /dev/null "${BASE}/" 2>/dev/null; then
+# Ensure the :8090 SPA helper (nginx edge → web) is serving the latest built image.
+if [ -z "$(docker ps -q -f "name=^${HELPER}$")" ]; then
   echo "  ${DIM}(re)starting the ${HELPER} helper on :8090…${RESET}"
   docker rm -f "${HELPER}" >/dev/null 2>&1 || true
   docker run -d --name "${HELPER}" --network "${NETWORK}" -p 8090:80 "${FRONTEND_IMAGE}" >/dev/null \
     || die "could not start the :8090 helper — is the frontend image built? (docker compose build frontend)"
-  sleep 3
 fi
-code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/" || true)
-[ "$code" = "200" ] || die "app not reachable at ${BASE}/ (got ${code})"
+
+# Health via the host through nginx (proxies /healthz → web) — proves BOTH are up.
+# This is exactly how demo_ready.sh checks, and it needs no curl inside the container.
+ready=""
+for _ in $(seq 1 30); do
+  code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}/healthz" 2>/dev/null || true)
+  if [ "$code" = "200" ]; then ready="yes"; break; fi
+  sleep 2
+done
+[ -n "$ready" ] || die "app not healthy at ${BASE}/healthz. Check: docker compose logs web"
 echo "  ${GREEN}app up at ${BASE}${RESET}"
 
 # ── 2. Baseline reseed + demo smoke ──────────────────────────────────────────

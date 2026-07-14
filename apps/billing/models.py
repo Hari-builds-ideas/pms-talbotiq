@@ -196,3 +196,118 @@ class Subscription(TenantScopedModel):
 
     def __str__(self):
         return f"subscription(tenant={self.tenant_id}, {self.plan}/{self.status})"
+
+
+# ─── Payments (PROD_C) — the money layer on top of Subscription ──────────────
+# All tenant-scoped, additive. The Subscription state machine above stays the
+# single source of truth for entitlements; these models only RECORD money events
+# and let a verified webhook DRIVE the subscription transitions. No card data is
+# ever stored here — that stays with the provider (PCI boundary).
+
+
+class BillingProfile(TenantScopedModel):
+    """Per-tenant billing identity (1:1). Which provider bills this tenant, its
+    currency/country, and the provider-side customer id. No secrets, no card data."""
+
+    class Provider(models.TextChoices):
+        STRIPE = "STRIPE", "Stripe"
+        RAZORPAY = "RAZORPAY", "Razorpay"
+
+    provider = models.CharField(
+        max_length=16, choices=Provider.choices, default=Provider.STRIPE
+    )
+    currency = models.CharField(max_length=3, default="USD")
+    country = models.CharField(max_length=2, default="US")
+    billing_email = models.EmailField(blank=True, default="")
+    provider_customer_id = models.CharField(max_length=128, blank=True, default="")
+
+    class Meta:
+        db_table = "billing_profile"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], name="uq_billing_profile_tenant"),
+        ]
+
+    def __str__(self):
+        return f"billing_profile(tenant={self.tenant_id}, {self.provider})"
+
+
+class PaymentEvent(TenantScopedModel):
+    """Append-only record of a provider webhook event. ``(provider, event_id)`` is
+    UNIQUE, so the SAME event delivered twice can never double-activate — the second
+    insert violates the constraint and is treated as an idempotent no-op."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        PROCESSED = "PROCESSED", "Processed"
+        IGNORED = "IGNORED", "Ignored"
+        ERROR = "ERROR", "Error"
+
+    provider = models.CharField(max_length=16)
+    event_id = models.CharField(max_length=191)
+    type = models.CharField(max_length=64)
+    #: Redacted event payload (no card/PII); enough to audit + reprocess.
+    payload = models.JSONField(default=dict)
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    received_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "billing_payment_event"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "event_id"], name="uq_payment_event_provider_id"
+            ),
+        ]
+
+    def __str__(self):
+        return f"payment_event({self.provider}:{self.event_id} {self.status})"
+
+
+class Payment(TenantScopedModel):
+    """A recorded money movement (amount in MINOR units — cents/paise)."""
+
+    class Status(models.TextChoices):
+        SUCCEEDED = "SUCCEEDED", "Succeeded"
+        FAILED = "FAILED", "Failed"
+        REFUNDED = "REFUNDED", "Refunded"
+        PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED", "Partially refunded"
+
+    subscription = models.ForeignKey(
+        "billing.Subscription", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    provider = models.CharField(max_length=16)
+    provider_payment_id = models.CharField(max_length=191, blank=True, default="")
+    amount = models.PositiveIntegerField(default=0)  # minor units
+    currency = models.CharField(max_length=3, default="USD")
+    status = models.CharField(max_length=20, choices=Status.choices)
+
+    class Meta:
+        db_table = "billing_payment"
+
+    def __str__(self):
+        return f"payment(tenant={self.tenant_id}, {self.amount}{self.currency}/{self.status})"
+
+
+class Invoice(TenantScopedModel):
+    """A stored invoice per successful payment. ``number`` is sequential per tenant."""
+
+    number = models.CharField(max_length=32)
+    payment = models.ForeignKey(
+        "billing.Payment", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+    )
+    period_start = models.DateField(null=True, blank=True)
+    period_end = models.DateField(null=True, blank=True)
+    line_items = models.JSONField(default=list)
+    total = models.PositiveIntegerField(default=0)  # minor units
+    currency = models.CharField(max_length=3, default="USD")
+    issued_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "billing_invoice"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant", "number"], name="uq_invoice_tenant_number"),
+        ]
+
+    def __str__(self):
+        return f"invoice(tenant={self.tenant_id}, {self.number}, {self.total}{self.currency})"

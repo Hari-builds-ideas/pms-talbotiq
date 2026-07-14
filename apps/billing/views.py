@@ -190,3 +190,88 @@ class SubscriptionView(RBACMixin, APIView):
         except InvalidSubscriptionTransition as exc:
             return Response({"status": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self._payload(subscription))
+
+
+# ─── Payments (PROD_C) ───────────────────────────────────────────────────────
+from django.conf import settings as _settings  # noqa: E402
+from rest_framework.permissions import AllowAny  # noqa: E402
+
+from .models import Invoice  # noqa: E402
+from .payments import catalog as _catalog  # noqa: E402
+from .payments.service import CheckoutError, process_webhook, start_checkout  # noqa: E402
+
+
+class PaymentsConfigView(RBACMixin, APIView):
+    """``GET /api/billing/payments-config`` (MANAGE_TENANT) — what the plan-picker
+    needs: whether payments are on, the publishable key (safe for the SPA), and the
+    server-side price catalogue. No secret keys are ever exposed."""
+
+    required_capability = Capability.MANAGE_TENANT
+
+    def get(self, request):
+        return Response({
+            "payments_enabled": _settings.PAYMENTS_ENABLED,
+            "stripe_publishable_key": _settings.STRIPE_PUBLISHABLE_KEY,
+            "prices": _catalog.PRICES,
+            "cycles": list(_catalog.BILLING_CYCLES),
+        })
+
+
+class CheckoutView(RBACMixin, APIView):
+    """``POST /api/billing/checkout`` (MANAGE_TENANT) — start a plan change. Body
+    ``{plan, cycle}``. With payments off / a free plan → activates immediately
+    (``paid=false``). With payments on + a paid plan → returns a checkout URL and
+    the plan stays PENDING until the verified webhook."""
+
+    required_capability = Capability.MANAGE_TENANT
+
+    def post(self, request):
+        plan = request.data.get("plan")
+        cycle = request.data.get("cycle", "MONTHLY")
+        if not plan:
+            return Response({"plan": ["Plan is required."]}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = start_checkout(tenant=request.user.tenant, actor=request.user,
+                                    plan=plan, cycle=cycle)
+        except CheckoutError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(result)
+
+
+class InvoiceListView(RBACMixin, APIView):
+    """``GET /api/billing/invoices`` (MANAGE_TENANT) — the tenant's billing history."""
+
+    required_capability = Capability.MANAGE_TENANT
+
+    def get(self, request):
+        rows = Invoice.objects.order_by("-issued_at")[:100]
+        return Response([
+            {"id": str(i.id), "number": i.number, "total": i.total, "currency": i.currency,
+             "line_items": i.line_items, "issued_at": i.issued_at}
+            for i in rows
+        ])
+
+
+class _WebhookView(APIView):
+    """Base for provider webhooks: PUBLIC (no session) but signature-verified in the
+    service. Reads the RAW body (never .data) so the signature check sees the exact
+    bytes the provider signed."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    provider_name = ""
+
+    def post(self, request):
+        raw = request.body  # raw bytes — read before any .data access
+        code, body = process_webhook(self.provider_name, headers=request.META, raw_body=raw)
+        return Response(body, status=code)
+
+
+class StripeWebhookView(_WebhookView):
+    """``POST /api/billing/webhooks/stripe`` — Stripe-signed events."""
+    provider_name = "STRIPE"
+
+
+class RazorpayWebhookView(_WebhookView):
+    """``POST /api/billing/webhooks/razorpay`` — Razorpay-signed events."""
+    provider_name = "RAZORPAY"

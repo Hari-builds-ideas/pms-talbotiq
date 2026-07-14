@@ -331,6 +331,19 @@ MEDIA_URL = "/media/"  # unused for serving (endpoint-streamed); Django requires
 LOGIN_LOCKOUT_ATTEMPTS = env.int("LOGIN_LOCKOUT_ATTEMPTS", default=8)
 LOGIN_LOCKOUT_WINDOW_SECONDS = env.int("LOGIN_LOCKOUT_WINDOW_SECONDS", default=900)
 
+# ─── Payments (PROD_C) — Stripe + Razorpay, TEST MODE ──────────────────
+# When False (default) the internal admin-driven plan flip still works (QA/dev).
+# When True, a paid plan/seat change stays PENDING until a signature-verified
+# provider webhook confirms payment. TEST-MODE keys only until go-live — the
+# human swaps live keys + flips this on, supervised. All placeholders in .env.example.
+PAYMENTS_ENABLED = env.bool("PAYMENTS_ENABLED", default=False)
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
+RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
+
 # ─── Product display name (branding) ───────────────────────────────────
 # The ONE canonical user-facing product name (browser title comes from the SPA;
 # this drives email "From" name + subject prefixes). Change it here (or via the

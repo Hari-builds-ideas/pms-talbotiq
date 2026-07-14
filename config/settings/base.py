@@ -338,6 +338,10 @@ LOGIN_LOCKOUT_WINDOW_SECONDS = env.int("LOGIN_LOCKOUT_WINDOW_SECONDS", default=9
 # matching seam frontend/src/brand.tsx. Legacy value was "TalbotIQ PMS".
 APP_NAME = env("APP_NAME", default="Axiom")
 
+# Seats a brand-new self-serve tenant starts with (Starter default). Server-side
+# seat enforcement still applies; the admin buys more when they grow.
+SIGNUP_DEFAULT_SEATS = env.int("SIGNUP_DEFAULT_SEATS", default=5)
+
 # ─── Email / SMTP (password reset + notifications) ─────────────────────
 # Default is the console backend (dev: mail prints to the web container log).
 # PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus
@@ -371,21 +375,38 @@ SOCIALACCOUNT_EMAIL_REQUIRED = True
 SOCIALACCOUNT_ADAPTER = "apps.identity.adapters.TenantSocialAccountAdapter"
 # Slug an OIDC identity falls back to when the login carries no tenant hint.
 OIDC_DEFAULT_TENANT_SLUG = env("OIDC_DEFAULT_TENANT_SLUG", default="")
-SOCIALACCOUNT_PROVIDERS = {
-    "openid_connect": {
-        "APPS": [
-            {
-                "provider_id": env("OIDC_PROVIDER_ID", default="oidc-demo"),
-                "name": env("OIDC_PROVIDER_NAME", default="Demo OIDC"),
-                "client_id": env("OIDC_CLIENT_ID", default="demo-client-id"),
-                "secret": env("OIDC_CLIENT_SECRET", default="demo-secret"),
-                "settings": {
-                    "server_url": env("OIDC_SERVER_URL", default="https://oidc.example.com"),
-                },
-            }
-        ]
+
+# Generic enterprise-OIDC app (a customer's own OIDC IdP), plus an optional
+# dedicated "Sign in with Google" app. Both run through the SAME tenant-binding
+# adapter (no JIT: the Google/OIDC identity must already be a provisioned user in
+# the resolved tenant — imported via CSV or invited). The Google app is only
+# registered when GOOGLE_OAUTH_CLIENT_ID is set, so an unconfigured deploy shows
+# no half-wired provider. The human adds real Google creds (see docs).
+_OIDC_APPS = [
+    {
+        "provider_id": env("OIDC_PROVIDER_ID", default="oidc-demo"),
+        "name": env("OIDC_PROVIDER_NAME", default="Demo OIDC"),
+        "client_id": env("OIDC_CLIENT_ID", default="demo-client-id"),
+        "secret": env("OIDC_CLIENT_SECRET", default="demo-secret"),
+        "settings": {
+            "server_url": env("OIDC_SERVER_URL", default="https://oidc.example.com"),
+        },
     }
-}
+]
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
+GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+#: Sign-in-with-Google is live only when the human has provided real OAuth creds.
+GOOGLE_SSO_ENABLED = bool(GOOGLE_OAUTH_CLIENT_ID)
+if GOOGLE_SSO_ENABLED:
+    _OIDC_APPS.append({
+        "provider_id": "google",
+        "name": "Google",
+        "client_id": GOOGLE_OAUTH_CLIENT_ID,
+        "secret": GOOGLE_OAUTH_CLIENT_SECRET,
+        # Google's OIDC discovery document; allauth reads the endpoints from it.
+        "settings": {"server_url": "https://accounts.google.com"},
+    })
+SOCIALACCOUNT_PROVIDERS = {"openid_connect": {"APPS": _OIDC_APPS}}
 
 LOGIN_REDIRECT_URL = "/api/auth/oidc/complete"
 

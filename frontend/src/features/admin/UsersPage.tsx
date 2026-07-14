@@ -1,6 +1,6 @@
 import * as React from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Search, ShieldCheck, UserPlus, X } from "lucide-react";
+import { MoreHorizontal, Search, ShieldCheck, Upload, UserPlus, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { TableSkeleton } from "@/components/Skeletons";
@@ -179,6 +179,7 @@ export function UsersPage() {
         description="Manage tenant users, roles and reporting lines. Names fall back to email until a display name is set."
         actions={
           <div className="flex items-center gap-2">
+            <ImportCsvButton />
             <InviteDialog />
             <Button onClick={() => setCreateOpen(true)}>
               <UserPlus className="h-4 w-4" />
@@ -540,6 +541,108 @@ function DisplayNameDialog({
 
 /** PHASE2 L1.2 — invite a user by email (the B2B onboarding path). Shows the
  *  invite link for copy-paste (works even without SMTP) + pending invites. */
+/** Bulk employee onboarding (PROD_B): upload a CSV, see a per-row result summary.
+ *  Idempotent on the server (upsert by email); seats + role ceiling enforced there. */
+function ImportCsvButton() {
+  const qc = useQueryClient();
+  const [open, setOpen] = React.useState(false);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [result, setResult] = React.useState<Awaited<
+    ReturnType<typeof adminApi.bulkImport>
+  > | null>(null);
+
+  const importMut = useMutation({
+    mutationFn: () => adminApi.bulkImport(file as File),
+    onSuccess: (r) => {
+      setResult(r);
+      notifySuccess(
+        "Import finished",
+        `${r.created} created · ${r.updated} updated · ${r.skipped} skipped`,
+      );
+      void qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      void qc.invalidateQueries({ queryKey: ["directory"] });
+    },
+    onError: (e: unknown) => notifyError(e),
+  });
+
+  function reset() {
+    setFile(null);
+    setResult(null);
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) reset();
+      }}
+    >
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        <Upload className="h-4 w-4" />
+        Import CSV
+      </Button>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Bulk import employees</DialogTitle>
+          <DialogDescription>
+            Upload a CSV with a header row:{" "}
+            <code className="text-xs">name,email,role,department,designation,manager</code>. The
+            manager column is the manager's email. Re-importing updates existing people
+            (matched by email) — it never creates duplicates. Imported people sign in with
+            Google/SSO, or set a password via "Forgot password".
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="CSV file"
+            onChange={(e) => {
+              setResult(null);
+              setFile(e.target.files?.[0] ?? null);
+            }}
+            className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium"
+          />
+
+          {result && (
+            <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm">
+              <p className="font-medium">
+                {result.created} created · {result.updated} updated · {result.skipped} skipped
+                <span className="text-muted-foreground"> (of {result.total})</span>
+              </p>
+              {result.errors.length > 0 && (
+                <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto scrollbar-thin text-xs text-danger">
+                  {result.errors.map((er, i) => (
+                    <li key={i}>
+                      Row {er.row}
+                      {er.email ? ` (${er.email})` : ""}: {er.error}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Close
+          </Button>
+          <Button
+            onClick={() => importMut.mutate()}
+            loading={importMut.isPending}
+            disabled={!file}
+          >
+            Import
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function InviteDialog() {
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);

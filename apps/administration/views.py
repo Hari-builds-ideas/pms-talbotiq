@@ -97,6 +97,74 @@ class UserListCreateView(RBACMixin, APIView):
         )
 
 
+class EmployeeImportView(RBACMixin, APIView):
+    """``POST /api/admin/users/import`` (INVITE_USERS — HRBP+) — bulk-onboard
+    employees from a CSV. Accepts EITHER a multipart ``file`` (CSV with a header
+    row: ``name,email,role,department,designation,manager``) OR a JSON body
+    ``{"rows": [{...}, ...]}``. Idempotent (upsert by email), per-row errors, seat
+    +role-ceiling enforced. Returns ``{created,updated,skipped,total,errors}``."""
+
+    required_capability = Capability.INVITE_USERS
+
+    _MAX_ROWS = 5000
+    _CANON = {  # tolerate common header spellings → our canonical keys
+        "name": "name", "full name": "name", "employee name": "name",
+        "email": "email", "email address": "email", "work email": "email",
+        "role": "role",
+        "department": "department", "dept": "department",
+        "designation": "designation", "title": "designation", "job title": "designation",
+        "manager": "manager", "manager email": "manager", "reports to": "manager",
+    }
+
+    def _rows_from_csv(self, file_obj) -> list[dict]:
+        import csv
+        import io
+
+        raw = file_obj.read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8-sig", errors="replace")  # strip BOM
+        reader = csv.DictReader(io.StringIO(raw))
+        rows = []
+        for r in reader:
+            row = {}
+            for k, v in r.items():
+                if k is None:
+                    continue
+                key = self._CANON.get(str(k).strip().lower())
+                if key:
+                    row[key] = (v or "").strip()
+            if any(row.values()):
+                rows.append(row)
+        return rows
+
+    def post(self, request):
+        upload = request.FILES.get("file")
+        if upload is not None:
+            try:
+                rows = self._rows_from_csv(upload)
+            except Exception:  # noqa: BLE001 — a malformed file is a 400, not a 500
+                return Response({"detail": "Could not parse the CSV file."},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            rows = request.data.get("rows")
+            if not isinstance(rows, list):
+                return Response(
+                    {"detail": "Provide a CSV `file` upload or a JSON `rows` array."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if not rows:
+            return Response({"detail": "No rows found to import."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if len(rows) > self._MAX_ROWS:
+            return Response(
+                {"detail": f"Too many rows ({len(rows)}). Import in batches of "
+                           f"{self._MAX_ROWS} or fewer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        result = services.bulk_import_employees(request.user, rows)
+        return Response(result, status=status.HTTP_200_OK)
+
+
 class UserStatsView(RBACMixin, APIView):
     """``GET /api/admin/users/stats`` (MANAGE_USERS_ROLES — Admin) — tenant user
     counts (active/inactive totals + active-by-role), aggregated in the DB so the

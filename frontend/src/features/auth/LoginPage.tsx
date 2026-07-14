@@ -16,6 +16,10 @@ import { mapApiError } from "@/lib/errors";
 import type { TokenPair } from "@/lib/types";
 
 const USING_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
+// Sign-in-with-Google is shown only when the deploy has been configured for it
+// (the human's real Google OAuth creds on the backend + this build flag). Off by
+// default so an unconfigured deploy never shows a button that errors.
+const GOOGLE_SSO = import.meta.env.VITE_GOOGLE_SSO_ENABLED === "true";
 
 const loginSchema = z.object({
   tenant: z.string().min(1, "Workspace is required"),
@@ -162,10 +166,35 @@ export function LoginPage() {
                 OR
                 <span className="h-px flex-1 bg-border" />
               </div>
-              <Button variant="outline" className="w-full" type="button" disabled>
-                <KeyRound className="h-4 w-4" />
-                Sign in with SSO
-              </Button>
+              {GOOGLE_SSO ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  type="button"
+                  onClick={() => {
+                    // Full-page redirect into allauth's OIDC flow; the workspace
+                    // slug tells the tenant-binding adapter which tenant to bind
+                    // (no JIT — the Google identity must already be a user there).
+                    const slug = encodeURIComponent(form.getValues("tenant") || "");
+                    window.location.href = `/accounts/oidc/google/login/?process=login&tenant=${slug}`;
+                  }}
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Sign in with Google
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full" type="button" disabled>
+                  <KeyRound className="h-4 w-4" />
+                  Sign in with SSO
+                </Button>
+              )}
+
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                New organization?{" "}
+                <Link to="/signup" className="font-medium text-primary hover:underline">
+                  Create your workspace
+                </Link>
+              </p>
 
               {USING_MOCKS && (
                 <div className="mt-6 rounded-lg border border-dashed border-border bg-secondary/40 p-3">

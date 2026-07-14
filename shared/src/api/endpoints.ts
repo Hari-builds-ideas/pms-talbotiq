@@ -99,6 +99,18 @@ export interface AdminUserParams extends PageParams {
 export const authApi = {
   login: (body: { email: string; password: string; tenant_slug: string }) =>
     unwrap<import("../types").LoginResponse>(api.post("/auth/login", body)),
+  // Self-serve new-organization signup (PROD_B): creates a workspace + first
+  // admin and logs them in. Returns tenant-scoped tokens + the workspace slug.
+  signup: (body: {
+    org_name: string;
+    display_name: string;
+    email: string;
+    password: string;
+    workspace_slug?: string;
+  }) =>
+    unwrap<TokenPair & { tenant_slug: string; workspace_name: string }>(
+      api.post("/auth/signup", body),
+    ),
   // Field names match the REAL backend contract (apps/identity): the login
   // response's `mfa_token` is posted back with the TOTP code.
   mfaChallenge: (body: { mfa_token: string; code: string }) =>
@@ -184,6 +196,19 @@ export const adminApi = {
       api.post(`/admin/invitations/${id}/resend`, {}),
     ),
   userStats: () => unwrap<AdminUserStats>(api.get("/admin/users/stats")),
+  // Bulk employee onboarding (PROD_B; HRBP+). CSV with header row:
+  // name,email,role,department,designation,manager. Idempotent (upsert by email).
+  bulkImport: (file: File | Blob) => {
+    const form = new FormData();
+    form.append("file", file);
+    return unwrap<{
+      created: number;
+      updated: number;
+      skipped: number;
+      total: number;
+      errors: { row: number | string; email: string; error: string }[];
+    }>(api.post("/admin/users/import", form));
+  },
   createUser: (body: {
     email: string;
     role: Role;

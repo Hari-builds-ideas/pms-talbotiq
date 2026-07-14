@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "@/app/shell/AppLayout";
 import { AuthGuard, RoleGate } from "@/app/guards";
 import { LoginPage } from "@/features/auth/LoginPage";
+import { SignupPage } from "@/features/auth/SignupPage";
 import { ForgotPasswordPage, ResetPasswordPage } from "@/features/auth/PasswordResetPages";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { AcceptInvitePage } from "@/features/auth/AcceptInvitePage";
@@ -34,6 +35,8 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* Public self-serve new-organization signup (PROD_B). */}
+        <Route path="/signup" element={<SignupPage />} />
         {/* Public self-service password reset (FINAL F). */}
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />

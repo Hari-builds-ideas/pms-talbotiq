@@ -1,11 +1,13 @@
 from django.urls import path
 
-from . import invite_views, profile_views, views
+from . import invite_views, profile_views, signup_views, views
 from .saml import views as saml_views
 
 app_name = "identity"
 
 urlpatterns = [
+    # ─── self-serve new-organization signup (PUBLIC; PROD_B) ───
+    path("signup", signup_views.SignupView.as_view(), name="signup"),
     path("login", views.LoginView.as_view(), name="login"),
     # Device-aware refresh (L1.3): stock rotation+blacklist PLUS the did claim
     # is re-checked so a revoked device session cannot rotate.

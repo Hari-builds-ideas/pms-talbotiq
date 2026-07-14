@@ -13,6 +13,7 @@ from apps.identity.invite_views import (
 )
 
 from .views import (
+    EmployeeImportView,
     OrgSettingsView,
     TenantConfigView,
     UserDeactivateView,
@@ -29,6 +30,8 @@ app_name = "administration"
 
 urlpatterns = [
     path("users", UserListCreateView.as_view(), name="users"),
+    # ─── bulk employee onboarding (CSV import; INVITE_USERS — HRBP+) ───
+    path("users/import", EmployeeImportView.as_view(), name="users-import"),
     path("users/stats", UserStatsView.as_view(), name="user-stats"),
     path("users/<uuid:pk>/role", UserRoleView.as_view(), name="user-role"),
     path("users/<uuid:pk>/display-name", UserDisplayNameView.as_view(), name="user-display-name"),

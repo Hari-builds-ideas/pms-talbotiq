@@ -41,6 +41,17 @@ isolation; safe fixes committed per fix; risky findings written up in BUGS_FOUND
   don't cross; AI schema role-filtered, session/plan isolation holds, destructive ask
   refused, **Open-the-draft navigation fix holds live**, colleague ask leaks nothing.
 - Cross-tenant 29/29; Phase-2 re-run 49/49.
-- Final gates: backend **1480 passed / 0 failed** (clean isolated run; one earlier
+- Final gates (pass 1): backend **1480 passed / 0 failed** (clean isolated run; one earlier
   run failed en masse purely from demo_ready recreating containers mid-suite) ·
   demo_ready **57/57 DEMO READY** · stale-route repair applied · reseeded.
+
+## Pass 2 (deeper sweep — modules pass 1 skipped)
+
+| Sweep | State | Notes |
+|---|---|---|
+| D: succession/career/one-on-ones/notifications | DONE | **28/28** — succession fully shut to employees (no access anywhere); career/1:1 own-scope holds; no bug |
+| E: JD/review/feedback/approvals **lifecycle** sub-endpoints | DONE | **34/34** — found + fixed **BUG-N5** (JD non-object body → 500 on submit/export, `f5cc539`) |
+| Cross-tenant on new modules (succession/career/1:1/JD-lifecycle) | DONE | **11/11** — every ACME id as globex admin → 404, no foreign rows |
+
+- Pass-2 total: 73 new live checks; 1 MEDIUM bug fixed (BUG-N5) + regression test.
+- Reseeded after pass-2 probes; grand total **5 bugs found & fixed** across both passes.

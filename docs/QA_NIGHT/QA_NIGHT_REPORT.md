@@ -6,13 +6,18 @@ probes, RBAC/negative/isolation/integrity checks, bug fixes, regression tests. T
 
 ## Headline
 
-- **173 live HTTP checks, all passing at end of night**: sweep A (performance modules)
-  63/63 · sweep B (talent/insights/admin) 63/63 · sweep C (auth edges + AI agent) 18/18 ·
-  cross-tenant 29/29 · Phase-2 re-run 49/49 *(sweep totals after fixes; overlapping
-  checks counted once per sweep)*.
-- **3 real bugs found → fixed + regression-tested + committed** (details in
+Two passes. **246 live HTTP checks green at end of night; 5 bugs found → all fixed + regression-tested.**
+
+- **Pass 1 — 173 checks**: sweep A 63/63 · B 63/63 · C 18/18 · cross-tenant 29/29 ·
+  Phase-2 49/49. Plus a `/security-review` of the branch.
+- **Pass 2 — 73 checks** over the modules pass 1 skipped: sweep D
+  (succession/career/1:1/notifications) 28/28 · sweep E (JD/review/feedback/approvals
+  **lifecycle**) 34/34 · cross-tenant on new modules 11/11.
+- **5 bugs found → fixed + regression-tested + committed** (details in
   [BUGS_FOUND.md](BUGS_FOUND.md)):
+  - `8c0bce5` **HIGH** — invite flow let an HRBP mint a full ADMIN (privilege escalation; found by `/security-review`).
   - `9881297` **HIGH** — repeat finalize bypassed an in-flight approval route.
+  - `f5cc539` **MEDIUM** — JD non-object save-draft body → 500 on submit/export (pass 2).
   - `478e3d2` **MEDIUM** — non-numeric KPI actual → 500 + ghost audit row.
   - `15c5dad` **LOW** — recognition accepted a 50k-char message.
 - **2 low-severity observations written up, not changed** (403/404 consistency policy;
@@ -20,6 +25,20 @@ probes, RBAC/negative/isolation/integrity checks, bug fixes, regression tests. T
 - RBAC/HITL/tenant-isolation/audit **untouched by the fixes** — each fix *tightens* a gate.
 
 ## What was tested (per module)
+
+### Pass 2 modules (previously uncovered)
+
+| Module | Role matrix | Negative/edge | Cross-tenant |
+|---|---|---|---|
+| Succession (management-only) | ✅ employee shut out everywhere; VIEW=Mgr+, register/override/publish=HRBP+ | malformed/empty payloads clean 400 | ✅ 404 by id, no foreign rows |
+| Career roadmaps | ✅ own-scope all; can't set/read a colleague's | target needs exactly one jd/position → 422 | ✅ |
+| One-on-ones | ✅ participants-only object rule | — | ✅ |
+| JD lifecycle (save-draft/submit/approve/versions/export/generate/request) | ✅ MANAGE=HRBP+, request=Mgr+, view=all | **BUG-N5 fixed**; out-of-order transitions clean 4xx | ✅ |
+| Review sub-endpoints (comments/assessments/reject/calibration) | ✅ comments=own-review scope, calibration=HRBP+ | reject-without-reason 422, bad parent 4xx | — |
+| Feedback extras (summary queue/requests/decline/received) | ✅ summary approve=HRBP+ | unknown id → clean 404 | — |
+| Approvals lifecycle (workflow CRUD/step act) | ✅ configure=HRBP+, act=Mgr+ | invalid mode 400, unknown step 404 | — |
+
+### Pass 1 modules
 
 | Module | Role matrix | Negative/edge | Integrity | Cross-tenant |
 |---|---|---|---|---|

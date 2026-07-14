@@ -1,16 +1,39 @@
 # QA_NIGHT — bugs found (severity-ranked)
 
-Overnight machine-checkable QA pass, 2026-07-14. Method: 173 live HTTP checks at :8090
-across four ACME roles + a GLOBEX tenant (sweeps A/B/C/XT + the Phase-2 probe), plus a
-coverage audit. **3 real bugs found — all three FIXED tonight with regression tests.**
-2 low-severity observations are left as write-ups (deliberately not changed at night).
+Overnight machine-checkable QA, 2026-07-14, TWO passes.
 
-A follow-up **`/security-review`** of the whole branch then found **1 further HIGH**
-(privilege escalation via the invite flow) — also **FIXED** (BUG-N4 below).
+**Pass 1** — 173 live HTTP checks at :8090 across four ACME roles + a GLOBEX tenant
+(sweeps A/B/C/XT + the Phase-2 probe): **3 bugs found + fixed** (N1–N3). A follow-up
+**`/security-review`** of the branch then found **1 HIGH** privilege escalation (N4) — fixed.
+
+**Pass 2** — a second, deeper run over the modules pass 1 skipped: sweep D
+(succession/career/one-on-ones/notifications, 28/28), sweep E (JD/review/feedback/
+approvals **lifecycle** sub-endpoints, 34/34), and cross-tenant on the new modules
+(11/11). Found **1 MEDIUM** (N5, JD non-object body → 500) — fixed.
+
+**Total: 5 bugs found, all 5 FIXED with regression tests** (1 HIGH escalation, 1 HIGH
+route-bypass, 3 MEDIUM/LOW). 2 low-severity observations remain as write-ups.
 
 ---
 
 ## FIXED tonight
+
+### BUG-N5 · JD save-draft accepted a non-object body → 500 on submit/export — MEDIUM · fixed `f5cc539`
+- **Module:** JD Library · `apps/jd/serializers.py` (`JDDraftSerializer`)
+- **Steps:** as HRBP → `POST /api/jd/<id>/save-draft {"body": "just a string"}` (a bare JSON
+  string, not an object) → then `POST /api/jd/<id>/submit` **or** `GET /api/jd/<id>/export`.
+- **Actual (before):** the string body persisted onto the working version; the next legitimate
+  operation crashed with **HTTP 500** (`AttributeError: 'str' object has no attribute 'get'` in
+  `lifecycle.validate_jd_content` / export, which do `body.get("summary")`). A poisoned version
+  row bricked the JD's submit + export paths.
+- **Expected:** `body`/`inputs` must be JSON objects; a non-object is a clean 400 at the API
+  boundary, nothing persisted.
+- **Root cause:** `JDDraftSerializer.body = JSONField()` accepts ANY valid JSON (string/list/
+  number), but every downstream consumer treats it as a dict.
+- **Fix:** `validate_body` / `validate_inputs` reject non-dict input → 400. Regression test
+  `test_save_draft_rejects_non_object_body_with_400` (also asserts submit stays 422 and export
+  doesn't 500). Found in QA pass-2 sweep E. Only HRBP+ can reach save-draft, so impact is a
+  self-inflicted broken-JD (500), not a cross-user issue — hence MEDIUM.
 
 ### BUG-N4 · Invite flow let an HRBP mint a full ADMIN account (privilege escalation) — HIGH · fixed `8c0bce5`
 - **Module:** Identity / invitations · `apps/identity/invite_views.py`

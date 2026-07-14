@@ -144,3 +144,38 @@ activates — verified end to end against test-mode signature schemes.
 - `create_checkout` returns a test descriptor until the provider SDK call is wired
   (documented go-live step 4). Reconciliation beat job + refund admin endpoint are
   follow-ups (per PAYMENTS_DESIGN §5).
+
+---
+
+## PROD_D — AI robustness under load ✅ (commit `268aa4f`)
+
+**Goal:** the AI must never freeze, crash, or fabricate under real concurrent load.
+
+### Diagnosis (PROVIDER_ERROR)
+Root cause: **transient 5xx were not retried** (the provider failed the whole job
+on the first blip — only 429 + connection errors retried), and the **30 s read
+timeout was too tight** for the BEST "thinking" model (the 10–16 s runtimes sit
+just under it; a spike tripped it). Free-tier 429 is a secondary, provisioning
+cause. A missing key is NOT this (→ clean 503, never fabrication).
+
+### What changed
+- `gemini_provider._post_with_backoff`: retry transient **5xx** with jittered
+  backoff; **4xx fails fast** (bad model/key won't fix on retry); keep 429 +
+  Retry-After; jitter on every sleep (no thundering herd).
+- New `LLM_READ_TIMEOUT` (default **60 s**, env-tunable) — separate, larger read
+  budget; connect stays ≤10 s; both under the 120 s job soft-limit backstop.
+- Confirmed (report): AI is **off the request thread** (Celery `run_agent_job`);
+  per-agent **FAST/BEST model map** is env-overridable; **graceful degrade** to an
+  honest FAILED/retry state (soft-limit + exception guards, FIX-ROUND) — never a
+  dead spinner, never fabrication; budgets/throttles hold atomically under a burst.
+
+### Verified
+- `apps/ai/tests/test_ai_robustness.py` 6/6 (5xx-retry, 429+Retry-After,
+  give-up→LLMProviderError, 4xx fail-fast, connection retry, configurable read
+  timeout). Full **AI suite 253/253**. `docs/AI_ROBUSTNESS.md` written (7-point).
+
+### QUESTIONS / staged (provisioning, deployment team)
+- Managed Redis (noeviction broker + LRU cache), Celery worker autoscaling +
+  separate AI queue, right LLM tier + provider dollar-cap (`LLM_MAX_CALLS` default
+  500 is a dev value), and a load test at target concurrency. Code is ready; these
+  are provisioning. Confirm the deploy key can access the configured model ids.

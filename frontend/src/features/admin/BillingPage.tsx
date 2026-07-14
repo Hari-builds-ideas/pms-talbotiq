@@ -70,6 +70,9 @@ export function BillingPage() {
       {/* PHASE2 L1.4 — the internal subscription (plan + lifecycle; no gateway). */}
       <SubscriptionCard onChanged={() => void refreshFeatures()} />
 
+      {/* PROD_C — plans + payment (test mode) + invoices. */}
+      <PlansAndInvoices onChanged={() => void refreshFeatures()} />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
           label="Current plan"
@@ -121,6 +124,131 @@ export function BillingPage() {
         onOpenChange={setUpgradeOpen}
         onUpgraded={refreshFeatures}
       />
+    </div>
+  );
+}
+
+/** Plan picker + billing history (PROD_C). With payments off, choosing a plan
+ *  flips it immediately (marked "no payment"). With payments on + a paid plan,
+ *  the server returns a hosted checkout URL and we redirect; the plan activates
+ *  only after the verified webhook — the frontend never marks anything paid. */
+const PLAN_ORDER = ["STARTER", "PROFESSIONAL", "ENTERPRISE"] as const;
+
+function money(minor: number, currency: string): string {
+  if (!minor) return "Free";
+  const major = (minor / 100).toLocaleString(undefined, {
+    style: "currency",
+    currency: currency || "USD",
+    maximumFractionDigits: 0,
+  });
+  return major;
+}
+
+function PlansAndInvoices({ onChanged }: { onChanged: () => void }) {
+  const qc = useQueryClient();
+  const [cycle, setCycle] = React.useState<"MONTHLY" | "ANNUAL">("MONTHLY");
+  const cfg = useQuery({ queryKey: ["billing", "payments-config"], queryFn: billingApi.paymentsConfig });
+  const invoices = useQuery({ queryKey: ["billing", "invoices"], queryFn: billingApi.invoices });
+
+  const checkout = useMutation({
+    mutationFn: (plan: string) => billingApi.checkout({ plan, cycle }),
+    onSuccess: (r) => {
+      if (r.status === "pending" && r.checkout_url) {
+        // Redirect to the provider's hosted page; activation happens on webhook.
+        window.location.href = r.checkout_url;
+        return;
+      }
+      notifySuccess(
+        "Plan updated",
+        r.paid ? "Payment confirmed." : "Applied (no payment — test/free plan).",
+      );
+      void qc.invalidateQueries({ queryKey: ["billing"] });
+      onChanged();
+    },
+    onError: (e: unknown) => notifyError(e),
+  });
+
+  const prices = cfg.data?.prices;
+  const currency = "USD";
+
+  return (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <div className="lg:col-span-2">
+        <Panel
+          title="Plans"
+          aside={
+            <div className="flex gap-1 rounded-lg border border-border p-0.5 text-xs">
+              {(["MONTHLY", "ANNUAL"] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCycle(c)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium capitalize",
+                    cycle === c ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {c.toLowerCase()}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          <p className="mb-3 text-xs text-muted-foreground">
+            {cfg.data?.payments_enabled
+              ? "Paid plans require checkout; the plan activates after payment is confirmed."
+              : "Payments are off (test/QA) — choosing a plan applies it immediately."}
+          </p>
+          {cfg.isLoading ? (
+            <CardGridSkeleton count={3} />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {PLAN_ORDER.map((plan) => {
+                const amount = prices?.[plan]?.[cycle]?.[currency] ?? 0;
+                return (
+                  <div key={plan} className="flex flex-col rounded-xl border border-border p-4">
+                    <div className="text-sm font-semibold">{plan[0] + plan.slice(1).toLowerCase()}</div>
+                    <div className="mt-1 text-2xl font-bold">
+                      {money(amount, currency)}
+                      {amount > 0 && (
+                        <span className="text-xs font-normal text-muted-foreground">
+                          /{cycle === "MONTHLY" ? "mo" : "yr"}
+                        </span>
+                      )}
+                    </div>
+                    <Button
+                      className="mt-4 w-full"
+                      variant="outline"
+                      loading={checkout.isPending && checkout.variables === plan}
+                      onClick={() => checkout.mutate(plan)}
+                    >
+                      {amount > 0 ? "Choose plan" : "Select"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <Panel title="Billing history">
+        <p className="mb-3 text-xs text-muted-foreground">Invoices for confirmed payments.</p>
+        {invoices.isLoading ? (
+          <LinesSkeleton lines={3} />
+        ) : !invoices.data || invoices.data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No invoices yet.</p>
+        ) : (
+          <ul className="max-h-72 space-y-2 overflow-y-auto scrollbar-thin">
+            {invoices.data.map((inv) => (
+              <li key={inv.id} className="flex items-center justify-between text-sm">
+                <span className="font-medium">{inv.number}</span>
+                <span className="text-muted-foreground">{money(inv.total, inv.currency)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
     </div>
   );
 }

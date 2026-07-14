@@ -176,6 +176,36 @@ export const billingApi = {
     unwrap<Entitlement>(api.post("/billing/upgrade", body)),
   setSeats: (body: { seat_count: number }) =>
     unwrap<Entitlement>(api.patch("/billing/seats", body)),
+  // ── PROD_C — payments (Stripe + Razorpay, test mode; Admin) ──
+  paymentsConfig: () =>
+    unwrap<{
+      payments_enabled: boolean;
+      stripe_publishable_key: string;
+      prices: Record<string, Record<string, Record<string, number>>>;
+      cycles: string[];
+    }>(api.get("/billing/payments-config")),
+  checkout: (body: { plan: string; cycle?: string }) =>
+    unwrap<{
+      status: "activated" | "pending";
+      paid: boolean;
+      plan: string;
+      cycle?: string;
+      amount?: number;
+      currency?: string;
+      checkout_url?: string;
+      session_id?: string;
+    }>(api.post("/billing/checkout", body)),
+  invoices: () =>
+    unwrap<
+      {
+        id: string;
+        number: string;
+        total: number;
+        currency: string;
+        line_items: unknown[];
+        issued_at: string;
+      }[]
+    >(api.get("/billing/invoices")),
 };
 
 // ---- Admin -----------------------------------------------------------------

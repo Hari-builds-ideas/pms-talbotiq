@@ -109,3 +109,38 @@ and Sign-in-with-Google — all tenant-isolated and RBAC-safe.
 ### QUESTIONS
 - Signup reuses the shared `anon` IP throttle (100/min). A dedicated tighter
   `signup` scope is a one-line `DEFAULT_THROTTLE_RATES` add if desired.
+
+---
+
+## PROD_C — Payments (Stripe + Razorpay, TEST MODE) ✅ (commits `967993e`, `3d2ed98`)
+
+**Goal:** a paid plan/seat change requires REAL payment before the entitlement
+activates — verified end to end against test-mode signature schemes.
+
+### What changed
+- **Models** (additive, `billing/0004`): `BillingProfile`, `PaymentEvent`
+  (`(provider,event_id)` UNIQUE → idempotency), `Payment`, `Invoice` (seq number).
+- **Provider port** + Stripe/Razorpay adapters with **real HMAC signature
+  verification** (self-contained, no SDK). Checkout is SDK-optional (test
+  descriptor now; live SDK call marked TODO for go-live).
+- **Service**: `start_checkout` (server-side price catalogue) + `process_webhook`
+  (verify → idempotent → drive existing `set_plan`/`set_subscription_status` →
+  `Payment` + `Invoice` + audit).
+- **Endpoints**: `payments-config`, `checkout`, `invoices` (admin) + PUBLIC
+  signature-verified `webhooks/{stripe,razorpay}`. `PAYMENTS_ENABLED` gate.
+- **Frontend**: plan-picker (monthly/annual) → checkout redirect + invoices list
+  on the Billing page.
+- **Env + docs**: `.env.example` (PAYMENTS_ENABLED + all Stripe/Razorpay
+  placeholders), `docs/PHASE2/PAYMENTS_VERIFIED.md` (build + go-live steps).
+
+### Verified
+- **Tests** `apps/billing/tests/test_payments.py` 9/9 + full billing suite 86/86.
+  Covered: pending-until-webhook, invalid-signature→401, idempotency, cross-tenant
+  isolation, no-client-trusted-activation, failed→PAST_DUE, Razorpay, disabled-flip.
+- **Live**: payments-config 200 (admin) / 403 (employee), invoices 200, unsigned
+  webhook → 401. Frontend `tsc` clean + vitest 132/132.
+
+### QUESTIONS / staged
+- `create_checkout` returns a test descriptor until the provider SDK call is wired
+  (documented go-live step 4). Reconciliation beat job + refund admin endpoint are
+  follow-ups (per PAYMENTS_DESIGN §5).

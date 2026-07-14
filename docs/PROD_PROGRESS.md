@@ -55,3 +55,57 @@ the env (or the base.py default). Rebuild the frontend. Full detail in
 - Chose to keep the human's 1–2 MB source PNGs in `favicon/` and ship KB-sized
   `sips`-generated derivatives for the actual `<img>`/favicon refs (source PNGs are
   too heavy to serve directly). No decision needed from the human.
+
+---
+
+## PROD_B — Onboarding + SSO ✅ (commit `e3cf387`)
+
+**Goal:** how a real new customer starts — self-serve signup, bulk employee import,
+and Sign-in-with-Google — all tenant-isolated and RBAC-safe.
+
+### What changed
+- **Self-serve signup** `POST /api/auth/signup` (`apps/identity/signup_views.py`,
+  PUBLIC, `AtomicAnonThrottle`) — creates a `Tenant` + first `ADMIN` inside
+  `tenant_context`, provisions a Starter subscription + `SIGNUP_DEFAULT_SEATS`
+  seats, sends a best-effort welcome email, and auto-logs-in (device session +
+  tenant-scoped JWTs). Role is forced ADMIN server-side; unique-slug handling
+  (suffix on collision, reserved-slug list); hard input + password validation.
+- **Bulk CSV import** `POST /api/admin/users/import` (`EmployeeImportView`,
+  INVITE_USERS = HRBP+). Accepts a multipart CSV (`name,email,role,department,
+  designation,manager`) or JSON rows. Idempotent upsert by email; per-row errors
+  never abort the file; **two-pass** reporting-line linking by manager email;
+  **seat + role-ceiling enforced** server-side; **never links a manager from
+  another tenant**. Imported users get an unusable password → they sign in via
+  Google/SSO or "Forgot password" (no plaintext password ever transmitted).
+- **Sign in with Google (OIDC)** — added a Google app to the allauth
+  `openid_connect` provider, appended only when `GOOGLE_OAUTH_CLIENT_ID` is set,
+  bound through the SAME no-JIT `TenantSocialAccountAdapter`. `GOOGLE_SSO_ENABLED`
+  setting. Confirmed the existing per-tenant SAML + generic OIDC paths are intact.
+- **Frontend** — new `/signup` page (SignupPage.tsx), a "Create your workspace"
+  link + a flag-gated ("Sign in with Google") button on the login page, and an
+  "Import CSV" dialog on Admin → Users with a per-row result summary.
+- **Env** — `.env.example` + `frontend/.env.example`: `APP_NAME`,
+  `SIGNUP_DEFAULT_SEATS`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `VITE_GOOGLE_SSO_ENABLED`
+  (placeholders). **docs/CUSTOMER_ONBOARDING.md** — the end-to-end customer story.
+
+### Verified
+- **Live**: signup → 201, fresh isolated tenant (admin sees only itself), duplicate
+  org → distinct slug, weak/empty input → 400/422. CSV import → created/updated/
+  skipped counts, 2-pass manager link, dept/title persisted, unusable password,
+  HRBP-imports-ADMIN blocked, Employee → 403, cross-tenant manager → row error.
+- **Tests**: `apps/identity` 74/74, `apps/administration` 43/43 (incl. new
+  `test_signup.py`, `test_employee_import.py` + shared `org` conftest). Frontend
+  `tsc` clean, **vitest 132/132**. `/signup` + `/login` serve 200 on :8090.
+
+### Decisions (also in CUSTOMER_ONBOARDING.md)
+- Signup **auto-logs-in** the admin (usable immediately) + sends a verify/welcome
+  email; hard email-verification enforcement is a later config toggle (matches the
+  Slack/Notion "you're in, verify later" pattern).
+- Google/enterprise SSO stays **authentication-only (no JIT)** — imported/invited
+  users only; safest default for a multi-tenant HR system.
+- The exact allauth Google login URL (`/accounts/oidc/google/login/…`) is wired but
+  can only be end-to-end verified once the human adds real Google creds (documented).
+
+### QUESTIONS
+- Signup reuses the shared `anon` IP throttle (100/min). A dedicated tighter
+  `signup` scope is a one-line `DEFAULT_THROTTLE_RATES` add if desired.

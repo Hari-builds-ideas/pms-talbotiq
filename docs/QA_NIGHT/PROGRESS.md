@@ -55,3 +55,5 @@ isolation; safe fixes committed per fix; risky findings written up in BUGS_FOUND
 
 - Pass-2 total: 73 new live checks; 1 MEDIUM bug fixed (BUG-N5) + regression test.
 - Reseeded after pass-2 probes; grand total **5 bugs found & fixed** across both passes.
+- Final gates (pass 2): backend **1482 passed / 0 failed** (clean isolated run; +2 new
+  regression tests since pass 1) · demo_ready **57/57 DEMO READY**.

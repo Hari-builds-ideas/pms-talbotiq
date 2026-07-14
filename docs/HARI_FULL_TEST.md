@@ -9,8 +9,21 @@
 | Manager | `ada@acme.test` | Her team (incl. Vera Lindqvist, Akhil) |
 | Employee | `akhil@acme.test` | Own data only |
 
-**Before you start** (5 min): `docker compose ps` shows web/celery-worker/mysql/redis up, then
-`BASE=http://localhost:8090 ./scripts/demo_ready.sh` → expect **57/57 checks · DEMO READY**.
+**Run the AUTOMATED half first** (one command, ~3–5 min):
+
+```
+./scripts/qa_handover.sh            # reseeds, runs 131 API checks, reseeds clean
+QA_SKIP_AI=1 ./scripts/qa_handover.sh   # skip the live-Gemini checks (faster)
+```
+
+It preflights the stack, reseeds a clean demo, verifies **every module × 4 roles +
+negatives + cross-tenant isolation + all account features + the 5 fixed bugs + data
+hygiene**, then reseeds so you inherit clean data. Expect **✓ ALL … CHECKS PASSED**.
+Anything red there is a real regression — fix before the manual pass. (What it verifies
+is the machine-checkable half; this document is the visual/UX half it can't see.)
+
+**Then, before the manual walkthrough** (5 min): `docker compose ps` shows
+web/celery-worker/mysql/redis up (the app is at http://localhost:8090).
 If lockout tests were run recently, wait 15 min or reseed. Reset-password links print in
 `docker compose logs web -f` (dev console email). Test in a normal window; use a **private
 window** for second-session/invite steps so cookies don't collide.

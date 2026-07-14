@@ -81,6 +81,9 @@ class GeminiProvider(LLMProvider):
             settings, "LLM_API_KEY", ""
         )
         self.timeout = float(getattr(settings, "LLM_TIMEOUT_SECONDS", 30))
+        # A larger READ budget for a slow "thinking" model (the connect timeout
+        # stays short). Kept under the AI-job soft limit so the Celery backstop wins.
+        self.read_timeout = float(getattr(settings, "LLM_READ_TIMEOUT", 60))
         self.max_tokens = int(getattr(settings, "LLM_MAX_TOKENS", 900))
         self.global_ceiling = int(getattr(settings, "LLM_MAX_CALLS", 0))
 
@@ -158,27 +161,49 @@ class GeminiProvider(LLMProvider):
         }
 
     def _post_with_backoff(self, url, payload, headers, *, attempts=3) -> dict:
+        """POST with retry+backoff on the TRANSIENT failures — connection errors,
+        429 (honoring Retry-After), and 5xx — with jitter so many concurrent jobs
+        don't retry in lockstep (thundering herd). A 4xx other than 429 is a client
+        error that won't fix on retry, so it fails fast. After the cap, raise
+        ``LLMProviderError`` → the gateway records PROVIDER_ERROR and the job
+        degrades gracefully (never fabricates)."""
         last_exc: Exception | None = None
         for attempt in range(attempts):
             try:
                 resp = requests.post(
                     url, json=payload, headers=headers,
-                    timeout=(min(self.timeout, 10.0), self.timeout),
+                    timeout=(min(self.timeout, 10.0), self.read_timeout),
                 )
             except requests.RequestException as exc:
                 last_exc = exc
-                time.sleep(1.5 * (attempt + 1))
+                self._sleep(1.5 * (attempt + 1))
                 continue
             if resp.status_code == 429:
                 retry_after = resp.headers.get("Retry-After")
                 delay = float(retry_after) if retry_after else 2.0 * (attempt + 1)
                 logger.warning("Gemini 429; backing off %.1fs (attempt %d)", delay, attempt + 1)
-                time.sleep(min(delay, 10.0))
+                self._sleep(min(delay, 10.0))
                 last_exc = LLMProviderError("Gemini rate limit (429).")
                 continue
+            if 500 <= resp.status_code < 600:
+                # Transient server error — retry with backoff instead of failing the
+                # whole job on the first blip.
+                logger.warning("Gemini %s; backing off (attempt %d)", resp.status_code, attempt + 1)
+                self._sleep(2.0 * (attempt + 1))
+                last_exc = LLMProviderError(f"Gemini HTTP {resp.status_code}.")
+                continue
             if resp.status_code >= 400:
-                # Don't leak the body (could echo the prompt); log status only.
+                # 4xx (non-429): a client error (bad model id, bad key) — won't fix on
+                # retry. Don't leak the body (could echo the prompt); log status only.
                 logger.error("Gemini error status=%s", resp.status_code)
                 raise LLMProviderError(f"Gemini HTTP {resp.status_code}.")
             return resp.json()
         raise last_exc or LLMProviderError("Gemini call failed after retries.")
+
+    @staticmethod
+    def _sleep(base: float) -> None:
+        """Sleep ``base`` seconds plus a little random jitter (de-synchronises the
+        retries of many concurrent jobs). Capped so a retry can't blow the job budget."""
+        import random
+
+        time.sleep(min(base + random.uniform(0, 0.75), 10.0))

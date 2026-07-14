@@ -551,6 +551,11 @@ GEMINI_MODEL_MAP = {
 LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
+# Read (response) timeout for the LLM HTTP call. A "thinking" model (the BEST tier)
+# routinely takes longer than the connect timeout, so the read budget is separate
+# and larger — a too-tight read timeout was a source of spurious PROVIDER_ERROR
+# under load. Kept below the AI-job soft limit so the Celery backstop still wins.
+LLM_READ_TIMEOUT = env.float("LLM_READ_TIMEOUT", default=60.0)
 # Wall-clock ceiling for one async AI job (Celery soft/hard limits in apps/ai/tasks).
 # The soft limit force-fails a stuck job so the client's spinner always resolves;
 # keep it above the provider's worst case (~3 retries × LLM_TIMEOUT_SECONDS).

@@ -87,6 +87,28 @@ def test_only_hrbp_up_can_invite_and_revocation_wins(org3):
                     {"password": NEW_PW}, format="json").status_code == 404
 
 
+def test_hrbp_cannot_invite_a_higher_role_but_admin_can(org3):
+    # SECURITY: an HRBP holds INVITE_USERS but NOT the Admin-only user/role-management
+    # power — so the invite flow must NOT let them mint an ADMIN account (escalation
+    # ABOVE their own rank). The ceiling is "at or below your own role": a peer HRBP or
+    # anything lower is fine; ADMIN is refused. An Admin may still invite an Admin.
+    t, hrbp, emp = org3
+    admin = UserFactory(tenant=t, email="a@acme.test", password=PW_HRBP, role="ADMIN")
+    c = _client(hrbp)
+    # The reported escalation — HRBP → ADMIN — is refused, and nothing is created.
+    assert c.post(ADMIN_INVITES, {"email": "esc@acme.test", "role": "ADMIN"},
+                  format="json").status_code == 403
+    assert not Invitation.objects.filter(email="esc@acme.test").exists()
+    # At or below own rank is allowed (peer HRBP, and lower).
+    assert c.post(ADMIN_INVITES, {"email": "peer@acme.test", "role": "HRBP"},
+                  format="json").status_code == 201
+    assert c.post(ADMIN_INVITES, {"email": "ok@acme.test", "role": "MANAGER"},
+                  format="json").status_code == 201
+    # An Admin invites an Admin fine (at-or-below their own rank).
+    assert _client(admin).post(ADMIN_INVITES, {"email": "newadmin@acme.test", "role": "ADMIN"},
+                               format="json").status_code == 201
+
+
 @override_settings(**LOCMEM)
 def test_resend_reissues_a_working_link_and_is_pending_only(org3):
     from django.core import mail

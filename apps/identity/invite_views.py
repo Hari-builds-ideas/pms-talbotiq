@@ -35,6 +35,18 @@ logger = logging.getLogger("pms.identity")
 _INVITE_SALT = "pms.invite"
 _INVITE_MAX_AGE = 7 * 24 * 3600  # 7 days
 
+# Role ordering for the invite privilege-escalation ceiling (increasing breadth).
+# Mirrors the SAML rank cap (apps/identity/saml/service.py): an inviter may assign
+# a role AT OR BELOW their own, never above it. Without this an HRBP — who holds
+# INVITE_USERS but NOT the Admin-only MANAGE_USERS_ROLES — could mint a full ADMIN
+# account via the invite flow, bypassing the Admin-only user/role-management gate.
+_ROLE_RANK = {
+    User.Role.EMPLOYEE: 0,
+    User.Role.MANAGER: 1,
+    User.Role.HRBP: 2,
+    User.Role.ADMIN: 3,
+}
+
 
 def _invite_token(invitation: Invitation) -> str:
     return signing.dumps({"inv": str(invitation.id)}, salt=_INVITE_SALT)
@@ -109,6 +121,14 @@ class InvitationAdminView(RBACMixin, APIView):
         serializer = InvitationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        # Role ceiling — an inviter may never grant a role above their own. INVITE_USERS
+        # is HRBP+, but ADMIN role assignment is an Admin-only power (MANAGE_USERS_ROLES);
+        # without this an HRBP could self-issue an ADMIN account through the invite flow.
+        if _ROLE_RANK.get(data["role"], 0) > _ROLE_RANK.get(request.user.role, 0):
+            return Response(
+                {"role": ["You can't invite someone at a higher role than your own."]},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         email = User.objects.normalize_email(data["email"])
         if User.objects.filter(email=email).exists():
             return Response({"email": ["A user with this email already exists."]}, status=422)

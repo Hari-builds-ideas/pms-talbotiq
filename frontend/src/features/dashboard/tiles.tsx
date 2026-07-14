@@ -33,6 +33,7 @@ export function ApprovalsInboxTile() {
       title="Approval inbox"
       icon={ClipboardCheck}
       to="/approvals"
+      scroll
       aside={
         q.data && q.data.length > 0 ? (
           <Badge variant="warning">{q.data.length}</Badge>
@@ -116,6 +117,7 @@ export function NudgesTile() {
     <Panel
       title="KPI nudges"
       icon={TrendingUp}
+      scroll
       aside={<Badge variant="ai" className="gap-1"><Sparkles className="h-3 w-3" />Agent 2</Badge>}
     >
       {!enabled ? (
@@ -172,6 +174,7 @@ export function StaleGoalsTile() {
       icon={Target}
       to="/checkins"
       toLabel="Start a check-in"
+      scroll
       aside={<Badge variant="ai" className="gap-1"><Sparkles className="h-3 w-3" />AI</Badge>}
     >
       {q.isLoading ? (
@@ -220,7 +223,7 @@ export function SuccessionRiskTile() {
   const atRisk = [...roles].sort((a, b) => coverageRank(a.coverage_status) - coverageRank(b.coverage_status));
 
   return (
-    <Panel title="Succession risk" icon={GitBranch} to="/succession">
+    <Panel title="Succession risk" icon={GitBranch} to="/succession" scroll>
       {q.isLoading ? (
         <LinesSkeleton lines={3} />
       ) : q.isError ? (

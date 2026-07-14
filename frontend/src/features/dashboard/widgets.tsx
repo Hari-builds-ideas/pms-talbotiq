@@ -179,6 +179,7 @@ export function DashboardSection({
   toLabel = "View all",
   children,
   className,
+  scroll = false,
 }: {
   title: string;
   icon?: LucideIcon;
@@ -186,6 +187,9 @@ export function DashboardSection({
   toLabel?: string;
   children: React.ReactNode;
   className?: string;
+  /** Cap the body height and scroll internally — for growable content (e.g. a
+   *  large team table) so it never stretches the page. Mirrors Panel's `scroll`. */
+  scroll?: boolean;
 }) {
   return (
     <Card className={cn("flex flex-col", className)}>
@@ -200,7 +204,9 @@ export function DashboardSection({
           </Link>
         )}
       </div>
-      <div className="flex-1 p-5">{children}</div>
+      <div className={cn("flex-1 p-5", scroll && "max-h-96 overflow-y-auto scrollbar-thin")}>
+        {children}
+      </div>
     </Card>
   );
 }

@@ -212,7 +212,7 @@ export function ManagerDashboard() {
 
       {/* ── Team table · Competency · Announcements ─────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
-        <DashboardSection title="Team performance" icon={Users} to="/analytics" className="lg:col-span-2">
+        <DashboardSection title="Team performance" icon={Users} to="/analytics" className="lg:col-span-2" scroll>
           {scoresQ.isLoading ? (
             <LinesSkeleton lines={5} />
           ) : scoresQ.isError ? (

@@ -99,6 +99,32 @@ def test_provider_error_fails_job_and_leaves_artifact_unpublished(org):
     assert review.state != Review.State.PENDING_HUMAN_REVIEW
 
 
+@override_settings(**WIRED)
+def test_soft_time_limit_marks_job_failed_timeout(org, monkeypatch):
+    # FIX-ROUND: a seam that runs past the Celery soft time limit raises
+    # SoftTimeLimitExceeded INSIDE the task — it must land the job FAILED/TIMEOUT
+    # (not stranded RUNNING), so the client's spinner resolves to the retry banner.
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    import apps.ai.tasks as tasks_mod
+
+    def _timeout(job, actor_id):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(tasks_mod, "_dispatch", _timeout)
+    review = _draft_review(org)
+    job = _job_for(org, review)
+    out = run_agent_job(str(org.tenant.id), str(job.id))
+
+    assert out["status"] == AIJob.Status.FAILED and out["error_code"] == "TIMEOUT"
+    with tenant_context(org.tenant):
+        job.refresh_from_db()
+        review.refresh_from_db()
+    assert job.status == AIJob.Status.FAILED and job.error_code == "TIMEOUT"
+    assert job.finished_at is not None  # terminal — never stranded RUNNING
+    assert review.state != Review.State.PENDING_HUMAN_REVIEW  # no fabricated draft
+
+
 def test_not_configured_degrades_job_and_leaves_review_in_draft(org):
     # No WIRED override -> default NotConfiguredProvider -> no_provider.
     review = _draft_review(org)

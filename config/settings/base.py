@@ -508,6 +508,11 @@ GEMINI_MODEL_MAP = {
 LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
+# Wall-clock ceiling for one async AI job (Celery soft/hard limits in apps/ai/tasks).
+# The soft limit force-fails a stuck job so the client's spinner always resolves;
+# keep it above the provider's worst case (~3 retries × LLM_TIMEOUT_SECONDS).
+AI_JOB_SOFT_TIME_LIMIT = env.int("AI_JOB_SOFT_TIME_LIMIT", default=120)
+AI_JOB_HARD_TIME_LIMIT = env.int("AI_JOB_HARD_TIME_LIMIT", default=150)
 # 4096 gives headroom for Gemini "thinking" models (2.5/3.x pro + -latest aliases),
 # which spend output tokens on reasoning before the JSON — 900 truncated them.
 LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=4096)

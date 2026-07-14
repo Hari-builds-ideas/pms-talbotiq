@@ -5,9 +5,30 @@ across four ACME roles + a GLOBEX tenant (sweeps A/B/C/XT + the Phase-2 probe), 
 coverage audit. **3 real bugs found — all three FIXED tonight with regression tests.**
 2 low-severity observations are left as write-ups (deliberately not changed at night).
 
+A follow-up **`/security-review`** of the whole branch then found **1 further HIGH**
+(privilege escalation via the invite flow) — also **FIXED** (BUG-N4 below).
+
 ---
 
 ## FIXED tonight
+
+### BUG-N4 · Invite flow let an HRBP mint a full ADMIN account (privilege escalation) — HIGH · fixed `8c0bce5`
+- **Module:** Identity / invitations · `apps/identity/invite_views.py`
+- **Steps:** as HRBP (holds `INVITE_USERS`, but NOT the Admin-only `MANAGE_USERS_ROLES`)
+  → `POST /api/admin/invitations {"email": "...", "role": "ADMIN"}` → the 201 returns the
+  signed `invite_url` in-band → `POST /api/auth/invitations/<token>/accept` with a chosen
+  password (AllowAny — no mailbox needed).
+- **Actual (before):** a brand-new **ADMIN** account in the tenant. `InvitationCreateSerializer.role`
+  accepted any role and no layer (serializer, view, `create_user`) capped it against the
+  inviter's own role — so the invite path was a weaker alternate route around the Admin-only
+  user/role-management gate. Intra-tenant vertical escalation HRBP → ADMIN.
+- **Expected:** an inviter can assign a role only **at or below their own**; ADMIN invite by
+  an HRBP → 403, nothing created.
+- **Fix:** role-rank ceiling in `InvitationAdminView.post` (mirrors the SAML
+  no-escalation rank cap). Regression test `test_hrbp_cannot_invite_a_higher_role_but_admin_can`
+  + live-verified on :8090 (HRBP→ADMIN 403, HRBP→MANAGER 201, ADMIN→ADMIN 201).
+  Found by `/security-review`, not the live sweeps — the sweeps checked *capability* denial
+  (employee can't invite) but not the *role-ceiling within* an allowed capability.
 
 ### BUG-N1 · Repeat finalize bypassed an in-flight approval route — HIGH · fixed `9881297`
 - **Module:** Reviews ↔ Approvals (Module 3 ↔ 5 integration) · `apps/reviews/state_machine.py`

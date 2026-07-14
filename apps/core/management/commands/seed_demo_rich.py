@@ -124,6 +124,7 @@ class Command(BaseCommand):
                 self._succession(tenant, cycle, people)
                 self._career_for_all(tenant, people)
                 self._feedback_asks(tenant, people)
+                self._avatars(tenant, people)
         n = len(people["all"])
         self.stdout.write(self.style.SUCCESS(
             f"seed_demo_rich complete: ACME populated with {n} people. "
@@ -248,6 +249,38 @@ class Command(BaseCommand):
             "ada": ada, "ada_reports": ada_reports, "akhil": akhil, "vera": vera,
             "all": [admin, *hrbps, *managers, *employees],
         }
+
+    # ── seeded demo avatars (bundled branded-initials PNGs) ─────────────────────
+    def _avatars(self, tenant, people):
+        """Give a few named demo people a branded-initials avatar so the demo looks
+        populated. Deterministic, ACME-only, no external fetch, no runtime image
+        deps: the PNGs are pre-generated fixtures under ``demo_avatars/`` keyed by
+        the account local-part. Idempotent and best-effort — never breaks the seed."""
+        import os
+        from django.core.files.base import ContentFile
+
+        base = os.path.join(os.path.dirname(__file__), "demo_avatars")
+        # local-part → seeded person (only the named accounts have a fixture)
+        named = {
+            "admin": people["admin"], "priya": people["hrbps"][0],
+            "dan": people["hrbps"][1], "ada": people["ada"],
+            "akhil": people["akhil"], "vera": people["vera"],
+        }
+        made = 0
+        for local, u in named.items():
+            if u is None or u.photo:  # idempotent — never overwrite an existing photo
+                continue
+            path = os.path.join(base, f"{local}.png")
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read()
+            except OSError:  # missing fixture — skip this one, don't fail the seed
+                continue
+            u.photo.save(f"{u.tenant_id}/seed-{local}.png",
+                         ContentFile(data), save=False)
+            u.save(update_fields=["photo"])
+            made += 1
+        self.stdout.write(f"  seeded {made} demo avatars")
 
     # ── cycle ───────────────────────────────────────────────────────────────────
     def _cycle(self, tenant):

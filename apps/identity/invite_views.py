@@ -80,7 +80,7 @@ def _send_invite_email(request, invitation: Invitation, url: str) -> bool:
     """Best-effort invite email; the link is always returned to the inviter."""
     try:
         send_mail(
-            subject=f"You're invited to {request.user.tenant.name} on TalbotIQ PMS",
+            subject=f"You're invited to {request.user.tenant.name} on {settings.APP_NAME}",
             message=(
                 f"{request.user.display} invited you to join {request.user.tenant.name} "
                 f"as {invitation.get_role_display()}.\n\nAccept here: {url}\n\n"

@@ -254,7 +254,7 @@ class EmailChangeRequestView(APIView):
         link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/settings?email_change_token={token}"
         try:
             send_mail(
-                subject="Confirm your new TalbotIQ PMS email address",
+                subject=f"Confirm your new {settings.APP_NAME} email address",
                 message=(
                     f"Confirm changing your account email to {new_email}:\n\n{link}\n\n"
                     "The link expires in 1 hour. If you didn't request this, ignore it."

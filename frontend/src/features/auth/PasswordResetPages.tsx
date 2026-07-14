@@ -1,9 +1,10 @@
 import * as React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { KeyRound, MailCheck, Sprout } from "lucide-react";
+import { KeyRound, MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/Field";
+import { BRAND, BrandMark } from "@/brand";
 import { authApi } from "@/lib/api/endpoints";
 import { mapApiError } from "@/lib/errors";
 
@@ -18,9 +19,9 @@ function AuthShell({ title, subtitle, children }: {
       <div className="w-full max-w-sm space-y-6">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Sprout className="h-5 w-5" />
+            <BrandMark onDark className="h-6 w-6" />
           </div>
-          <span className="text-lg font-semibold">Talbotiq PMS</span>
+          <span className="text-lg font-semibold">{BRAND.name}</span>
         </div>
         <div>
           <h1 className="text-xl font-semibold">{title}</h1>

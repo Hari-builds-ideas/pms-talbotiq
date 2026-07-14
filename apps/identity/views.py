@@ -267,7 +267,7 @@ class PasswordResetRequestView(APIView):
         )
         try:
             send_mail(
-                subject="Reset your TalbotIQ PMS password",
+                subject=f"Reset your {settings.APP_NAME} password",
                 message=(
                     f"A password reset was requested for your {tenant.name} account.\n\n"
                     f"Reset it here: {link}\n\n"

@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Link, useNavigate, useLocation, Navigate } from "react-router-dom";
-import { Sprout, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { BRAND, BrandWordmark } from "@/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -77,14 +78,11 @@ export function LoginPage() {
       {/* Brand panel */}
       <div className="relative hidden w-1/2 flex-col justify-between bg-sidebar p-12 text-white lg:flex">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-accent">
-            <Sprout className="h-5 w-5" />
-          </div>
-          <span className="text-lg font-semibold">Talbotiq PMS</span>
+          <BrandWordmark onDark className="h-9 w-auto" />
         </div>
         <div className="max-w-md space-y-4">
           <h1 className="text-3xl font-semibold leading-tight">
-            Talent intelligence & performance management for modern teams.
+            {BRAND.tagline}
           </h1>
           <p className="text-sidebar-foreground/70">
             Goals, reviews, feedback and approvals — with a human in the
@@ -102,7 +100,7 @@ export function LoginPage() {
           </ul>
         </div>
         <p className="text-2xs text-sidebar-muted">
-          © Talbotiq · Multi-tenant · Enterprise-grade
+          © {BRAND.name} · Multi-tenant · Enterprise-grade
         </p>
       </div>
 

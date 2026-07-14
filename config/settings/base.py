@@ -331,6 +331,13 @@ MEDIA_URL = "/media/"  # unused for serving (endpoint-streamed); Django requires
 LOGIN_LOCKOUT_ATTEMPTS = env.int("LOGIN_LOCKOUT_ATTEMPTS", default=8)
 LOGIN_LOCKOUT_WINDOW_SECONDS = env.int("LOGIN_LOCKOUT_WINDOW_SECONDS", default=900)
 
+# ─── Product display name (branding) ───────────────────────────────────
+# The ONE canonical user-facing product name (browser title comes from the SPA;
+# this drives email "From" name + subject prefixes). Change it here (or via the
+# APP_NAME env var) to rebrand the backend surface — the SPA name lives in the
+# matching seam frontend/src/brand.tsx. Legacy value was "TalbotIQ PMS".
+APP_NAME = env("APP_NAME", default="Axiom")
+
 # ─── Email / SMTP (password reset + notifications) ─────────────────────
 # Default is the console backend (dev: mail prints to the web container log).
 # PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus
@@ -344,7 +351,9 @@ EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="TalbotIQ PMS <no-reply@localhost>")
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL", default=f"{APP_NAME} <no-reply@localhost>"
+)
 #: The public base URL of the SPA — used to build password-reset links in email.
 PUBLIC_APP_URL = env("PUBLIC_APP_URL", default="http://localhost:8080")
 

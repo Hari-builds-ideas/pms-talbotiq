@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { PlusCircle } from "lucide-react";
-import { navForRole, APP_ICON } from "@/app/nav";
+import { navForRole } from "@/app/nav";
+import { BRAND, BrandMark } from "@/brand";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -32,12 +33,12 @@ export function Sidebar() {
             className="h-9 w-9 rounded-xl object-contain"
           />
         ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <APP_ICON className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+            <BrandMark className="h-6 w-6" />
           </div>
         )}
         <div className="leading-tight">
-          <div className="text-base font-bold tracking-tight text-foreground">TalbotIQ</div>
+          <div className="text-base font-bold tracking-tight text-foreground">{BRAND.shortName}</div>
           <div className="text-[11px] text-sidebar-muted">Performance Management System</div>
         </div>
       </div>
@@ -95,7 +96,7 @@ export function Sidebar() {
           Quick Actions
         </button>
         <div className="mt-2 truncate px-1 text-[11px] text-sidebar-muted">
-          {me?.tenant_name ?? "Talbotiq"}
+          {me?.tenant_name ?? BRAND.name}
         </div>
       </div>
     </aside>

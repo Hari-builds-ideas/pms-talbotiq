@@ -169,9 +169,10 @@ function EmailChangeRow() {
   );
 }
 
+// Only channels that actually deliver today. Slack was removed with the Jira/Slack
+// integrations UI (v1): delivery isn't wired, so a toggle for it would be a dead control.
 const NOTIFY_KEYS: Array<{ key: string; label: string }> = [
   { key: "email", label: "Email" },
-  { key: "slack", label: "Slack" },
   { key: "in_app", label: "In-app" },
 ];
 
@@ -179,7 +180,7 @@ function NotificationPrefsCard({ p }: { p: Profile }) {
   const qc = useQueryClient();
   const stored = (p.preferences?.notifications as Record<string, boolean> | undefined) ?? {};
   const [prefs, setPrefs] = React.useState<Record<string, boolean>>({
-    email: stored.email ?? true, slack: stored.slack ?? true, in_app: stored.in_app ?? true,
+    email: stored.email ?? true, in_app: stored.in_app ?? true,
   });
   const save = useMutation({
     mutationFn: () => authApi.profileUpdate({ preferences: { ...p.preferences, notifications: prefs } }),
@@ -204,8 +205,9 @@ function NotificationPrefsCard({ p }: { p: Profile }) {
           </label>
         ))}
         <p className="text-2xs text-muted-foreground">
-          Preferences are stored per channel. Delivery today: password-reset email is live; other
-          email/Slack notifications roll out with the notification center (v2).
+          Email delivers today (account emails: password reset, invitations, email-change
+          confirmation). In-app shows in the top-bar bell. Broader per-event email routing
+          arrives with the notification center (v2).
         </p>
         <div className="flex justify-end">
           <Button size="sm" onClick={() => save.mutate()} loading={save.isPending}>Save preferences</Button>

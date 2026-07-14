@@ -23,7 +23,6 @@ import { ProfilePage } from "@/features/people/ProfilePage";
 import { RecognitionPage } from "@/features/recognition/RecognitionPage";
 import { CheckInsPage } from "@/features/checkins/CheckInsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
-import { IntegrationsPage } from "@/features/integrations/IntegrationsPage";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -157,14 +156,10 @@ export function AppRouter() {
               </RoleGate>
             }
           />
-          <Route
-            path="admin/integrations/*"
-            element={
-              <RoleGate min="ADMIN">
-                <IntegrationsPage />
-              </RoleGate>
-            }
-          />
+          {/* Integrations (Jira/Slack) hidden in v1 — scaffolded, not connected
+              (Jira needs an API token round-trip; Slack delivery isn't wired).
+              Route + IntegrationsPage code kept for v2; not routed so the URL 404s
+              back to the dashboard rather than showing an unusable config screen. */}
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

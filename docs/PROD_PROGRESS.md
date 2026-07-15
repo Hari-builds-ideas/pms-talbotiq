@@ -179,3 +179,29 @@ cause. A missing key is NOT this (→ clean 503, never fabrication).
   separate AI queue, right LLM tier + provider dollar-cap (`LLM_MAX_CALLS` default
   500 is a dev value), and a load test at target concurrency. Code is ready; these
   are provisioning. Confirm the deploy key can access the configured model ids.
+
+---
+
+## PROD_E — Handover package ✅ (commit `0c62dc2`)
+
+- `.env.example` — every new PROD_A–D var as a placeholder (branding, signup,
+  Google OAuth, payments Stripe+Razorpay, `LLM_READ_TIMEOUT`).
+- `docs/SECURITY_TESTING_HANDOVER.md` — role/tenant model, run steps, the surfaces
+  worth attention (payment webhooks, signup, CSV import, file upload, AI), what's
+  already tested, the STAGED list.
+- `docs/DEPLOYMENT_HANDOVER.md` — required services, new env, health/monitoring,
+  and the go-live steps for the staged items.
+- `docs/PROD_READY_REPORT.md` — per-file changes + commits, **one-step branding
+  revert**, the per-role morning testing checklist, the human to-do, and the
+  production-ready-vs-needs summary + QUESTIONS.
+
+### Final state
+- Django check clean; touched suites green (identity 74, administration 43, billing
+  86, AI 253); frontend `tsc` clean + vitest 132. Live on :8090 (signup/login/
+  billing routes 200). ACME reseeded pristine for QA.
+- Note: live signup probes left a few isolated throwaway tenants (`northwind*`,
+  `contoso`) in the DEV db — they can't be deleted because the AUDIT LOG is
+  INSERT-only/PROTECTED (correctly; never weaken audit). They're tenant-isolated
+  and don't affect the `acme` demo.
+
+**Run complete — all five files done.**

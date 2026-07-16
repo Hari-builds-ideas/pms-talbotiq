@@ -276,7 +276,7 @@ function MeetingSummaryCard() {
           <div className="space-y-3 rounded-md border border-ai/30 bg-ai-subtle/40 p-3">
             <div>
               <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Summary</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm">{result.summary}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm">{result.summary}</p>
             </div>
             {result.action_items.length > 0 && (
               <div>

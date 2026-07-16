@@ -212,7 +212,7 @@ function ReviewDetail({ reviewId }: { reviewId: string }) {
                   </div>
                 </div>
               ) : displayBody ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{displayBody}</p>
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">{displayBody}</p>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   No content yet. {r.state === "DRAFT" ? "Start editing or request an AI draft." : ""}

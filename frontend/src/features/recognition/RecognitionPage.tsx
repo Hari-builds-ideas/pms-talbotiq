@@ -97,8 +97,8 @@ function RecognitionItem({ card }: { card: Card_ }) {
             <Avatar className="h-9 w-9">
               <AvatarFallback>{initials(card.recipient.display)}</AvatarFallback>
             </Avatar>
-            <div className="leading-tight">
-              <p className="text-sm">
+            <div className="min-w-0 leading-tight">
+              <p className="text-sm break-words">
                 <span className="font-semibold">{card.sender.display}</span>
                 <span className="text-muted-foreground"> recognised </span>
                 <span className="font-semibold">{card.recipient.display}</span>
@@ -133,7 +133,7 @@ function RecognitionItem({ card }: { card: Card_ }) {
           )}
         </div>
 
-        <p className="whitespace-pre-line text-sm text-foreground">{card.message}</p>
+        <p className="whitespace-pre-line break-words text-sm text-foreground">{card.message}</p>
 
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           {palette.map((emoji) => {

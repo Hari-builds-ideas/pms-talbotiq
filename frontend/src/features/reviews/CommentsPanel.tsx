@@ -137,7 +137,7 @@ function CommentItem({
           </div>
         </div>
       ) : (
-        <p className="mt-0.5 whitespace-pre-wrap text-sm text-muted-foreground">{comment.body}</p>
+        <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-muted-foreground">{comment.body}</p>
       )}
       {mine && !editing && (
         <div className="mt-1 flex gap-1">

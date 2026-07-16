@@ -346,7 +346,7 @@ function ChatBubble({ turn, onSuggest }: { turn: Turn; onSuggest?: (text: string
         {turn.status === "blocked" && (
           <Badge variant="warning" className="mb-1">Read-only</Badge>
         )}
-        <p className="whitespace-pre-wrap">{turn.text}</p>
+        <p className="whitespace-pre-wrap break-words">{turn.text}</p>
         {turn.deeplink && <DeeplinkButton to={turn.deeplink} />}
         {turn.proposal && <ProposalCard proposal={turn.proposal} />}
         {turn.plan && <PlanChecklist plan={turn.plan} onSuggest={onSuggest} />}

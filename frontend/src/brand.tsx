@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  */
 
 /** ⇦ THE ONE SWITCH. false = legacy "Talbotiq PMS" leaf branding. */
-const REBRAND = true;
+const REBRAND = false;
 
 type BrandConfig = {
   /** Full product name — browser tab, login, emails, prose. */

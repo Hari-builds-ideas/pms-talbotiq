@@ -349,7 +349,7 @@ RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
 # this drives email "From" name + subject prefixes). Change it here (or via the
 # APP_NAME env var) to rebrand the backend surface — the SPA name lives in the
 # matching seam frontend/src/brand.tsx. Legacy value was "TalbotIQ PMS".
-APP_NAME = env("APP_NAME", default="Axiom")
+APP_NAME = env("APP_NAME", default="TalbotIQ PMS")
 
 # Seats a brand-new self-serve tenant starts with (Starter default). Server-side
 # seat enforcement still applies; the admin buys more when they grow.

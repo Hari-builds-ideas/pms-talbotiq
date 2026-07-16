@@ -106,6 +106,7 @@ class Command(BaseCommand):
         )
         with tenant_context(tenant.id):
             with transaction.atomic():
+                self._purge_qa_artifacts(tenant)
                 self._entitlement(tenant)
                 people = self._people(tenant)
                 cycle = self._cycle(tenant)
@@ -130,6 +131,35 @@ class Command(BaseCommand):
             f"seed_demo_rich complete: ACME populated with {n} people. "
             f"Login with any seeded email + password '{DEMO_PASSWORD}'. Demo manager: ada@acme.test"
         ))
+
+    # ── purge QA-verifier artifacts (idempotent demo hygiene) ───────────────────
+    def _purge_qa_artifacts(self, tenant):
+        """Delete rows the QA verifier (scripts/qa_verify.py) creates against the
+        live demo tenant — the duplicate "QA kudos" recognitions, "QA probe" goals/
+        check-ins, and "QA JD" drafts. Runs on every reseed so repeated QA runs can
+        NEVER accumulate junk in the demo feed. Tenant-scoped and matched to the
+        specific QA-probe markers only — it never touches real demo/customer data."""
+        purged = {}
+
+        def _delete(label, qs):
+            try:
+                n = qs.delete()[0]
+                if n:
+                    purged[label] = n
+            except Exception:  # noqa: BLE001 — hygiene must never break the seed
+                pass
+
+        from apps.recognition.models import Recognition
+        from apps.goals.models import Goal
+        from apps.checkins.models import CheckIn
+        from apps.jd.models import JobDescription
+
+        _delete("recognition", Recognition.objects.filter(message__startswith="QA "))
+        _delete("goals", Goal.objects.filter(title__startswith="QA probe"))
+        _delete("checkins", CheckIn.objects.filter(wins__startswith="QA probe"))
+        _delete("jd", JobDescription.objects.filter(title__startswith="QA JD"))
+        if purged:
+            self.stdout.write(f"  purged QA-probe artifacts: {purged}")
 
     # ── entitlement (FULL_AI) ───────────────────────────────────────────────────
     def _entitlement(self, tenant):

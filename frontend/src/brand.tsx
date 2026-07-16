@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  */
 
 /** ⇦ THE ONE SWITCH. false = legacy "Talbotiq PMS" leaf branding. */
-const REBRAND = false;
+const REBRAND = true;
 
 type BrandConfig = {
   /** Full product name — browser tab, login, emails, prose. */
@@ -48,10 +48,14 @@ const AXIOM: BrandConfig = {
   name: "Axiom",
   shortName: "Axiom",
   tagline: "Talent intelligence & performance management for modern teams.",
-  iconOnLight: "/brand/icon-green.png",
-  iconOnDark: "/brand/icon-white.png",
-  wordmarkOnLight: "/brand/wordmark-green.png",
-  wordmarkOnDark: "/brand/wordmark-white.png",
+  // The real brand PNGs live in frontend/public/favicon/ (served at /favicon/*).
+  // Green marks on light surfaces; white marks on dark surfaces. The square
+  // icon (icon-*) is used where a mark fits; the horizontal wordmark (logo-*)
+  // is the full lockup for the sidebar header + login panel.
+  iconOnLight: "/favicon/icon-green.png",
+  iconOnDark: "/favicon/icon-white.png",
+  wordmarkOnLight: "/favicon/logo-green.png",
+  wordmarkOnDark: "/favicon/logo-white.png",
 };
 
 const LEGACY: BrandConfig = {

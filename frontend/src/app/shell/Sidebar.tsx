@@ -1,9 +1,49 @@
+import * as React from "react";
 import { NavLink } from "react-router-dom";
 import { PlusCircle } from "lucide-react";
 import { navForRole } from "@/app/nav";
 import { BRAND, BrandMark } from "@/brand";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
+
+/** The sidebar brand lockup: the Axiom mark + name by default. A white-label
+ *  tenant's own logo (PHASE2 L1.5 custom_branding) replaces the mark; a broken or
+ *  unreachable tenant logo falls back to the Axiom mark via onError — so a bad
+ *  logo URL can never render a broken image or leak alt text over the wordmark. */
+function SidebarBrand({
+  logoUrl,
+  tenantName,
+}: {
+  logoUrl?: string | null;
+  tenantName?: string | null;
+}) {
+  const [broken, setBroken] = React.useState(false);
+  const showTenantLogo = Boolean(logoUrl) && !broken;
+  return (
+    <span className="flex items-center gap-2.5">
+      {showTenantLogo ? (
+        <img
+          src={logoUrl as string}
+          alt=""
+          onError={() => setBroken(true)}
+          className="h-9 w-9 rounded-xl object-contain"
+        />
+      ) : (
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+          <BrandMark className="h-6 w-6" />
+        </span>
+      )}
+      <span className="leading-tight">
+        <span className="block text-base font-bold tracking-tight text-foreground">
+          {showTenantLogo ? (tenantName ?? BRAND.shortName) : BRAND.shortName}
+        </span>
+        <span className="block text-[11px] text-sidebar-muted">
+          Performance Management System
+        </span>
+      </span>
+    </span>
+  );
+}
 
 /** Opens the ⌘K command palette (reuses its global keydown listener) — the
  *  "Quick Actions" surface (jump to any destination / search people / Ask AI). */
@@ -23,24 +63,12 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-      {/* Brand lockup — a tenant logo (PHASE2 L1.5 branding hook) replaces the
-          default mark when the plan includes custom_branding. */}
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        {me?.tenant_branding?.logo_url ? (
-          <img
-            src={me.tenant_branding.logo_url}
-            alt="Organization logo"
-            className="h-9 w-9 rounded-xl object-contain"
-          />
-        ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-            <BrandMark className="h-6 w-6" />
-          </div>
-        )}
-        <div className="leading-tight">
-          <div className="text-base font-bold tracking-tight text-foreground">{BRAND.shortName}</div>
-          <div className="text-[11px] text-sidebar-muted">Performance Management System</div>
-        </div>
+      {/* Brand lockup (see SidebarBrand — tenant logo overrides, with fallback). */}
+      <div className="flex h-16 items-center px-5">
+        <SidebarBrand
+          logoUrl={me?.tenant_branding?.logo_url}
+          tenantName={me?.tenant_name}
+        />
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-6 overflow-y-auto scrollbar-thin px-3 py-3">

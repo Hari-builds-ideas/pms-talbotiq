@@ -23,7 +23,7 @@ map of what to test, what's already covered (extend, don't repeat), and how to r
   cross-tenant, account features, data hygiene). `QA_SKIP_AI=1` to skip live-model
   checks.
 - **Backend unit/integration:** `docker compose exec web pytest` (≈1500 tests).
-- **Manual/visual:** `docs/HARI_MANUAL_TEST.md`.
+- **Manual/visual:** the exploratory checklist in `docs/TESTING_GUIDE.md`.
 
 ## 3. Surfaces most worth security/vuln attention
 
@@ -51,7 +51,7 @@ map of what to test, what's already covered (extend, don't repeat), and how to r
 
 - Cross-tenant isolation harness, RBAC-per-role matrix, auth edges, the injection
   matrix, the 5 QA-NIGHT bugs, payment trust-boundary (9 tests), AI retry/degrade.
-- See `BUGS_FOUND.md`, `docs/QA_NIGHT/*`, `docs/FUNCTIONAL_TEST_MATRIX.md`.
+- See `docs/FUNCTIONAL_TEST_MATRIX.md`; the bug regressions live in the pytest suite.
 
 ## 5. Honest STAGED / known list
 

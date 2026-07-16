@@ -49,7 +49,7 @@ security/vuln testing.
 
 ### PROD_E — Handover package (this file)
 - `.env.example` covers every new var (placeholders). `docs/SECURITY_TESTING_HANDOVER.md`,
-  `docs/DEPLOYMENT_HANDOVER.md`, this report.
+  `docs/DEPLOYMENT_GUIDE.md`, this report.
 
 ---
 

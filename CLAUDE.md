@@ -65,7 +65,7 @@ Company: Talbotiq
 14. Self-test sweep + QA PDF + handoff docs
 
 ## After Every Module
-Append to docs/BUILD_NOTES.md:
+Record in the commit / PR description:
 - What was built
 - Files created
 - Tests written and passing

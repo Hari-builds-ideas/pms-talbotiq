@@ -319,7 +319,7 @@ SIMPLE_JWT = {
 
 # ─── Media (PHASE2 L1.1 — avatar/logo uploads) ───────────────────────────────
 # Files land under MEDIA_ROOT (a mounted volume in prod; object storage is the
-# documented production path — see docs/PHASE2/DEPLOYMENT_HANDOVER.md). They are
+# documented production path — see docs/DEPLOYMENT_GUIDE.md). They are
 # NEVER static-served: reads go through authenticated, scope-checked endpoints.
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 MEDIA_URL = "/media/"  # unused for serving (endpoint-streamed); Django requires it

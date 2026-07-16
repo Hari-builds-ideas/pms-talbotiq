@@ -70,8 +70,8 @@ python3 scripts/smoke.py    # 47 journeys across every surface + RBAC boundaries
   - `apps/rbac/` — `matrix.py` (capabilities) + `scope.py` (data scope). The server-side authority for "who can do/see what".
   - `apps/core/management/commands/seed_demo.py` — the idempotent demo seeder.
 - **Frontend** (`frontend/src/`): `lib/api/endpoints.ts` (the typed client — 1:1 with backend endpoints), `lib/types.ts`, `lib/errors.ts` (error-code mapper), `lib/auth/` (auth + refresh), `app/` (router, nav, guards, shell), `features/<area>/` (the screens), `components/` (shared UI).
-- **Docs:** `docs/BUILD_NOTES.md` (per-module behaviour), `docs/AI_GOLIVE.md`, `docs/frontend-contract/`. Repo-root `NEEDS_HARI_*.md` are open product decisions with safe defaults.
-- **Test script for Hari:** `TEST-THIS-HARI.md`. **Mobile plan:** `MOBILE_BUILD_PLAN.md`.
+- **Docs:** `docs/AI_GOLIVE.md` (authoritative AI doc), `docs/AGENT_ARCHITECTURE.md`, `docs/SSO.md`, `docs/AI_ROBUSTNESS.md`, `DECISIONS.md` (ADR log).
+- **Deploy + test:** `docs/DEPLOYMENT_GUIDE.md`, `docs/TESTING_GUIDE.md`.
 
 ## Production deploy posture (BUILD_4)
 

@@ -106,6 +106,7 @@ class Capability:
     MANAGE_ENTITLEMENTS = "manage_entitlements"      # Admin — feature flags / packs / budgets
     MANAGE_TENANT_CONFIG = "manage_tenant_config"    # Admin — tenant settings
     MANAGE_USERS_ROLES = "manage_users_roles"        # Admin — create/deactivate users, roles, line
+    INVITE_USERS = "invite_users"                    # HRBP+ — invite users by email (PHASE2 L1.2)
     VIEW_AUDIT_CONSOLE = "view_audit_console"        # HRBP (scoped) + Admin (tenant) — READ-ONLY
     # ── Module A — Analytics & Reporting (deterministic; min-cohort ≥ 5) ──
     VIEW_INDIVIDUAL_ANALYTICS = "view_individual_analytics"    # all (own); Manager reports; HRBP/Admin tenant
@@ -231,6 +232,7 @@ CAPABILITIES: dict[str, frozenset] = {
     Capability.MANAGE_ENTITLEMENTS: _ADMIN_ONLY,
     Capability.MANAGE_TENANT_CONFIG: _ADMIN_ONLY,
     Capability.MANAGE_USERS_ROLES: _ADMIN_ONLY,
+    Capability.INVITE_USERS: _HRBP_UP,
     Capability.VIEW_AUDIT_CONSOLE: _HRBP_UP,
     # Module A — Analytics. Individual analytics is held by everyone (scoped to
     # OWN for an employee); department analytics is Manager+ (NEVER an employee);
@@ -272,3 +274,12 @@ def role_has_capability(role: str, capability: str) -> bool:
     if allowed is None:
         return False
     return role in allowed
+
+
+def capabilities_for_role(role: str) -> list[str]:
+    """Every capability ``role`` may exercise, sorted — derived from the SAME
+    matrix ``HasCapability`` enforces. Served to the client on ``/api/auth/me``
+    so the UI gates controls off the server's truth (a role that can't perform
+    an action never sees its button) instead of re-deriving from the role
+    ladder. Unknown role → empty list (fails closed)."""
+    return sorted(cap for cap, allowed in CAPABILITIES.items() if role in allowed)

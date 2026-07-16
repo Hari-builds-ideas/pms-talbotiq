@@ -25,6 +25,18 @@ from __future__ import annotations
 
 from django.conf import settings
 
+#: v1: keep the cohort-relative T-score/z-score/percentile OUT of the human-read
+#: prose (matches the UI, which hides it). The agent still reasons from the evidence
+#: but describes performance in plain terms. Set V1_HIDE_TSCORE=False to allow it (v2).
+_V1_NO_TSCORE = (
+    " Describe performance in PLAIN terms — use each goal's attainment % and the "
+    "plain status (on track / behind / at risk). Do NOT mention the internal "
+    "'T-score', z-score or cohort percentile in your prose (they are hidden from "
+    "the reader in this release)."
+    if getattr(settings, "V1_HIDE_TSCORE", True)
+    else ""
+)
+
 #: Appended to every human-read agent's system prompt — the shared house style.
 STYLE_SPEC = (
     "STYLE: specific over generic, evidence over adjectives, brief over padded. "
@@ -32,7 +44,7 @@ STYLE_SPEC = (
     "numbers from the evidence — never a generic claim unattached to a cited "
     "fact. Ban filler and throat-clearing ('it is important to note', 'overall'); "
     "do not restate the score in every section; do not pad to length. Invent "
-    "nothing not in the evidence. Output ONLY the required JSON object."
+    "nothing not in the evidence. Output ONLY the required JSON object." + _V1_NO_TSCORE
 )
 
 _AGENT1 = (
@@ -42,7 +54,7 @@ _AGENT1 = (
     "attainment %) — and their computed cycle score (T-score, cohort percentile, "
     "risk band, pace). Write five grounded sections:\n"
     "- summary: 2-3 sentences naming the person and their headline result, "
-    "anchored to the cycle score / risk band.\n"
+    "anchored to their overall goal attainment and risk band.\n"
     "- strengths: the specific goals/KPIs at or above target — name them and the "
     "numbers.\n"
     "- areas_for_development: the specific goals/KPIs below target — name them and "
@@ -125,7 +137,10 @@ _CHAT = (
     "- \"general\": greetings, small talk, or anything outside performance data "
     "(e.g. \"what day is today?\", \"I feel lonely\").\n"
     "Do NOT answer the message — only classify it. When unsure between performance and "
-    "general, prefer \"general\"."
+    "general, prefer \"general\". The input may start with a 'Conversation so far' "
+    "block followed by 'Current message:' — use the conversation ONLY as context to "
+    "interpret the current message (e.g. what a pronoun refers to); classify ONLY the "
+    "current message, never an earlier one."
 )
 
 _PLANNER = (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allChildrenLoaded, childrenOf, normalizeOrgTree } from "./org";
+import { allChildrenLoaded, childrenOf, normalizeOrgTree, subtreeIds } from "./org";
 import type { OrgNode, RawOrgTree } from "@/lib/types";
 
 const node = (id: string, extra: Partial<OrgNode> = {}): OrgNode => ({
@@ -82,5 +82,42 @@ describe("lazy org tree helpers", () => {
     expect(allChildrenLoaded("b", nodes)).toBe(true); // no children → trivially loaded
     const full = { ...nodes, c: node("c") };
     expect(allChildrenLoaded("a", full)).toBe(true); // both b and c present
+  });
+});
+
+describe("subtreeIds (goal-create scope — BUG 1)", () => {
+  // director → { ada → [emp1, emp2], bob → [emp3] }; hrbp is ABOVE the director.
+  const tree: Record<string, OrgNode> = {
+    hrbp: node("hrbp", { direct_report_ids: ["director"] }),
+    director: node("director", { direct_report_ids: ["ada", "bob"] }),
+    ada: node("ada", { direct_report_ids: ["emp1", "emp2"] }),
+    bob: node("bob", { direct_report_ids: ["emp3"] }),
+    emp1: node("emp1"),
+    emp2: node("emp2"),
+    emp3: node("emp3"),
+  };
+
+  it("includes self + reports transitively; excludes ancestors and sibling branches", () => {
+    const s = subtreeIds("ada", tree);
+    expect([...s].sort()).toEqual(["ada", "emp1", "emp2"]);
+    for (const outside of ["director", "hrbp", "bob", "emp3"]) {
+      expect(s.has(outside)).toBe(false); // a manager can't create for these
+    }
+  });
+
+  it("a higher node sees its whole subtree but not the level above it", () => {
+    const s = subtreeIds("director", tree);
+    expect(s.has("ada")).toBe(true);
+    expect(s.has("emp3")).toBe(true);
+    expect(s.has("hrbp")).toBe(false);
+  });
+
+  it("always includes the root, even with no node entry, and is cycle-safe", () => {
+    expect(subtreeIds("ghost", tree)).toEqual(new Set(["ghost"]));
+    const cyclic: Record<string, OrgNode> = {
+      a: node("a", { direct_report_ids: ["b"] }),
+      b: node("b", { direct_report_ids: ["a"] }),
+    };
+    expect([...subtreeIds("a", cyclic)].sort()).toEqual(["a", "b"]);
   });
 });

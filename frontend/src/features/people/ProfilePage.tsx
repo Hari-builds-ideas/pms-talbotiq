@@ -5,7 +5,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { DashboardSection } from "@/features/dashboard/widgets";
 import { TrendChart } from "@/components/TrendChart";
 import { AttainmentBar } from "@/components/AttainmentBar";
+import { ProgressBar } from "@/components/ProgressBar";
 import { StatusBadge } from "@/components/StatusBadge";
+import { ScoreBar, performanceLabel, T_SCORE_PLAIN } from "@/components/ScoreBar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -15,6 +17,9 @@ import { LinesSkeleton } from "@/components/Skeletons";
 import { analyticsApi, careerApi, goalsApi, orgApi, reviewsApi } from "@/lib/api/endpoints";
 import { ROLE_LABEL, type Role } from "@/lib/enums";
 import { initials } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { V1_HIDE_TSCORE } from "@/app/v1";
+import { personProgress, progressStatus, PROGRESS_TEXT_CLASS } from "@/lib/goalProgress";
 
 /**
  * Employee profile — a read-only growth narrative composed ENTIRELY from existing,
@@ -34,8 +39,12 @@ export function ProfilePage() {
   const person = personQ.data;
   const trendPoints = analyticsQ.data?.trend ?? [];
   const latest = trendPoints[trendPoints.length - 1];
-  const trend = trendPoints.map((p, i) => ({ label: `#${i + 1}`, value: Number(p.t_score) }));
+  // v1 leads with plain goal progress; the T-score trend is kept for v2 (flag).
+  const tscoreTrend = trendPoints.map((p, i) => ({ label: `#${i + 1}`, value: Number(p.t_score) }));
+  const progressTrend = trendPoints.map((p, i) => ({ label: `#${i + 1}`, value: Math.round(Number(p.raw_score) * 100) }));
   const goals = goalsQ.data?.results ?? [];
+  const overall = personProgress(goals);
+  const overallStatus = overall.pct != null ? progressStatus(overall.pct) : null;
   const reviews = reviewsQ.data?.results ?? [];
   const roadmap = roadmapQ.data?.results?.[0];
 
@@ -74,8 +83,14 @@ export function ProfilePage() {
               <span className="text-muted-foreground">{person.direct_reports} direct report{person.direct_reports === 1 ? "" : "s"}</span>
               {latest ? (
                 <span className="inline-flex items-center gap-2">
-                  <span className="font-semibold tabular-nums text-foreground">T-score {Number(latest.t_score).toFixed(1)}</span>
+                  {/* v1: the plain status is the performance signal; the T-score
+                      number is hidden (V1_HIDE_TSCORE) — kept for v2. */}
                   <StatusBadge status={latest.risk_status} dot />
+                  {!V1_HIDE_TSCORE && (
+                    <span className="text-xs tabular-nums text-muted-foreground" title={T_SCORE_PLAIN}>
+                      Score {Number(latest.t_score).toFixed(0)}/100
+                    </span>
+                  )}
                 </span>
               ) : (
                 <Badge variant="muted">Not yet scored</Badge>
@@ -88,24 +103,64 @@ export function ProfilePage() {
       </Card>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        {/* Performance trend */}
+        {/* Performance — v1 leads with plain goal progress; the T-score trend is
+            kept for v2 behind V1_HIDE_TSCORE. */}
         <DashboardSection title="Performance" icon={TrendingUp}>
-          {analyticsQ.isLoading ? (
+          {!V1_HIDE_TSCORE ? (
+            analyticsQ.isLoading ? (
+              <LinesSkeleton lines={4} />
+            ) : analyticsQ.isError ? (
+              <ErrorState error={analyticsQ.error} onRetry={() => analyticsQ.refetch()} compact />
+            ) : tscoreTrend.length >= 2 ? (
+              <div>
+                <p className="mb-2 text-xs text-muted-foreground">T-score across scored cycles (50 = cohort average)</p>
+                <TrendChart data={tscoreTrend} height={200} />
+              </div>
+            ) : latest ? (
+              <div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={latest.risk_status} dot />
+                  <span className="text-sm font-semibold text-foreground">{performanceLabel(latest.risk_status)}</span>
+                </div>
+                <ScoreBar className="mt-3" value={Number(latest.t_score)} status={latest.risk_status} />
+                <p className="mt-2 text-xs text-muted-foreground" title={T_SCORE_PLAIN}>
+                  Score {Number(latest.t_score).toFixed(0)}/100 · 50 = team average.
+                </p>
+              </div>
+            ) : (
+              <EmptyState compact icon={TrendingUp} title="No scores yet" description="Performance scores appear once computed for a cycle." />
+            )
+          ) : goalsQ.isLoading || analyticsQ.isLoading ? (
             <LinesSkeleton lines={4} />
-          ) : analyticsQ.isError ? (
-            <ErrorState error={analyticsQ.error} onRetry={() => analyticsQ.refetch()} compact />
-          ) : trend.length >= 2 ? (
-            <div>
-              <p className="mb-2 text-xs text-muted-foreground">T-score across scored cycles (50 = cohort average)</p>
-              <TrendChart data={trend} height={200} />
+          ) : overall.pct != null ? (
+            <div className="space-y-4">
+              {/* The plain lead: overall goal progress % + colored bar + status. */}
+              <div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-sm text-muted-foreground">Overall goal progress</span>
+                  <span className={cn("text-2xl font-bold tabular-nums leading-none", overallStatus && PROGRESS_TEXT_CLASS[overallStatus])}>
+                    {Math.round(overall.pct)}%
+                  </span>
+                </div>
+                <ProgressBar className="mt-2" pct={overall.pct} status={overallStatus} />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {overall.onTrack} of {overall.total} goal{overall.total === 1 ? "" : "s"} on track this cycle
+                </p>
+              </div>
+              {progressTrend.length >= 2 && (
+                <div>
+                  <p className="mb-2 text-xs text-muted-foreground">Progress across scored cycles</p>
+                  <TrendChart data={progressTrend} seriesName="Progress %" height={170} />
+                </div>
+              )}
             </div>
           ) : latest ? (
-            <div>
-              <p className="text-3xl font-bold tabular-nums text-foreground">{Number(latest.t_score).toFixed(1)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Current T-score · a trend line appears after more than one scored cycle.</p>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={latest.risk_status} dot />
+              <span className="text-sm font-semibold text-foreground">{performanceLabel(latest.risk_status)}</span>
             </div>
           ) : (
-            <EmptyState compact icon={TrendingUp} title="No scores yet" description="Performance scores appear once computed for a cycle." />
+            <EmptyState compact icon={TrendingUp} title="No progress yet" description="Goal progress appears once KPIs are recorded for a cycle." />
           )}
         </DashboardSection>
 

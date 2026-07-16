@@ -143,6 +143,23 @@ def test_submit_with_empty_body_is_422_invalid_input(org):
     assert resp.json()["code"] == "INVALID_JD_INPUT"
 
 
+def test_save_draft_rejects_non_object_body_with_400(org):
+    # QA-NIGHT-2: save-draft with a bare JSON string used to persist, then submit
+    # and export 500'd on body.get(...) (AttributeError). The API boundary must
+    # reject a non-object body/inputs with a clean 400 — no poisoned version row.
+    hrbp = _client_for(org.hrbp)
+    resp = hrbp.post(JD, {"title": "Bad Body Role", "level": "L4", "department": "Eng"}, format="json")
+    jd_id = resp.json()["id"]
+    bad = hrbp.post(f"{JD}{jd_id}/save-draft", {"body": "just a string"}, format="json")
+    assert bad.status_code == 400, bad.content
+    bad_inputs = hrbp.post(f"{JD}{jd_id}/save-draft", {"inputs": [1, 2, 3]}, format="json")
+    assert bad_inputs.status_code == 400, bad_inputs.content
+    # The JD is still submittable-broken (empty body) → 422, NOT a 500.
+    assert hrbp.post(f"{JD}{jd_id}/submit").status_code == 422
+    # And export of the still-DRAFT JD does not 500.
+    assert hrbp.get(f"{JD}{jd_id}/export").status_code in (200, 404)
+
+
 def test_approve_from_draft_is_409_illegal_transition(org):
     jd = _draft_jd(org, body=GOOD_BODY)  # never submitted
     hrbp = _client_for(org.hrbp)

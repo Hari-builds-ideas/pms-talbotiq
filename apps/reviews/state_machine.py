@@ -288,6 +288,14 @@ def finalize(review, actor):
         review.save(update_fields=["approval_route", "updated_at"])
         return review
 
+    if review.approval_route_id is not None:
+        # A route is already in flight: a second finalize call must WAIT for the
+        # route, not fall through to _finalize_apply — otherwise any finalizer
+        # could bypass the approval matrix by calling finalize twice (QA-NIGHT).
+        from apps.approvals.exceptions import ActiveRouteExists
+
+        raise ActiveRouteExists("review", review.id)
+
     return _finalize_apply(review, actor)
 
 

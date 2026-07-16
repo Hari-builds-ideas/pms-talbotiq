@@ -45,7 +45,12 @@ def test_upgrade_flips_flags_instantly_without_changing_seats(tenant):
     upgrade_to_full_ai(tenant, actor=None)
 
     after = feature_flags_for(tenant)  # cache was cleared by the upgrade
-    assert all(after[f] is True for f in packs.ALL_FEATURES)  # every flag on
+    # Every PACK feature flips on. The PLAN-tier keys (PHASE2 L1.4 —
+    # advanced_analytics/custom_branding/sso/…) are governed by the tenant's
+    # subscription PLAN, not the AI pack, so a pack upgrade leaves them off.
+    pack_features = packs.ALL_FEATURES - packs.PLAN_FEATURES
+    assert all(after[f] is True for f in pack_features)
+    assert all(after[f] is False for f in packs.PLAN_FEATURES)
     # Seats are UNTOUCHED by the pack change (the two axes are independent).
     assert get_or_create_entitlement(tenant).seat_count == 7
     # The upgrade was audited.

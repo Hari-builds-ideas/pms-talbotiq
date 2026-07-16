@@ -93,6 +93,13 @@ def test_blank_message_rejected(world):
             create_recognition(world.s, recipient_id=world.a.id, value="Teamwork", message="  ", visibility=V.TEAM)
 
 
+def test_oversized_message_rejected(world):
+    # QA-NIGHT: TextField(max_length=1000) is not DB-enforced — the service must cap it.
+    with tenant_context(world.t):
+        with pytest.raises(ValidationError):
+            create_recognition(world.s, recipient_id=world.a.id, value="Teamwork", message="x" * 1001, visibility=V.TEAM)
+
+
 def test_cross_tenant_recipient_impossible(world):
     other = TenantFactory(slug="globex", name="Globex")
     with tenant_context(other):

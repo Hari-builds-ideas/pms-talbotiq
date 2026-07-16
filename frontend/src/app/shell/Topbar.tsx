@@ -1,4 +1,4 @@
-import { Bell, HelpCircle, LogOut, Menu, Search, Sparkles, UserCog } from "lucide-react";
+import { Bell, LogOut, Menu, Search, Sparkles, UserCog } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -34,7 +34,7 @@ const DEV_IDENTITIES: Array<{ id: string; label: string }> = [
 /** Real pending-actions count (N5): feedback requests for everyone + the approval
  *  inbox for managers+. Same query keys as the dashboard cockpits, so it shares the
  *  react-query cache (no extra network). */
-function usePendingCount(): number {
+function usePendingCount(): { total: number; approvals: number } {
   const { me } = useAuth();
   const isManagerPlus = me ? ROLE_RANK[me.role as Role] >= ROLE_RANK["MANAGER"] : false;
   const requests = useQuery({
@@ -48,7 +48,10 @@ function usePendingCount(): number {
   });
   const pendingRequests = (requests.data ?? []).filter((r) => r.status === "PENDING").length;
   const pendingApprovals = inbox.data?.length ?? 0;
-  return pendingRequests + pendingApprovals;
+  // Return the breakdown so the bell can open the queue that actually HAS the items —
+  // an HRBP with 1 feedback request + 0 approvals was sent to an empty /approvals
+  // (phantom "1"). BUGS_FOUND #12.
+  return { total: pendingRequests + pendingApprovals, approvals: pendingApprovals };
 }
 
 function openCommandPalette() {
@@ -61,8 +64,7 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
   const { me, logout, completeLogin } = useAuth();
   const chat = useChatPanel();
   const navigate = useNavigate();
-  const pending = usePendingCount();
-  const isManagerPlus = me ? ROLE_RANK[me.role as Role] >= ROLE_RANK["MANAGER"] : false;
+  const { total: pending, approvals } = usePendingCount();
 
   function switchTo(id: string) {
     void completeLogin({ access: `mock.${id}`, refresh: `mockr.${id}` });
@@ -126,7 +128,7 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => navigate(isManagerPlus ? "/approvals" : "/feedback")}
+              onClick={() => navigate(approvals > 0 ? "/approvals" : "/feedback")}
               aria-label={`Pending actions: ${pending}`}
               className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
@@ -156,20 +158,8 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
           <TooltipContent>Ask AI — plan &amp; approve multi-step work</TooltipContent>
         </Tooltip>
 
-        {/* Help */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={chat.toggle}
-              aria-label="Help and AI assistant"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <HelpCircle className="h-[18px] w-[18px]" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Help &amp; AI assistant</TooltipContent>
-        </Tooltip>
+        {/* (Removed the duplicate "?" help button — it opened the same chat as Ask AI.
+            BUGS_FOUND #10. A real help/docs affordance can be added later.) */}
 
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
 
@@ -201,6 +191,10 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <UserCog className="h-4 w-4" />
+              My settings
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void logout()}>
               <LogOut className="h-4 w-4" />
               Sign out

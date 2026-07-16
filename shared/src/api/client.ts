@@ -56,6 +56,13 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token) {
     config.headers.set("Authorization", `Bearer ${token}`);
   }
+  // Multipart uploads (e.g. avatar): the instance default Content-Type is
+  // application/json, which suppresses axios's automatic multipart boundary —
+  // the file then arrives unparsed and the server 400s "photo required". Drop
+  // the header for FormData bodies so axios sets multipart/form-data; boundary=…
+  if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+    config.headers.delete("Content-Type");
+  }
   return config;
 });
 

@@ -5,6 +5,7 @@ Environment-specific modules (dev/prod/test) import * from here and override.
 All secrets and environment-dependent values are read from the environment via
 django-environ; see .env.example for the full documented variable list.
 """
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -15,7 +16,10 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 
 env = environ.Env()
 # Load .env if present (no-op when absent, e.g. inside containers using env vars).
-environ.Env.read_env(BASE_DIR / ".env")
+# The path is overridable via PMS_DOTENV_PATH so hermetic tests (e.g. the prod
+# "fails closed without a secret" checks) can point it at a nonexistent file and
+# NOT silently inherit a developer's local .env. Default behaviour is unchanged.
+environ.Env.read_env(os.environ.get("PMS_DOTENV_PATH", str(BASE_DIR / ".env")))
 
 # ─── Core ──────────────────────────────────────────────────────────────
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="insecure-dev-key-change-me")
@@ -174,6 +178,13 @@ DATABASES = {
     }
 }
 
+# Optional TLS to MySQL (managed DBs — RDS/Cloud SQL etc.): set DB_SSL_CA to the
+# provider's CA-bundle path and connections require TLS. The replica inherits the
+# same OPTIONS dict below, so it is covered too. Unset → plain connection (dev).
+_DB_SSL_CA = env("DB_SSL_CA", default="")
+if _DB_SSL_CA:
+    DATABASES["default"]["OPTIONS"]["ssl"] = {"ca": _DB_SSL_CA}
+
 # ─── Read replica (BUILD_3) — replica-ready, default-fallback ──────────────
 # The `replica` alias takes reads (see apps.core.dbrouter). With NO replica DSN
 # configured (today) it is a SECOND connection to the SAME primary — so the
@@ -306,6 +317,63 @@ SIMPLE_JWT = {
     # serializer already preserves them across rotation — no override needed.
 }
 
+# ─── Media (PHASE2 L1.1 — avatar/logo uploads) ───────────────────────────────
+# Files land under MEDIA_ROOT (a mounted volume in prod; object storage is the
+# documented production path — see docs/PHASE2/DEPLOYMENT_HANDOVER.md). They are
+# NEVER static-served: reads go through authenticated, scope-checked endpoints.
+MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
+MEDIA_URL = "/media/"  # unused for serving (endpoint-streamed); Django requires it
+
+# ─── Login lockout (PHASE2 L1.3 — additive account-level brute-force guard) ──
+# Attempts per (tenant, email) window before login answers 429. Counts ATTEMPTS
+# and resets on success; keyed by the attempted email whether or not the account
+# exists (no enumeration). 0 disables. The per-IP anon throttle still applies.
+LOGIN_LOCKOUT_ATTEMPTS = env.int("LOGIN_LOCKOUT_ATTEMPTS", default=8)
+LOGIN_LOCKOUT_WINDOW_SECONDS = env.int("LOGIN_LOCKOUT_WINDOW_SECONDS", default=900)
+
+# ─── Payments (PROD_C) — Stripe + Razorpay, TEST MODE ──────────────────
+# When False (default) the internal admin-driven plan flip still works (QA/dev).
+# When True, a paid plan/seat change stays PENDING until a signature-verified
+# provider webhook confirms payment. TEST-MODE keys only until go-live — the
+# human swaps live keys + flips this on, supervised. All placeholders in .env.example.
+PAYMENTS_ENABLED = env.bool("PAYMENTS_ENABLED", default=False)
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
+RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
+
+# ─── Product display name (branding) ───────────────────────────────────
+# The ONE canonical user-facing product name (browser title comes from the SPA;
+# this drives email "From" name + subject prefixes). Change it here (or via the
+# APP_NAME env var) to rebrand the backend surface — the SPA name lives in the
+# matching seam frontend/src/brand.tsx. Legacy value was "TalbotIQ PMS".
+APP_NAME = env("APP_NAME", default="Axiom")
+
+# Seats a brand-new self-serve tenant starts with (Starter default). Server-side
+# seat enforcement still applies; the admin buys more when they grow.
+SIGNUP_DEFAULT_SEATS = env.int("SIGNUP_DEFAULT_SEATS", default=5)
+
+# ─── Email / SMTP (password reset + notifications) ─────────────────────
+# Default is the console backend (dev: mail prints to the web container log).
+# PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus
+# the EMAIL_HOST/PORT/USER/PASSWORD/TLS of a real provider — password reset for
+# local (non-SSO) accounts depends on this being configured.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL", default=f"{APP_NAME} <no-reply@localhost>"
+)
+#: The public base URL of the SPA — used to build password-reset links in email.
+PUBLIC_APP_URL = env("PUBLIC_APP_URL", default="http://localhost:8080")
+
 # ─── allauth / OIDC ────────────────────────────────────────────────────
 SITE_ID = 1
 ACCOUNT_EMAIL_VERIFICATION = "none"
@@ -320,21 +388,38 @@ SOCIALACCOUNT_EMAIL_REQUIRED = True
 SOCIALACCOUNT_ADAPTER = "apps.identity.adapters.TenantSocialAccountAdapter"
 # Slug an OIDC identity falls back to when the login carries no tenant hint.
 OIDC_DEFAULT_TENANT_SLUG = env("OIDC_DEFAULT_TENANT_SLUG", default="")
-SOCIALACCOUNT_PROVIDERS = {
-    "openid_connect": {
-        "APPS": [
-            {
-                "provider_id": env("OIDC_PROVIDER_ID", default="oidc-demo"),
-                "name": env("OIDC_PROVIDER_NAME", default="Demo OIDC"),
-                "client_id": env("OIDC_CLIENT_ID", default="demo-client-id"),
-                "secret": env("OIDC_CLIENT_SECRET", default="demo-secret"),
-                "settings": {
-                    "server_url": env("OIDC_SERVER_URL", default="https://oidc.example.com"),
-                },
-            }
-        ]
+
+# Generic enterprise-OIDC app (a customer's own OIDC IdP), plus an optional
+# dedicated "Sign in with Google" app. Both run through the SAME tenant-binding
+# adapter (no JIT: the Google/OIDC identity must already be a provisioned user in
+# the resolved tenant — imported via CSV or invited). The Google app is only
+# registered when GOOGLE_OAUTH_CLIENT_ID is set, so an unconfigured deploy shows
+# no half-wired provider. The human adds real Google creds (see docs).
+_OIDC_APPS = [
+    {
+        "provider_id": env("OIDC_PROVIDER_ID", default="oidc-demo"),
+        "name": env("OIDC_PROVIDER_NAME", default="Demo OIDC"),
+        "client_id": env("OIDC_CLIENT_ID", default="demo-client-id"),
+        "secret": env("OIDC_CLIENT_SECRET", default="demo-secret"),
+        "settings": {
+            "server_url": env("OIDC_SERVER_URL", default="https://oidc.example.com"),
+        },
     }
-}
+]
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
+GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET", default="")
+#: Sign-in-with-Google is live only when the human has provided real OAuth creds.
+GOOGLE_SSO_ENABLED = bool(GOOGLE_OAUTH_CLIENT_ID)
+if GOOGLE_SSO_ENABLED:
+    _OIDC_APPS.append({
+        "provider_id": "google",
+        "name": "Google",
+        "client_id": GOOGLE_OAUTH_CLIENT_ID,
+        "secret": GOOGLE_OAUTH_CLIENT_SECRET,
+        # Google's OIDC discovery document; allauth reads the endpoints from it.
+        "settings": {"server_url": "https://accounts.google.com"},
+    })
+SOCIALACCOUNT_PROVIDERS = {"openid_connect": {"APPS": _OIDC_APPS}}
 
 LOGIN_REDIRECT_URL = "/api/auth/oidc/complete"
 
@@ -347,7 +432,10 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-CELERY_TASK_ALWAYS_EAGER = False
+# Normally False (real async via the worker). The FREE demo deploy sets this True so AI
+# jobs run inline in the web process — Render's free tier has no free background worker
+# (see DEPLOY_DEMO.md). Demo-only; production runs a real Celery worker.
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
 # Celery beat: the approval-escalation sweep reassigns overdue PENDING steps to
 # their escalation target (Module 5). Interval in seconds (default 5 min).
@@ -425,11 +513,57 @@ LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_BASE_URL = env("OPENAI_BASE_URL", default="https://api.openai.com/v1")
 GROQ_API_KEY = env("GROQ_API_KEY", default="")
-# Generic key fallback used by either provider when its specific key is unset.
-LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY)
+# Gemini (Google) via its OpenAI-compatible endpoint — the free-tier provider for the
+# demo deploy (LLM_PROVIDER=apps.ai.gemini_provider.GeminiProvider). Key pasted into the
+# host secret store, never committed.
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_BASE_URL = env("GEMINI_BASE_URL", default="https://generativelanguage.googleapis.com/v1beta/openai")
+# Gemini two-model strategy (enterprise key): a strong model for the human-read agents
+# (review/feedback/succession/JD/career) and a fast model for chat/default — the same
+# split as the OpenAI map below. Both env-overridable so the exact model id can change
+# without a code edit (e.g. if the account exposes a different name).
+# NOTE: `gemini-2.5-pro` is blocked for new API projects ("no longer available to new
+# users"), so the default best is the stable `gemini-pro-latest` alias (a "thinking"
+# model — see LLM_MAX_TOKENS below). Override per env if your project exposes another id.
+GEMINI_MODEL_BEST = env("GEMINI_MODEL_BEST", default="gemini-pro-latest")
+GEMINI_MODEL_FAST = env("GEMINI_MODEL_FAST", default="gemini-2.5-flash")
+# Optional single-model override for EVERY agent (advanced/legacy). Empty = use the
+# best/fast split above. Only honored if it names a Gemini model.
+GEMINI_MODEL = env("GEMINI_MODEL", default="")
+# Per-agent Gemini model map (mirrors LLM_MODEL_MAP). Honors the same LLM_MODEL_* env
+# overrides — but the provider ignores any value that isn't a Gemini model, so a stray
+# OpenAI name (from a shared override) never reaches Gemini.
+# v1 product scope: hide the cohort-relative T-score NUMBER from user-facing agent
+# TEXT too (the chat read answer + the KPI nudge messages), matching the frontend
+# `V1_HIDE_TSCORE` flag. The number stays computed/stored; only the surfaced text drops
+# it in favour of the plain risk status. Set False to restore it (v2).
+V1_HIDE_TSCORE = env.bool("V1_HIDE_TSCORE", default=True)
+GEMINI_MODEL_MAP = {
+    "review": env("LLM_MODEL_REVIEW", default=GEMINI_MODEL_BEST),
+    "feedback": env("LLM_MODEL_FEEDBACK", default=GEMINI_MODEL_BEST),
+    "succession": env("LLM_MODEL_SUCCESSION", default=GEMINI_MODEL_BEST),
+    "jd": env("LLM_MODEL_JD", default=GEMINI_MODEL_BEST),
+    "career": env("LLM_MODEL_CAREER", default=GEMINI_MODEL_BEST),
+    "chat": env("LLM_MODEL_CHAT", default=GEMINI_MODEL_FAST),
+    "default": env("LLM_MODEL_DEFAULT", default=GEMINI_MODEL_FAST),
+}
+# Generic key fallback used by any provider when its specific key is unset.
+LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=30.0)
-LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=900)
+# Read (response) timeout for the LLM HTTP call. A "thinking" model (the BEST tier)
+# routinely takes longer than the connect timeout, so the read budget is separate
+# and larger — a too-tight read timeout was a source of spurious PROVIDER_ERROR
+# under load. Kept below the AI-job soft limit so the Celery backstop still wins.
+LLM_READ_TIMEOUT = env.float("LLM_READ_TIMEOUT", default=60.0)
+# Wall-clock ceiling for one async AI job (Celery soft/hard limits in apps/ai/tasks).
+# The soft limit force-fails a stuck job so the client's spinner always resolves;
+# keep it above the provider's worst case (~3 retries × LLM_TIMEOUT_SECONDS).
+AI_JOB_SOFT_TIME_LIMIT = env.int("AI_JOB_SOFT_TIME_LIMIT", default=120)
+AI_JOB_HARD_TIME_LIMIT = env.int("AI_JOB_HARD_TIME_LIMIT", default=150)
+# 4096 gives headroom for Gemini "thinking" models (2.5/3.x pro + -latest aliases),
+# which spend output tokens on reasoning before the JSON — 900 truncated them.
+LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=4096)
 # Run-wide safety ceiling (cache-counted across web + celery, 24h window): refuse
 # further real LLM calls once reached. This is a DEPLOYMENT-WIDE runaway-loop backstop,
 # NOT the per-tenant budget (that's DEFAULT_AGENT_BUDGETS / AgentBudget — the real cost

@@ -18,7 +18,10 @@ Every consequential action audits BEFORE the side effect.
 """
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -81,10 +84,24 @@ class GoalListCreateView(RBACMixin, APIView):
         if cycle_id:
             goals = goals.filter(cycle_id=cycle_id)
         # FKs for the *_name fields (one JOIN each) + prefetch kpis so
-        # kpi_weight_total's sum doesn't fire a query per goal.
+        # kpi_weight_total's sum doesn't fire a query per goal. Each KPI's
+        # measurements are prefetched desc-ordered so the serializer's
+        # `latest_actual` reads the current actual with NO per-KPI query (O(1)).
         goals = goals.select_related(
             "employee", "created_by", "approved_by"
-        ).prefetch_related("kpis")
+        ).prefetch_related(
+            Prefetch(
+                "kpis",
+                queryset=Kpi.objects.prefetch_related(
+                    Prefetch(
+                        "measurements",
+                        queryset=KpiMeasurement.objects.order_by(
+                            "-recorded_at", "-created_at"
+                        ),
+                    )
+                ),
+            )
+        )
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(goals, request, view=self)
         return paginator.get_paginated_response(GoalSerializer(page, many=True).data)
@@ -300,6 +317,13 @@ class KpiActualsView(RBACMixin, APIView):
         value = request.data.get("value")
         if value is None:
             raise ValidationError({"value": "This field is required."})
+        # Validate BEFORE the audit record — junk input must neither 500 in
+        # record_actual's Decimal coercion nor leave an audit row for a write
+        # that never happened. (Same rule as the AI record_actual action.)
+        try:
+            Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError({"value": "Enter a number."})
         # Audit BEFORE the write.
         record(
             action="actual.recorded",

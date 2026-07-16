@@ -49,6 +49,77 @@ export interface Me {
   tenant_slug?: string;
   manager_id?: UUID | null;
   mfa_enabled: boolean;
+  /** The caller's capability grants, computed server-side from the SAME matrix
+   *  RBAC enforces (apps/rbac/matrix.py) — the client's single source of truth
+   *  for hiding controls the role can't use. Absent → treat as no grants. */
+  capabilities?: string[];
+  /** Tenant branding hooks (PHASE2 L1.5) — present only when the plan includes
+   *  custom_branding; null/absent → the default brand. */
+  tenant_branding?: { logo_url?: string; primary_color?: string } | null;
+}
+
+// ── PHASE2 L1.1/L1.3 — self-service profile + sessions ──
+export interface Profile {
+  id: UUID;
+  email: string;
+  display_name: string | null;
+  display: string;
+  role: Role;
+  manager_id?: UUID | null;
+  phone: string;
+  title: string;
+  department: string;
+  employee_id: string;
+  timezone: string;
+  language: string;
+  preferences: Record<string, unknown>;
+  mfa_enabled: boolean;
+  has_photo: boolean;
+}
+
+export interface DeviceSessionRow {
+  id: UUID;
+  ip: string | null;
+  user_agent: string;
+  created_at: string;
+  last_seen: string;
+  current: boolean;
+}
+
+export interface LoginEventRow {
+  event: string;
+  ip: string | null;
+  user_agent: string;
+  created_at: string;
+}
+
+export interface ActivityRow {
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  created_at: string;
+}
+
+export interface SubscriptionInfo {
+  plan: string;
+  status: string;
+  features_active: boolean;
+  employee_limit: number;
+  plan_features: string[];
+  packs: string[];
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+  plans: Record<string, { label: string; employee_limit: number; features: string[] }>;
+}
+
+export interface InvitationRow {
+  id: UUID;
+  email: string;
+  role: Role;
+  status: "PENDING" | "ACCEPTED" | "REVOKED";
+  invited_by?: UUID;
+  created_at?: string;
+  invite_url: string | null;
 }
 
 export interface AdminUser {
@@ -94,8 +165,9 @@ export interface TokenPair {
 export interface LoginResponse extends Partial<TokenPair> {
   /** Present + true when the user must complete an MFA challenge. */
   mfa_required?: boolean;
-  /** Opaque challenge handle echoed back to /mfa/challenge (mock convenience). */
-  challenge?: string;
+  /** Signed, short-lived MFA handle (the REAL backend field) — echoed back to
+   *  /auth/mfa/challenge as `mfa_token` together with the TOTP code. */
+  mfa_token?: string;
 }
 
 // ---- Billing / entitlements ------------------------------------------------
@@ -558,6 +630,8 @@ export interface ChatResponse {
   answer: string;
   data?: unknown;
   proposal?: ChatProposal;
+  /** Present on a navigation answer ("open the draft") — the SPA route to open. */
+  deeplink?: string;
   /** Present when status === "plan": the ordered, inert plan to approve step by step. */
   type?: "plan";
   plan?: ChatPlan;

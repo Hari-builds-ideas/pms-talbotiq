@@ -33,11 +33,22 @@ from __future__ import annotations
 import logging
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
+from django.conf import settings
 from django.utils import timezone
 
 from apps.tenancy.context import tenant_context
 
 logger = logging.getLogger("pms.ai.jobs")
+
+# Hard wall-clock ceiling for a single AI job so a stuck seam (a hung LLM socket
+# a per-request timeout somehow missed, a starved worker) can NEVER strand the
+# job RUNNING — the client would then poll a spinner forever. The soft limit
+# raises SoftTimeLimitExceeded INSIDE the task (catchable → we mark FAILED and
+# the UI resolves); the hard limit is a last-resort kill above it. Default 120s
+# sits above the provider's own worst case (~3 retries × LLM_TIMEOUT_SECONDS).
+_AI_JOB_SOFT_LIMIT = int(getattr(settings, "AI_JOB_SOFT_TIME_LIMIT", 120))
+_AI_JOB_HARD_LIMIT = int(getattr(settings, "AI_JOB_HARD_TIME_LIMIT", _AI_JOB_SOFT_LIMIT + 30))
 
 #: reason returned by a seam task -> (AIJob status, error_code). Reasons NOT in
 #: here (provider_error, not_found, bad_state:*, actor_*, target_*, ...) are hard
@@ -120,7 +131,7 @@ def _link_usage(job):
         job.token_ledger = led
 
 
-@shared_task(bind=True)
+@shared_task(bind=True, soft_time_limit=_AI_JOB_SOFT_LIMIT, time_limit=_AI_JOB_HARD_LIMIT)
 def run_agent_job(self, tenant_id, job_id):
     """Run the AI job ``job_id`` within ``tenant_id`` off the request thread."""
     from apps.ai.models import AIJob
@@ -144,6 +155,19 @@ def run_agent_job(self, tenant_id, job_id):
         actor_id = str(job.requested_by_id) if job.requested_by_id else None
         try:
             result, success_key = _dispatch(job, actor_id)
+        except SoftTimeLimitExceeded:
+            # The wall-clock ceiling fired: a seam ran too long (hung LLM socket,
+            # starved worker). Fail HONESTLY so the client's spinner resolves to
+            # the calm retry banner instead of polling forever.
+            logger.error(
+                "run_agent_job: job %s (%s) exceeded the %ss soft time limit; marking FAILED",
+                job.id, job.agent_code, _AI_JOB_SOFT_LIMIT,
+            )
+            job.status = AIJob.Status.FAILED
+            job.error_code = "TIMEOUT"
+            job.finished_at = timezone.now()
+            job.save(update_fields=["status", "error_code", "finished_at", "updated_at"])
+            return {"job_id": str(job.id), "status": job.status, "error_code": "TIMEOUT"}
         except Exception as exc:  # noqa: BLE001
             # A seam that raises (e.g. an uncaught validation error, or an unknown
             # agent_code) must NEVER strand the job RUNNING — record FAILED and

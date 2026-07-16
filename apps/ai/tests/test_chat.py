@@ -90,6 +90,28 @@ def test_write_intent_returns_an_inert_plan(org):
 
 
 @override_settings(**FAKE)
+def test_destructive_request_is_refused_and_writes_nothing(org):
+    # BUGS_FOUND P0-1 — deletion is not an agent action; a bulk-destructive request is
+    # refused EXPLICITLY (not turned into a plan/proposal), and nothing is created/deleted.
+    from apps.audit.models import AuditLog
+    from apps.identity.models import User
+
+    with tenant_context(org.tenant):
+        users_before = User.objects.count()
+        audit_before = AuditLog.objects.count()
+    for q in ("delete all the data", "erase all employees", "wipe the database"):
+        resp = _client_for(org.manager).post(CHAT, {"query": q}, format="json")
+        assert resp.status_code == 200, resp.content
+        body = resp.json()
+        assert body["status"] == "blocked", (q, body)
+        assert "can't delete" in body["answer"].lower()
+        assert body.get("type") != "plan" and "plan" not in body
+    with tenant_context(org.tenant):
+        assert User.objects.count() == users_before   # nothing deleted
+        assert AuditLog.objects.count() == audit_before  # nothing written
+
+
+@override_settings(**FAKE)
 def test_multi_intent_write_returns_multi_step_plan(org):
     # "start a 360 for Rhea and draft a review for Rhea" → a 2-step plan (both
     # actions the manager can do, with a draftable review present).

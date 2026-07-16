@@ -85,10 +85,25 @@ class JobDescriptionCreateSerializer(serializers.Serializer):
 class JDDraftSerializer(serializers.Serializer):
     """Body for ``POST /api/jd/<pk>/save-draft``. Both fields are OPTIONAL — the
     view passes each through to ``save_draft`` only when present, so an empty
-    body is a no-op edit rather than a clobber-to-null."""
+    body is a no-op edit rather than a clobber-to-null.
+
+    ``body``/``inputs`` MUST be JSON objects: downstream (validate_jd_content,
+    export, generation) treats them as dicts (``body.get(...)``). A bare JSON
+    string/list/number would save and then 500 later with AttributeError, so the
+    object shape is enforced here at the API boundary → a clean 400."""
 
     body = serializers.JSONField(required=False)
     inputs = serializers.JSONField(required=False)
+
+    def validate_body(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Expected a JSON object (summary / responsibilities / must_haves).")
+        return value
+
+    def validate_inputs(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Expected a JSON object.")
+        return value
 
 
 class JDTemplateSerializer(serializers.ModelSerializer):

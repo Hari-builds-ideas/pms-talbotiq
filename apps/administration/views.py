@@ -18,6 +18,8 @@ cross-tenant referenced id → 404 (``get_object_or_404`` over the scoped manage
 """
 from __future__ import annotations
 
+import re
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -73,6 +75,12 @@ class UserListCreateView(RBACMixin, APIView):
         serializer = CreateUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        # Headcount gate (PHASE2 L1.4): seats + the plan's employee limit.
+        from apps.billing.services import can_add_user
+
+        allowed, reason = can_add_user(request.user.tenant_id)
+        if not allowed:
+            return Response({"detail": reason}, status=status.HTTP_409_CONFLICT)
         manager = None
         if data.get("manager") is not None:
             manager = get_object_or_404(User.objects.all(), pk=data["manager"])
@@ -87,6 +95,74 @@ class UserListCreateView(RBACMixin, APIView):
         return Response(
             UserAdminSerializer(user).data, status=status.HTTP_201_CREATED
         )
+
+
+class EmployeeImportView(RBACMixin, APIView):
+    """``POST /api/admin/users/import`` (INVITE_USERS — HRBP+) — bulk-onboard
+    employees from a CSV. Accepts EITHER a multipart ``file`` (CSV with a header
+    row: ``name,email,role,department,designation,manager``) OR a JSON body
+    ``{"rows": [{...}, ...]}``. Idempotent (upsert by email), per-row errors, seat
+    +role-ceiling enforced. Returns ``{created,updated,skipped,total,errors}``."""
+
+    required_capability = Capability.INVITE_USERS
+
+    _MAX_ROWS = 5000
+    _CANON = {  # tolerate common header spellings → our canonical keys
+        "name": "name", "full name": "name", "employee name": "name",
+        "email": "email", "email address": "email", "work email": "email",
+        "role": "role",
+        "department": "department", "dept": "department",
+        "designation": "designation", "title": "designation", "job title": "designation",
+        "manager": "manager", "manager email": "manager", "reports to": "manager",
+    }
+
+    def _rows_from_csv(self, file_obj) -> list[dict]:
+        import csv
+        import io
+
+        raw = file_obj.read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8-sig", errors="replace")  # strip BOM
+        reader = csv.DictReader(io.StringIO(raw))
+        rows = []
+        for r in reader:
+            row = {}
+            for k, v in r.items():
+                if k is None:
+                    continue
+                key = self._CANON.get(str(k).strip().lower())
+                if key:
+                    row[key] = (v or "").strip()
+            if any(row.values()):
+                rows.append(row)
+        return rows
+
+    def post(self, request):
+        upload = request.FILES.get("file")
+        if upload is not None:
+            try:
+                rows = self._rows_from_csv(upload)
+            except Exception:  # noqa: BLE001 — a malformed file is a 400, not a 500
+                return Response({"detail": "Could not parse the CSV file."},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            rows = request.data.get("rows")
+            if not isinstance(rows, list):
+                return Response(
+                    {"detail": "Provide a CSV `file` upload or a JSON `rows` array."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if not rows:
+            return Response({"detail": "No rows found to import."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if len(rows) > self._MAX_ROWS:
+            return Response(
+                {"detail": f"Too many rows ({len(rows)}). Import in batches of "
+                           f"{self._MAX_ROWS} or fewer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        result = services.bulk_import_employees(request.user, rows)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class UserStatsView(RBACMixin, APIView):
@@ -128,6 +204,35 @@ class UserDisplayNameView(RBACMixin, APIView):
         user = services.set_display_name(
             request.user, user, serializer.validated_data["display_name"]
         )
+        return Response(UserAdminSerializer(user).data)
+
+
+class UserOrgProfileView(RBACMixin, APIView):
+    """``PATCH /api/admin/users/<pk>/profile`` (MANAGE_USERS_ROLES — Admin) — set
+    the ORG-controlled profile fields (title/department/employee_id/phone). The
+    self-service fields live on /api/auth/profile (PHASE2 L1.1). Audited."""
+
+    required_capability = Capability.MANAGE_USERS_ROLES
+
+    def patch(self, request, pk):
+        from apps.audit.services import record
+
+        from .serializers import OrgProfileFieldsSerializer
+
+        user = get_object_or_404(User.objects.all(), pk=pk)
+        serializer = OrgProfileFieldsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        changed = []
+        for field, value in serializer.validated_data.items():
+            setattr(user, field, value)
+            changed.append(field)
+        if changed:
+            record(
+                action="admin.user_profile_updated", actor=request.user,
+                target_type="user", target_id=user.id,
+                metadata={"fields": sorted(changed)}, tenant=request.user.tenant_id,
+            )
+            user.save(update_fields=changed)
         return Response(UserAdminSerializer(user).data)
 
 
@@ -177,6 +282,68 @@ class UserReportingLineView(RBACMixin, APIView):
 
 
 # ── tenant config ────────────────────────────────────────────────────────────
+
+
+#: Org-settings keys (PHASE2 L1.5) stored under TenantConfig.settings["org"].
+_ORG_KEYS = ("name", "timezone", "language", "logo_url", "primary_color")
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+class OrgSettingsView(RBACMixin, APIView):
+    """``GET, PATCH /api/admin/org-settings`` (MANAGE_TENANT — Admin).
+
+    PHASE2 L1.5 — plain, typed org settings (name/timezone/language defaults) +
+    the branding hooks (logo_url/primary_color), stored in the existing
+    TenantConfig bag under ``org``. Branding fields are gated server-side by the
+    plan's ``custom_branding`` feature. Served to every user via /me
+    (``tenant_branding``) so the shell can theme. Custom domains are a designed
+    future item (docs/PHASE2/FUTURE_INTEGRATIONS.md), not built."""
+
+    _caps = {"GET": Capability.MANAGE_TENANT, "PATCH": Capability.MANAGE_TENANT}
+
+    def get_permissions(self):
+        self.required_capability = self._caps.get(self.request.method)
+        return super().get_permissions()
+
+    def get(self, request):
+        config = services.get_tenant_config(request.user)
+        return Response(config.settings.get("org", {}))
+
+    def patch(self, request):
+        import zoneinfo
+
+        from apps.audit.services import record
+        from apps.billing.services import feature_flags_for
+
+        updates = {k: request.data[k] for k in _ORG_KEYS if k in request.data}
+        if not updates:
+            return Response({"detail": "Nothing to update."}, status=400)
+        if "timezone" in updates:
+            try:
+                zoneinfo.ZoneInfo(str(updates["timezone"]))
+            except Exception:
+                return Response({"timezone": ["Unknown timezone."]}, status=400)
+        if "primary_color" in updates and updates["primary_color"]:
+            if not _HEX_COLOR_RE.match(str(updates["primary_color"])):
+                return Response({"primary_color": ["Use a #RRGGBB hex color."]}, status=400)
+        if ("logo_url" in updates or "primary_color" in updates) and not feature_flags_for(
+            request.user.tenant
+        ).get("custom_branding"):
+            return Response(
+                {"detail": "Custom branding is an Enterprise-plan feature."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        config = services.get_tenant_config(request.user)
+        org = dict(config.settings.get("org", {}))
+        org.update({k: str(v) for k, v in updates.items()})
+        config.settings["org"] = org
+        record(
+            action="admin.org_settings_updated", actor=request.user,
+            target_type="tenant_config", target_id=config.id,
+            metadata={"keys": sorted(updates)}, tenant=request.user.tenant_id,
+        )
+        config.save(update_fields=["settings"])
+        return Response(org)
 
 
 class TenantConfigView(RBACMixin, APIView):

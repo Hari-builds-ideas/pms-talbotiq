@@ -1,8 +1,49 @@
+import * as React from "react";
 import { NavLink } from "react-router-dom";
 import { PlusCircle } from "lucide-react";
-import { navForRole, APP_ICON } from "@/app/nav";
+import { navForRole } from "@/app/nav";
+import { BRAND, BrandMark } from "@/brand";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { cn } from "@/lib/utils";
+
+/** The sidebar brand lockup: the Axiom mark + name by default. A white-label
+ *  tenant's own logo (PHASE2 L1.5 custom_branding) replaces the mark; a broken or
+ *  unreachable tenant logo falls back to the Axiom mark via onError — so a bad
+ *  logo URL can never render a broken image or leak alt text over the wordmark. */
+function SidebarBrand({
+  logoUrl,
+  tenantName,
+}: {
+  logoUrl?: string | null;
+  tenantName?: string | null;
+}) {
+  const [broken, setBroken] = React.useState(false);
+  const showTenantLogo = Boolean(logoUrl) && !broken;
+  return (
+    <span className="flex items-center gap-3">
+      {showTenantLogo ? (
+        <img
+          src={logoUrl as string}
+          alt=""
+          onError={() => setBroken(true)}
+          className="h-10 w-10 rounded-xl object-contain"
+        />
+      ) : (
+        // The cropped mark fills its frame — render it a proper ~40px tall so it
+        // reads as a real logo (not a speck) next to the wordmark text.
+        <BrandMark className="h-10 w-auto shrink-0" />
+      )}
+      <span className="leading-tight">
+        <span className="block text-base font-bold tracking-tight text-foreground">
+          {showTenantLogo ? (tenantName ?? BRAND.shortName) : BRAND.shortName}
+        </span>
+        <span className="block text-[11px] text-sidebar-muted">
+          Performance Management System
+        </span>
+      </span>
+    </span>
+  );
+}
 
 /** Opens the ⌘K command palette (reuses its global keydown listener) — the
  *  "Quick Actions" surface (jump to any destination / search people / Ask AI). */
@@ -22,15 +63,12 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-      {/* Brand lockup */}
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <APP_ICON className="h-5 w-5" />
-        </div>
-        <div className="leading-tight">
-          <div className="text-base font-bold tracking-tight text-foreground">TalbotIQ</div>
-          <div className="text-[11px] text-sidebar-muted">Performance Management System</div>
-        </div>
+      {/* Brand lockup (see SidebarBrand — tenant logo overrides, with fallback). */}
+      <div className="flex h-16 items-center px-5">
+        <SidebarBrand
+          logoUrl={me?.tenant_branding?.logo_url}
+          tenantName={me?.tenant_name}
+        />
       </div>
 
       <nav aria-label="Primary" className="flex-1 space-y-6 overflow-y-auto scrollbar-thin px-3 py-3">
@@ -86,7 +124,7 @@ export function Sidebar() {
           Quick Actions
         </button>
         <div className="mt-2 truncate px-1 text-[11px] text-sidebar-muted">
-          {me?.tenant_name ?? "Talbotiq"}
+          {me?.tenant_name ?? BRAND.name}
         </div>
       </div>
     </aside>

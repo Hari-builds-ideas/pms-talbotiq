@@ -16,6 +16,11 @@ interface PanelProps {
   children: React.ReactNode;
   className?: string;
   bodyClassName?: string;
+  /** Cap the body at a fixed height and scroll internally — for growable lists
+   *  (approval inbox, nudges, stale goals) so a long list scrolls WITHIN the card
+   *  instead of stretching the whole page. No data is hidden; it's reachable by
+   *  scrolling (and the header's "View all" links to the full screen). */
+  scroll?: boolean;
 }
 
 /** A titled content panel — the workhorse container for dashboard + list views. */
@@ -28,6 +33,7 @@ export function Panel({
   children,
   className,
   bodyClassName,
+  scroll = false,
 }: PanelProps) {
   return (
     <Card className={cn("flex flex-col", className)}>
@@ -47,7 +53,15 @@ export function Panel({
           </Link>
         )}
       </div>
-      <div className={cn("flex-1 p-4", bodyClassName)}>{children}</div>
+      <div
+        className={cn(
+          "flex-1 p-4",
+          scroll && "max-h-72 overflow-y-auto scrollbar-thin",
+          bodyClassName,
+        )}
+      >
+        {children}
+      </div>
     </Card>
   );
 }

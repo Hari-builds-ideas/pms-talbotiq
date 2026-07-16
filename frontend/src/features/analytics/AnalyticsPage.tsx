@@ -27,9 +27,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { NineBoxGrid } from "@/components/NineBoxGrid";
+import { V1_HIDE_CALIBRATION, V1_HIDE_TSCORE } from "@/app/v1";
 import { useCalibration, useDepartment, useIndividual } from "./useAnalytics";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { useCycles } from "@/lib/hooks/useCycles";
 import { formatScore } from "@/lib/format";
 import { TrendChart } from "@/components/TrendChart";
@@ -40,17 +42,22 @@ export function AnalyticsPage() {
     <div>
       <PageHeader
         eyebrow="Insights" title="Analytics"
-        description="Performance trends, department cohorts and the calibration grid. Small cohorts are aggregated for privacy."
+        description={
+          V1_HIDE_CALIBRATION
+            ? "Performance trends and department cohorts. Small cohorts are aggregated for privacy."
+            : "Performance trends, department cohorts and the calibration grid. Small cohorts are aggregated for privacy."
+        }
       />
       <Tabs defaultValue="individual">
         <TabsList>
           <TabsTrigger value="individual">Individual</TabsTrigger>
           <TabsTrigger value="department">Department</TabsTrigger>
-          {atLeast("HRBP") && <TabsTrigger value="calibration">Calibration</TabsTrigger>}
+          {/* v1: calibration / nine-box tab hidden (deferred to v2). */}
+          {!V1_HIDE_CALIBRATION && atLeast("HRBP") && <TabsTrigger value="calibration">Calibration</TabsTrigger>}
         </TabsList>
         <TabsContent value="individual"><IndividualTab /></TabsContent>
         <TabsContent value="department"><DepartmentTab /></TabsContent>
-        {atLeast("HRBP") && (
+        {!V1_HIDE_CALIBRATION && atLeast("HRBP") && (
           <TabsContent value="calibration"><CalibrationTab /></TabsContent>
         )}
       </Tabs>
@@ -59,7 +66,10 @@ export function AnalyticsPage() {
 }
 
 function IndividualTab() {
-  const { nameOf, nodes } = useDirectory();
+  const { nameOf } = useDirectory();
+  // Only people whose analytics the caller may read (server scope rule) — an
+  // out-of-scope pick would 403/404 (FINAL D2).
+  const people = useScopedPeople();
   const { nameOf: cycleName } = useCycles();
   const [employee, setEmployee] = React.useState<string>("self");
   const q = useIndividual(employee === "self" ? undefined : employee);
@@ -73,7 +83,7 @@ function IndividualTab() {
           <SelectTrigger className="w-56" aria-label="Select employee"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="self">Myself</SelectItem>
-            {Object.values(nodes).map((n) => (
+            {people.map((n) => (
               <SelectItem key={n.id} value={n.id}>{n.display}</SelectItem>
             ))}
           </SelectContent>
@@ -87,16 +97,27 @@ function IndividualTab() {
           <ErrorState error={q.error} onRetry={() => q.refetch()} compact />
         ) : trend.length > 0 ? (
           <div className="space-y-5">
-            {/* Real per-cycle T-score trend (recharts). */}
+            {/* Per-cycle trend. v1 plots plain goal progress % (raw attainment);
+                the T-score view is kept for v2 behind V1_HIDE_TSCORE. */}
             <TrendChart
-              data={trend.map((pt) => ({ label: cycleName(pt.cycle), value: Number(pt.t_score) }))}
+              data={trend.map((pt) => ({
+                label: cycleName(pt.cycle),
+                value: V1_HIDE_TSCORE ? Math.round(Number(pt.raw_score) * 100) : Number(pt.t_score),
+              }))}
+              seriesName={V1_HIDE_TSCORE ? "Progress %" : "T-score"}
             />
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Cycle</TableHead>
-                  <TableHead>T-score</TableHead>
-                  <TableHead>Raw</TableHead>
+                  {V1_HIDE_TSCORE ? (
+                    <TableHead>Progress</TableHead>
+                  ) : (
+                    <>
+                      <TableHead>T-score</TableHead>
+                      <TableHead>Raw</TableHead>
+                    </>
+                  )}
                   <TableHead>Risk</TableHead>
                   <TableHead>Pace</TableHead>
                 </TableRow>
@@ -105,8 +126,14 @@ function IndividualTab() {
                 {trend.map((pt) => (
                   <TableRow key={pt.cycle}>
                     <TableCell>{cycleName(pt.cycle)}</TableCell>
-                    <TableCell className="tabular-nums">{formatScore(pt.t_score)}</TableCell>
-                    <TableCell className="tabular-nums">{pt.raw_score}</TableCell>
+                    {V1_HIDE_TSCORE ? (
+                      <TableCell className="tabular-nums">{Math.round(Number(pt.raw_score) * 100)}%</TableCell>
+                    ) : (
+                      <>
+                        <TableCell className="tabular-nums">{formatScore(pt.t_score)}</TableCell>
+                        <TableCell className="tabular-nums">{pt.raw_score}</TableCell>
+                      </>
+                    )}
                     <TableCell><StatusBadge status={pt.risk_status} /></TableCell>
                     <TableCell>
                       {pt.pace_behind ? <Badge variant="warning">Behind</Badge> : <Badge variant="muted">On pace</Badge>}
@@ -125,7 +152,9 @@ function IndividualTab() {
 }
 
 function DepartmentTab() {
-  const { nodes } = useDirectory();
+  // Only heads within the caller's scope (the server confines `head` and 404s
+  // otherwise) — an out-of-scope pick would dead-end (FINAL D2).
+  const heads = useScopedPeople();
   const { cycles, active, nameOf: cycleName } = useCycles();
   const [head, setHead] = React.useState<string>("");
   const [cycle, setCycle] = React.useState<string>("");
@@ -134,7 +163,7 @@ function DepartmentTab() {
     if (active && !cycle) setCycle(active.id);
   }, [active, cycle]);
 
-  const effectiveHead = head || Object.values(nodes)[0]?.id;
+  const effectiveHead = head || heads[0]?.id;
   const q = useDepartment(effectiveHead, cycle);
   const d = q.data;
 
@@ -146,7 +175,7 @@ function DepartmentTab() {
           <Select value={head || effectiveHead || ""} onValueChange={setHead}>
             <SelectTrigger className="w-52" aria-label="Select head of org"><SelectValue placeholder="Select…" /></SelectTrigger>
             <SelectContent>
-              {Object.values(nodes).map((n) => (
+              {heads.map((n) => (
                 <SelectItem key={n.id} value={n.id}>{n.display}</SelectItem>
               ))}
             </SelectContent>
@@ -174,11 +203,17 @@ function DepartmentTab() {
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard label="Headcount" value={d.aggregate.headcount} icon={Users} />
             <StatCard label="Scored" value={d.aggregate.scored} icon={BarChart3} />
-            <StatCard label="Mean T-score" value={formatScore(d.aggregate.mean_t_score)} tone="info" />
-            <StatCard label="Median T-score" value={formatScore(d.aggregate.median_t_score)} tone="info" />
+            {/* v1: mean/median T-score hidden — the status distribution below is the
+                plain read. Kept for v2 behind V1_HIDE_TSCORE. */}
+            {!V1_HIDE_TSCORE && (
+              <>
+                <StatCard label="Mean T-score" value={formatScore(d.aggregate.mean_t_score)} tone="info" />
+                <StatCard label="Median T-score" value={formatScore(d.aggregate.median_t_score)} tone="info" />
+              </>
+            )}
           </div>
 
-          <Panel title="Risk distribution" icon={BarChart3}>
+          <Panel title="On track / Behind / At risk" icon={BarChart3}>
             <div className="flex flex-wrap gap-4">
               {(["ON_TRACK", "AT_RISK", "CRITICAL"] as const).map((r) => (
                 <div key={r} className="flex items-center gap-2">
@@ -204,15 +239,15 @@ function DepartmentTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Employee</TableHead>
-                    <TableHead>T-score</TableHead>
-                    <TableHead>Risk</TableHead>
+                    {!V1_HIDE_TSCORE && <TableHead>T-score</TableHead>}
+                    <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {d.individuals.map((ind) => (
                     <TableRow key={ind.employee}>
                       <TableCell><PersonName id={ind.employee} withAvatar /></TableCell>
-                      <TableCell className="tabular-nums">{formatScore(ind.t_score)}</TableCell>
+                      {!V1_HIDE_TSCORE && <TableCell className="tabular-nums">{formatScore(ind.t_score)}</TableCell>}
                       <TableCell><StatusBadge status={ind.risk_status} /></TableCell>
                     </TableRow>
                   ))}

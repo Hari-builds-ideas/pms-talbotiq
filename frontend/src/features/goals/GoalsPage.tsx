@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Check, Info, Plus, RefreshCw, Sparkles, Target, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Info, Plus, RefreshCw, Sparkles, Target, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,23 +32,29 @@ import { WeightBar } from "@/components/WeightBar";
 import { AttainmentBar } from "@/components/AttainmentBar";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { useCycles } from "@/lib/hooks/useCycles";
-import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { KPI_DIRECTION, humanize } from "@/lib/enums";
 import { formatScore } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { ProgressBar } from "@/components/ProgressBar";
+import {
+  goalProgress,
+  personProgress,
+  PROGRESS_STATUS_LABEL,
+  PROGRESS_TEXT_CLASS,
+} from "@/lib/goalProgress";
 import { sumWeights, weightsSumTo100 } from "@/lib/weights";
 import { mapApiError } from "@/lib/errors";
 import { goalsApi } from "@/lib/api/endpoints";
 import { notifyError, notifySuccess } from "@/lib/toast";
-import { activeWeightTotal, useCycleScores, useGoalMutations, useGoals } from "./useGoals";
-import type { CycleScore, Goal } from "@/lib/types";
+import { activeWeightTotal, useGoalMutations, useGoals } from "./useGoals";
+import type { Goal } from "@/lib/types";
 
 // Plain-language explanations (copy only — no behavior/data change).
-const T_SCORE_HINT =
-  "A T-score is a statistical score centered on 50 — 50 is the cohort average. It's not a percentage or a 1–5 rating; higher is better.";
 const WEIGHT_HINT =
-  "Weight is how much an item counts toward the score. A person's active goal weights must total 100.";
+  "Weight is how much a goal or KPI counts toward the overall result. A person's active goal weights must total 100.";
 const RECOMPUTE_HINT =
-  "Turns the latest recorded KPI actuals into each person's performance score (T-score).";
+  "Rolls the latest recorded KPI progress into the performance analytics and reports.";
 
 /** Small info affordance: an (i) icon with a one-line plain-language tooltip. */
 function InfoHint({ label, text }: { label: string; text: string }) {
@@ -85,14 +91,15 @@ export function GoalsPage() {
   // only — gated so an employee never sees a button the server would deny (D31).
   const { atLeast } = useAuth();
   const goalsAll = useGoals(undefined);
-  const rows = goalsAll.data?.results ?? [];
-  const cycle = active?.id ?? rows[0]?.cycle;
+  const allRows = goalsAll.data?.results ?? [];
+  const cycle = active?.id ?? allRows[0]?.cycle;
+  // This screen is "this cycle" — hide prior-cycle history (kept for analytics
+  // trends) and archived strays, which would read as duplicate goals here.
+  const rows = allRows.filter((g) => g.cycle === cycle && g.status !== "ARCHIVED");
 
   const goals = goalsAll;
-  const scores = useCycleScores(cycle);
   const m = useGoalMutations(cycle);
   const [createOpen, setCreateOpen] = React.useState(false);
-  const scoreByEmp = new Map<string, CycleScore>((scores.data ?? []).map((s) => [s.employee, s]));
   const employees = Array.from(new Set(rows.map((g) => g.employee)));
 
   return (
@@ -100,7 +107,7 @@ export function GoalsPage() {
       <PageHeader
         eyebrow="Performance"
         title="Goals & OKRs"
-        description="Weighted goals and KPIs for the cycle, rolled up into each person's performance score."
+        description="How each person is tracking against their goals this cycle."
         actions={
           atLeast("MANAGER") ? (
             <div className="flex items-center gap-2">
@@ -117,7 +124,7 @@ export function GoalsPage() {
                     loading={m.recompute.isPending}
                     disabled={!cycle}
                   >
-                    <RefreshCw className="h-4 w-4" /> Recompute scores
+                    <RefreshCw className="h-4 w-4" /> Refresh analytics
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[18rem] text-xs leading-relaxed">{RECOMPUTE_HINT}</TooltipContent>
@@ -130,14 +137,14 @@ export function GoalsPage() {
         }
       />
 
-      {/* Plain-language model explainer (copy only — no behavior/data change). */}
+      {/* Plain-language explainer — the bar shows how far along each goal is. */}
       <div className="mb-4 rounded-xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
-        Each person commits to <span className="font-medium text-foreground">weighted goals</span> for the
-        cycle; each goal has measurable <span className="font-medium text-foreground">KPIs</span> with
-        targets. As actuals are recorded,{" "}
-        <span className="font-medium text-foreground">Recompute scores</span> rolls them into one
-        performance score — a <span className="font-medium text-foreground">T-score</span> (centered on 50,
-        where 50 is the cohort average).
+        Each person has a few <span className="font-medium text-foreground">goals</span> this cycle. The bar
+        shows <span className="font-medium text-foreground">how far along</span> each goal is —{" "}
+        <span className="font-medium text-success">green</span> is on track,{" "}
+        <span className="font-medium text-warning">amber</span> is behind,{" "}
+        <span className="font-medium text-danger">red</span> needs attention. Open{" "}
+        <span className="font-medium text-foreground">Show details</span> for targets and KPIs.
       </div>
 
       <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
@@ -156,24 +163,33 @@ export function GoalsPage() {
           {employees.map((emp) => {
             const empGoals = rows.filter((g) => g.employee === emp);
             const total = activeWeightTotal(rows, emp);
-            const score = scoreByEmp.get(emp);
+            const prog = personProgress(empGoals);
+            const weightsOk = Math.abs(total - 100) < 0.005;
             return (
               <div key={emp} className="space-y-3">
-                {/* PERSON — the top level: who the goals belong to + their score. */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border pb-2">
+                {/* PERSON — who the goals belong to + the one-line plain answer. */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border pb-2">
                   <PersonName id={emp} withAvatar className="text-sm font-semibold" />
-                  {score && <StatusBadge status={score.risk_status} dot />}
-                  {score && (
-                    <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
-                      T-score <span className="font-medium tabular-nums text-foreground">{formatScore(score.t_score)}</span>
-                      <InfoHint label="What is a T-score?" text={T_SCORE_HINT} />
-                    </span>
+                  {/* The headline: "3 of 4 goals on track — 68% overall". */}
+                  {prog.started > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      <span className="font-semibold text-foreground">{prog.onTrack} of {empGoals.length}</span>{" "}
+                      goal{empGoals.length === 1 ? "" : "s"} on track
+                      {prog.pct != null && (
+                        <> — <span className="font-semibold text-foreground">{Math.round(prog.pct)}%</span> overall</>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Not started yet this cycle</p>
                   )}
+                </div>
+                {/* Weight guidance stays available but only shouts when it's OFF (needs fixing). */}
+                {!weightsOk && (
                   <span className="inline-flex flex-wrap items-center gap-1">
                     <WeightSummary total={total} />
                     <InfoHint label="What is weight?" text={WEIGHT_HINT} />
                   </span>
-                </div>
+                )}
                 {/* GOALS — belong to the person above (indented under them). */}
                 <div className="grid grid-cols-1 gap-4 border-l-2 border-border/60 pl-3 lg:grid-cols-2 lg:pl-4">
                   {empGoals.map((g) => (
@@ -201,53 +217,94 @@ export function GoalsPage() {
 function GoalCard({ goal, mutations }: { goal: Goal; mutations: ReturnType<typeof useGoalMutations> }) {
   const { atLeast, me } = useAuth();
   const isOwn = goal.employee === me?.id;
+  const [open, setOpen] = React.useState(false);
+  const prog = goalProgress(goal);
+
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="font-medium">{goal.title}</p>
-            {goal.objective && <p className="text-2xs text-muted-foreground">{goal.objective}</p>}
+        {/* HEADLINE — title + big % + colored bar + one-word status. The whole
+            answer, no jargon, readable in a glance. */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-medium leading-tight">{goal.title}</p>
+            {goal.objective && <p className="mt-0.5 text-2xs text-muted-foreground">{goal.objective}</p>}
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <Badge variant="muted">Goal weight {goal.weight}</Badge>
-            <StatusBadge status={goal.status} />
+          <div className="shrink-0 text-right">
+            {prog.pct == null ? (
+              <span className="text-sm font-medium text-muted-foreground">Not started</span>
+            ) : (
+              <span className={cn("text-2xl font-bold tabular-nums leading-none", prog.status && PROGRESS_TEXT_CLASS[prog.status])}>
+                {Math.round(prog.pct)}%
+              </span>
+            )}
           </div>
         </div>
 
-        {/* KPIs — belong to this goal (measurable targets that roll up to the score). */}
-        <div className="space-y-1.5">
-          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">KPIs</p>
-          <ul className="space-y-2">
-            {goal.kpis.map((k) => (
-              <KpiRow key={k.id} kpi={k} mutation={mutations.recordActual} canRecord={isOwn} />
-            ))}
-          </ul>
-        </div>
+        <ProgressBar pct={prog.pct} status={prog.status} />
 
-        {/* Progress timeline (AGENT_UX_V3 Part 2.3) — the goal's recent updates. */}
-        <GoalUpdates goalId={goal.id} canAdd={isOwn} />
-
-        <div className="flex items-center justify-between border-t border-border pt-2">
-          <span className="text-2xs text-muted-foreground">
-            {goal.approved_by ? "Approved" : "Awaiting approval"}
-          </span>
-          {atLeast("MANAGER") && !goal.approved_by && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                mutations.approve
-                  .mutateAsync(goal.id)
-                  .then(() => notifySuccess("Goal approved"))
-                  .catch(notifyError)
-              }
-              loading={mutations.approve.isPending}
-            >
-              <Check className="h-4 w-4" /> Approve
-            </Button>
+        <div className="flex items-center justify-between">
+          {prog.status ? (
+            <span className={cn("text-sm font-semibold", PROGRESS_TEXT_CLASS[prog.status])}>
+              {PROGRESS_STATUS_LABEL[prog.status]}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground">No progress recorded yet</span>
           )}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="inline-flex items-center gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {open ? "Hide details" : "Show details"}
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
+          </button>
         </div>
+
+        {/* DETAILS — everything technical, hidden until asked for. */}
+        {open && (
+          <div className="space-y-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+              <StatusBadge status={goal.status} />
+              <span>How much this counts: <span className="font-medium tabular-nums text-foreground">{goal.weight}</span></span>
+            </div>
+
+            {/* KPIs — the measurable targets that make up this goal. */}
+            <div className="space-y-1.5">
+              <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">KPIs</p>
+              <ul className="space-y-2">
+                {goal.kpis.map((k) => (
+                  <KpiRow key={k.id} kpi={k} mutation={mutations.recordActual} canRecord={isOwn} />
+                ))}
+              </ul>
+            </div>
+
+            {/* Progress timeline (AGENT_UX_V3 Part 2.3) — the goal's recent updates. */}
+            <GoalUpdates goalId={goal.id} canAdd={isOwn} />
+
+            <div className="flex items-center justify-between border-t border-border pt-2">
+              <span className="text-2xs text-muted-foreground">
+                {goal.approved_by ? "Approved" : "Awaiting approval"}
+              </span>
+              {atLeast("MANAGER") && !goal.approved_by && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    mutations.approve
+                      .mutateAsync(goal.id)
+                      .then(() => notifySuccess("Goal approved"))
+                      .catch(notifyError)
+                  }
+                  loading={mutations.approve.isPending}
+                >
+                  <Check className="h-4 w-4" /> Approve
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -270,11 +327,11 @@ function KpiRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <span className="text-sm font-medium">{kpi.name}</span>
-          {/* The three things a KPI carries: weight · target · actual. */}
+          {/* Plain-English KPI detail (only seen inside "Show details"). */}
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-muted-foreground">
-            <span>weight <span className="tabular-nums text-foreground">{kpi.weight}</span></span>
-            <span>target <span className="tabular-nums text-foreground">{formatScore(kpi.target_value)}</span> {kpi.unit}</span>
-            <span>{kpi.direction === "DECREASING" ? "Lower = better ↓" : "Higher = better ↑"}</span>
+            <span>How much this counts <span className="tabular-nums text-foreground">{kpi.weight}</span></span>
+            <span>Goal <span className="tabular-nums text-foreground">{formatScore(kpi.target_value)}</span> {kpi.unit}</span>
+            <span>{kpi.direction === "DECREASING" ? "Lower is better ↓" : "Higher is better ↑"}</span>
             <span>
               Progress{" "}
               {notRecorded ? (
@@ -342,8 +399,9 @@ function NewGoalDialog({
   existingGoals: Goal[];
   mutation: ReturnType<typeof useGoalMutations>["create"];
 }) {
-  const { nodes } = useDirectory();
-  const people = Object.values(nodes);
+  // Only people the caller can actually create a goal for — the shared scope rule
+  // (see useScopedPeople; mirrors the server's actor_can_access). BUG 1 / FINAL D2.
+  const people = useScopedPeople();
   const [employee, setEmployee] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [objective, setObjective] = React.useState("");

@@ -148,6 +148,28 @@ def test_employee_cannot_record_actual_on_peers_kpi(org):
     assert resp.status_code == 403
 
 
+def test_non_numeric_actual_is_400_and_writes_nothing(org):
+    # QA-NIGHT: {"value": "not-a-number"} used to 500 in record_actual's Decimal
+    # coercion — AFTER the audit row was written. Must be a clean 400 with no
+    # measurement and no "actual.recorded" audit entry.
+    from apps.audit.models import AuditLog
+    from apps.goals.models import KpiMeasurement
+
+    cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+    with tenant_context(org.tenant):
+        goal = GoalFactory(employee=org.report, cycle=cycle, status="ACTIVE")
+        kpi = KpiFactory(goal=goal, weight=Decimal("100.00"))
+
+    rep = _client_for(org.report)
+    resp = rep.post(f"{GOALS}kpis/{kpi.id}/actuals", {"value": "not-a-number"}, format="json")
+    assert resp.status_code == 400, resp.content
+    with tenant_context(org.tenant):
+        assert not KpiMeasurement.objects.filter(kpi=kpi).exists()
+        assert not AuditLog.objects.filter(
+            action="actual.recorded", target_id=kpi.id
+        ).exists()
+
+
 def test_manager_cannot_use_actuals_endpoint_for_report(org):
     # The actuals endpoint is OWN-only: even a manager (who manages the report's
     # goals) cannot record via THIS endpoint for their report → 403.

@@ -59,9 +59,50 @@ PACK_FEATURES: dict[str, frozenset[str]] = {
 
 #: Every gated feature code in the system — the stable key set ``feature_flags_for``
 #: always returns a boolean for (so the frontend can rely on a complete map).
+# --- Plan-tier feature codes (PHASE2 L1.4 — beyond the AI packs) ---------------
+ADVANCED_ANALYTICS = "advanced_analytics"
+CUSTOM_BRANDING = "custom_branding"
+SSO = "sso"
+API_ACCESS = "api_access"
+AUDIT_ACCESS = "audit_access"
+
+PLAN_FEATURES: frozenset[str] = frozenset(
+    {ADVANCED_ANALYTICS, CUSTOM_BRANDING, SSO, API_ACCESS, AUDIT_ACCESS}
+)
+
 ALL_FEATURES: frozenset[str] = frozenset(
     {AGENT1, AGENT2, AGENT3, AGENT4, AGENT5, CHAT, JD_GENERATOR, CAREER_ROADMAP}
-)
+) | PLAN_FEATURES
+
+# --- Plans (PHASE2 L1.4 — the INTERNAL subscription catalogue; no gateway) ------
+#: plan code -> the packs it grants + the plan-tier features + the employee cap
+#: (0 = unlimited). The subscription DRIVES the entitlement (single source of
+#: truth server-side); an admin changes a tenant's plan via the subscription
+#: endpoint and access flips immediately (tenant cache invalidated).
+PLAN_STARTER = "STARTER"
+PLAN_PROFESSIONAL = "PROFESSIONAL"
+PLAN_ENTERPRISE = "ENTERPRISE"
+
+PLAN_CATALOG: dict[str, dict] = {
+    PLAN_STARTER: {
+        "packs": [STARTER],
+        "features": frozenset(),
+        "employee_limit": 25,
+        "label": "Starter",
+    },
+    PLAN_PROFESSIONAL: {
+        "packs": [STARTER, FULL_AI],
+        "features": frozenset({ADVANCED_ANALYTICS}),
+        "employee_limit": 200,
+        "label": "Professional",
+    },
+    PLAN_ENTERPRISE: {
+        "packs": [STARTER, FULL_AI],
+        "features": PLAN_FEATURES,
+        "employee_limit": 0,  # unlimited
+        "label": "Enterprise",
+    },
+}
 
 
 def agents_for_packs(pack_codes) -> set[str]:

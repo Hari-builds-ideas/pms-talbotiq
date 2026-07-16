@@ -101,18 +101,19 @@ export const handlers = [
       return HttpResponse.json({ detail: "Invalid credentials." }, { status: 401 });
     }
     if (user.mfa_enabled) {
-      return HttpResponse.json({ mfa_required: true, challenge: user.id });
+      // Mirrors the REAL backend field (`mfa_token`), so tests exercise the true contract.
+      return HttpResponse.json({ mfa_required: true, mfa_token: user.id });
     }
     return HttpResponse.json({ access: `mock.${user.id}`, refresh: `mockr.${user.id}` });
   }),
 
   http.post(`${API}/auth/mfa/challenge`, async ({ request }) => {
     await delay(ACTION_DELAY);
-    const body = (await request.json()) as { challenge?: string; code?: string };
+    const body = (await request.json()) as { mfa_token?: string; code?: string };
     if (!body.code || !/^\d{6}$/.test(body.code)) {
       return HttpResponse.json({ detail: "Invalid code." }, { status: 401 });
     }
-    const id = body.challenge ?? "u-1";
+    const id = body.mfa_token ?? "u-1";
     return HttpResponse.json({ access: `mock.${id}`, refresh: `mockr.${id}` });
   }),
 
@@ -120,7 +121,8 @@ export const handlers = [
     await delay(GET_DELAY);
     return HttpResponse.json({
       secret: "JBSWY3DPEHPK3PXP",
-      otpauth_url: "otpauth://totp/Talbotiq:demo?secret=JBSWY3DPEHPK3PXP&issuer=Talbotiq",
+      // `config_url` is the REAL backend field name (apps/identity/views.py).
+      config_url: "otpauth://totp/Talbotiq:demo?secret=JBSWY3DPEHPK3PXP&issuer=Talbotiq",
     });
   }),
   http.post(`${API}/auth/mfa/enroll/confirm`, async () => {

@@ -68,7 +68,7 @@ export function SummaryView({ summary, showHitl }: { summary: FeedbackSummary; s
               <p className="mb-1 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {SECTION_LABELS[key]}
               </p>
-              <p className="whitespace-pre-wrap text-sm text-foreground">
+              <p className="whitespace-pre-wrap break-words text-sm text-foreground">
                 {sections[key] || <span className="text-muted-foreground">—</span>}
               </p>
             </div>

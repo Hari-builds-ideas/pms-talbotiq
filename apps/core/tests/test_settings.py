@@ -14,6 +14,9 @@ from django.conf import settings
 
 
 def _setup_in_subprocess(env):
+    # Hermetic: don't inherit a developer's local .env (it would re-supply the
+    # popped DJANGO_SECRET_KEY and mask the fail-closed check).
+    env.setdefault("PMS_DOTENV_PATH", "/nonexistent/.env")
     return subprocess.run(
         [sys.executable, "-c", "import django; django.setup()"],
         cwd=str(settings.BASE_DIR),

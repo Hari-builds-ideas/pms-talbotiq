@@ -106,6 +106,7 @@ class Command(BaseCommand):
         )
         with tenant_context(tenant.id):
             with transaction.atomic():
+                self._purge_junk(tenant)
                 self._entitlement(tenant)
                 people = self._people(tenant)
                 cycle = self._cycle(tenant)
@@ -124,11 +125,81 @@ class Command(BaseCommand):
                 self._succession(tenant, cycle, people)
                 self._career_for_all(tenant, people)
                 self._feedback_asks(tenant, people)
+                self._avatars(tenant, people)
         n = len(people["all"])
         self.stdout.write(self.style.SUCCESS(
             f"seed_demo_rich complete: ACME populated with {n} people. "
             f"Login with any seeded email + password '{DEMO_PASSWORD}'. Demo manager: ada@acme.test"
         ))
+
+    # ── purge junk / test artifacts (idempotent demo hygiene) ───────────────────
+    def _purge_junk(self, tenant):
+        """Delete the test/placeholder rows that QA runs + manual poking leave in
+        the live demo tenant — "QA kudos"/"QA probe" cards, char-spam ("xxxxx…"),
+        gibberish ("lijil", "kn", "d"), and other placeholders — so the demo that
+        goes to the testing team reads like a real company. Runs on every reseed
+        (so repeated QA runs never accumulate junk), tenant-scoped, and matched to
+        junk HEURISTICS only — the seed's own content is full sentences / real
+        titles and never matches, so real demo data is untouched. Reviews with a
+        junk body are deleted so _reviews rebuilds them clean."""
+        import re
+
+        repeat_re = re.compile(r"(.)\1{6,}")   # 7+ repeated chars, e.g. "xxxxxxx"
+        longtok_re = re.compile(r"\S{35,}")    # a 35+ char no-space token
+        placeholders = ("qa ", "lijil", "lorem", "asdf", "test", "probe", "bug1",
+                        "placeholder", "rb probe", "goal 1")
+
+        def is_junk(text):
+            if not text:
+                return False
+            s = str(text)
+            low = s.lower().strip()
+            if repeat_re.search(s) or longtok_re.search(s):
+                return True
+            if any(low.startswith(p) for p in placeholders):
+                return True
+            if len(low) <= 3 and low.replace(" ", "").isalpha():
+                return True
+            return False
+
+        from apps.recognition.models import Recognition
+        from apps.goals.models import Goal
+        from apps.reviews.models import Review, ReviewComment
+        from apps.feedback.models import Feedback
+        from apps.checkins.models import CheckIn
+        from apps.jd.models import JobDescription
+
+        purged = {}
+
+        def purge(label, model, text_fields):
+            # Scan ALL rows incl. soft-deleted (all_objects), and HARD-delete the
+            # junk — a soft delete would leave the row lingering (still counted by
+            # unique constraints, e.g. it would block _reviews from rebuilding a
+            # cleaned review). This truly removes the junk, no residue.
+            ids = [
+                r.id for r in model.all_objects.all()
+                if any(is_junk(getattr(r, f, "")) for f in text_fields)
+            ]
+            if ids:
+                try:
+                    purged[label] = model.all_objects.filter(id__in=ids).hard_delete()[0]
+                except Exception:  # noqa: BLE001 — hygiene must never break the seed
+                    pass
+
+        purge("recognition", Recognition, ["message"])
+        purge("goals", Goal, ["title"])
+        purge("review_comments", ReviewComment, ["body"])
+        purge("feedback", Feedback, ["body"])
+        purge("checkins", CheckIn, ["wins", "blockers", "learning"])
+        purge("jd", JobDescription, ["title"])
+        # Reviews carry a junk AI-draft body from qa_verify; hard-delete so
+        # _reviews rebuilds the canonical (clean) review below in the same reseed
+        # (a soft delete would leave the row and trip the (tenant,emp,cycle) unique
+        # constraint, leaving the person review-less).
+        purge("reviews", Review, ["draft_body", "final_body"])
+
+        if purged:
+            self.stdout.write(f"  purged junk/test rows: {purged}")
 
     # ── entitlement (FULL_AI) ───────────────────────────────────────────────────
     def _entitlement(self, tenant):
@@ -147,6 +218,13 @@ class Command(BaseCommand):
                 changed = True
             if changed:
                 ent.save(update_fields=["feature_packs", "seat_count"])
+        # ACME has 200+ people — the demo tenant must sit on ENTERPRISE
+        # (unlimited employees) or the invite-accept demo 409s on the
+        # STARTER 25-employee cap. Idempotent; syncs packs from the catalog.
+        from apps.billing.services import get_or_create_subscription, set_plan
+
+        if get_or_create_subscription(tenant.id).plan != "ENTERPRISE":
+            set_plan(tenant.id, "ENTERPRISE", actor=None)
 
     # ── user helper (reuse-by-email; keeps named accounts stable) ───────────────
     def _user(self, tenant, local, display_name, role, manager, *, department=None, hire_offset_days=0):
@@ -162,18 +240,34 @@ class Command(BaseCommand):
             if existing.display_name != display_name:
                 existing.display_name = display_name
                 fields.append("display_name")
+            # Reconcile ROLE too: the named demo accounts have INTENDED roles (ada=MANAGER,
+            # priya=HRBP, …). Without this, a role that later diverged (an admin role-change,
+            # or an earlier seed state) sticks through every reseed — which is exactly how
+            # ada@ ended up demoted to EMPLOYEE. The seed's job is to establish known roles.
+            if existing.role != role:
+                existing.role = role
+                fields.append("role")
+            # Backfill department so every seeded person has a real function (the
+            # org chart, people list + department-keyed goals all depend on it).
+            if department and existing.department != department:
+                existing.department = department
+                fields.append("department")
             if fields:
                 existing.save(update_fields=fields)
             return existing
         return User.objects.create_user(
             email=email, password=DEMO_PASSWORD, tenant=tenant, role=role,
-            display_name=display_name, manager=manager,
+            display_name=display_name, manager=manager, department=(department or ""),
         )
 
     def _gen_name(self, i: int) -> str:
-        # Deterministic spread across the pools; the offset on the last name keeps
-        # adjacent indices from sharing a surname.
-        return f"{FIRST_NAMES[i % len(FIRST_NAMES)]} {LAST_NAMES[(i * 7 + 3) % len(LAST_NAMES)]}"
+        # Deterministic, and UNIQUE per index up to 40*40=1600 people. Both pools are
+        # length 40, so the old `(i*7+3) % 40` repeated the full name every 40 people —
+        # ~5 distinct users shared a display name ("Liam Costa" ×5), which read as
+        # duplicate dashboard rows (BUGS_FOUND #8). Adding the block index `i // 40`
+        # shifts the surname sequence each block, so (first, last) is unique per i.
+        nf, nl = len(FIRST_NAMES), len(LAST_NAMES)
+        return f"{FIRST_NAMES[i % nf]} {LAST_NAMES[(i * 7 + 3 + i // nf) % nl]}"
 
     # ── people: admin → HRBP → director(MANAGER) → lead(MANAGER) → employee ─────
     def _people(self, tenant):
@@ -230,6 +324,38 @@ class Command(BaseCommand):
             "ada": ada, "ada_reports": ada_reports, "akhil": akhil, "vera": vera,
             "all": [admin, *hrbps, *managers, *employees],
         }
+
+    # ── seeded demo avatars (bundled branded-initials PNGs) ─────────────────────
+    def _avatars(self, tenant, people):
+        """Give a few named demo people a branded-initials avatar so the demo looks
+        populated. Deterministic, ACME-only, no external fetch, no runtime image
+        deps: the PNGs are pre-generated fixtures under ``demo_avatars/`` keyed by
+        the account local-part. Idempotent and best-effort — never breaks the seed."""
+        import os
+        from django.core.files.base import ContentFile
+
+        base = os.path.join(os.path.dirname(__file__), "demo_avatars")
+        # local-part → seeded person (only the named accounts have a fixture)
+        named = {
+            "admin": people["admin"], "priya": people["hrbps"][0],
+            "dan": people["hrbps"][1], "ada": people["ada"],
+            "akhil": people["akhil"], "vera": people["vera"],
+        }
+        made = 0
+        for local, u in named.items():
+            if u is None or u.photo:  # idempotent — never overwrite an existing photo
+                continue
+            path = os.path.join(base, f"{local}.png")
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read()
+            except OSError:  # missing fixture — skip this one, don't fail the seed
+                continue
+            u.photo.save(f"{u.tenant_id}/seed-{local}.png",
+                         ContentFile(data), save=False)
+            u.save(update_fields=["photo"])
+            made += 1
+        self.stdout.write(f"  seeded {made} demo avatars")
 
     # ── cycle ───────────────────────────────────────────────────────────────────
     def _cycle(self, tenant):
@@ -300,22 +426,70 @@ class Command(BaseCommand):
         from apps.identity.models import User
 
         # Two goals per person, weights 60 + 40 = 100 (so a person never shows
-        # 200/100); each goal's KPIs also sum to 100.
-        # Concrete, role-appropriate KPI names (no more Impact/Throughput/Quality
-        # shells — AGENT_UX_V3 Part 2.3): they read like real objectives.
-        goal_specs = [
+        # 200/100); each goal's KPIs also sum to 100. Titles + KPIs are drawn from a
+        # DEPARTMENT-KEYED pool so the Goals screen reads like a real company (varied
+        # OKRs per function) rather than the same two titles on all 200 people.
+        # Concrete, role-appropriate KPI names — no Impact/Throughput/Quality shells.
+        GOAL_POOL = {
+            "Engineering": [
+                ("Ship the H1 platform roadmap", Decimal("60.00"),
+                 [("Roadmap features delivered", Decimal("60.00")),
+                  ("Release quality (defect-free %)", Decimal("40.00"))]),
+                ("Strengthen engineering craft", Decimal("40.00"),
+                 [("Code-review turnaround", Decimal("50.00")),
+                  ("Mentoring & knowledge-sharing", Decimal("50.00"))])],
+            "Sales": [
+                ("Hit the H1 revenue quota", Decimal("60.00"),
+                 [("New ARR closed (% of quota)", Decimal("70.00")),
+                  ("Pipeline coverage", Decimal("30.00"))]),
+                ("Deepen customer relationships", Decimal("40.00"),
+                 [("Account expansion", Decimal("50.00")),
+                  ("Customer references secured", Decimal("50.00"))])],
+            "Product": [
+                ("Launch the priority product bets", Decimal("60.00"),
+                 [("Roadmap milestones hit", Decimal("60.00")),
+                  ("New-feature adoption", Decimal("40.00"))]),
+                ("Sharpen product discovery", Decimal("40.00"),
+                 [("Customer interviews run", Decimal("50.00")),
+                  ("Experiments shipped", Decimal("50.00"))])],
+            "Customer Success": [
+                ("Drive customer retention", Decimal("60.00"),
+                 [("Net revenue retention (%)", Decimal("60.00")),
+                  ("CSAT", Decimal("40.00"))]),
+                ("Scale the success playbook", Decimal("40.00"),
+                 [("Playbooks documented", Decimal("50.00")),
+                  ("Onboarding time reduced", Decimal("50.00"))])],
+            "Data": [
+                ("Deliver decision-grade analytics", Decimal("60.00"),
+                 [("Dashboards delivered", Decimal("50.00")),
+                  ("Data quality (%)", Decimal("50.00"))]),
+                ("Advance the data platform", Decimal("40.00"),
+                 [("Pipeline reliability (%)", Decimal("50.00")),
+                  ("Self-serve adoption", Decimal("50.00"))])],
+            "Design": [
+                ("Raise the product-design bar", Decimal("60.00"),
+                 [("Design reviews delivered", Decimal("60.00")),
+                  ("Design-system adoption", Decimal("40.00"))]),
+                ("Grow design craft", Decimal("40.00"),
+                 [("Usability tests run", Decimal("50.00")),
+                  ("Cross-functional collaboration", Decimal("50.00"))])],
+        }
+        GENERIC_GOALS = [
             ("Deliver cycle objectives", Decimal("60.00"),
-             [("Features shipped this cycle", Decimal("60.00")),
-              ("Release quality (defect-free %)", Decimal("40.00"))]),
+             [("Key deliverables shipped", Decimal("60.00")),
+              ("Quality (defect-free %)", Decimal("40.00"))]),
             ("Grow craft & collaboration", Decimal("40.00"),
              [("Cross-team impact", Decimal("50.00")),
               ("Collaboration & mentoring", Decimal("50.00"))]),
         ]
-        spec_titles = [s[0] for s in goal_specs]
         # EVERY non-admin in ACME (including accounts seeded by earlier commands /
         # sessions) gets this clean setup; deterministic order keeps scores stable.
         subjects = self._subjects(tenant)
         for i, emp in enumerate(subjects):
+            # Department-keyed OKRs so each function shows its own believable
+            # objectives (idempotent — same person always gets the same set).
+            goal_specs = GOAL_POOL.get(emp.department or "", GENERIC_GOALS)
+            spec_titles = [s[0] for s in goal_specs]
             # Akhil is the showcase record → force strong (On Track) attainment.
             attain = 0.96 if emp.email == "akhil@acme.test" else ATTAINMENT[i % len(ATTAINMENT)]
             for gi, (title, gweight, kpis) in enumerate(goal_specs):
@@ -348,6 +522,13 @@ class Command(BaseCommand):
             Goal.objects.filter(
                 tenant_id=tenant.id, employee=emp, cycle=cycle, status="ACTIVE",
             ).exclude(title__in=spec_titles).update(status="ARCHIVED")
+            # DELETE test junk outright: non-spec DRAFT goals (e.g. "BUG1 repro
+            # goal" left by manual API testing) never belong in the demo — the
+            # goals screens must look real. Deleting a DRAFT cascades its KPIs;
+            # nothing scored/approved is ever deleted (those are ARCHIVED above).
+            Goal.objects.filter(
+                tenant_id=tenant.id, employee=emp, cycle=cycle, status="DRAFT",
+            ).exclude(title__in=spec_titles).delete()
         compute_cycle_scores(tenant.id, cycle.id)
 
     # ── goal Updates timeline (AGENT_UX_V3 Part 2.3): 2–4 realistic progress notes

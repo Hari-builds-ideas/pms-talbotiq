@@ -2,18 +2,24 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { Building2, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { Link, useNavigate, useLocation, Navigate } from "react-router-dom";
+import { KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { BRAND, BrandWordmark } from "@/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { authApi } from "@/lib/api/endpoints";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { landingPathFor } from "@/app/nav";
 import { mapApiError } from "@/lib/errors";
 import type { TokenPair } from "@/lib/types";
 
 const USING_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
+// Sign-in-with-Google is shown only when the deploy has been configured for it
+// (the human's real Google OAuth creds on the backend + this build flag). Off by
+// default so an unconfigured deploy never shows a button that errors.
+const GOOGLE_SSO = import.meta.env.VITE_GOOGLE_SSO_ENABLED === "true";
 
 const loginSchema = z.object({
   tenant: z.string().min(1, "Workspace is required"),
@@ -29,12 +35,14 @@ const DEMO_ACCOUNTS = [
 ];
 
 export function LoginPage() {
-  const { status, completeLogin } = useAuth();
+  const { status, completeLogin, me } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = React.useState<string | null>(null);
   const [challenge, setChallenge] = React.useState<string | null>(null);
-  const from = (location.state as { from?: string } | null)?.from ?? "/";
+  const rawFrom = (location.state as { from?: string } | null)?.from ?? "/";
+  // Clamp a role-forbidden target back to the dashboard so we never land on a 403 page.
+  const from = landingPathFor(rawFrom, me?.role);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -52,7 +60,7 @@ export function LoginPage() {
         tenant_slug: values.tenant,
       });
       if (res.mfa_required) {
-        setChallenge(res.challenge ?? "");
+        setChallenge(res.mfa_token ?? "");
         return;
       }
       if (res.access && res.refresh) {
@@ -74,17 +82,14 @@ export function LoginPage() {
       {/* Brand panel */}
       <div className="relative hidden w-1/2 flex-col justify-between bg-sidebar p-12 text-white lg:flex">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-accent">
-            <Building2 className="h-5 w-5" />
-          </div>
-          <span className="text-lg font-semibold">Talbotiq PMS</span>
+          <BrandWordmark onDark className="h-12 w-auto" />
         </div>
         <div className="max-w-md space-y-4">
           <h1 className="text-3xl font-semibold leading-tight">
-            Talent intelligence & performance management for modern teams.
+            {BRAND.tagline}
           </h1>
           <p className="text-sidebar-foreground/70">
-            Reviews, succession, approvals and analytics — with a human in the
+            Goals, reviews, feedback and approvals — with a human in the
             loop on every AI decision.
           </p>
           <ul className="space-y-2 text-sm text-sidebar-foreground/80">
@@ -99,7 +104,7 @@ export function LoginPage() {
           </ul>
         </div>
         <p className="text-2xs text-sidebar-muted">
-          © Talbotiq · Multi-tenant · Enterprise-grade
+          © {BRAND.name} · Multi-tenant · Enterprise-grade
         </p>
       </div>
 
@@ -141,6 +146,11 @@ export function LoginPage() {
                     {...form.register("password")}
                   />
                 </Field>
+                <p className="text-right text-xs">
+                  <Link to="/forgot-password" className="font-medium text-primary hover:underline">
+                    Forgot password?
+                  </Link>
+                </p>
 
                 <Button
                   type="submit"
@@ -156,10 +166,35 @@ export function LoginPage() {
                 OR
                 <span className="h-px flex-1 bg-border" />
               </div>
-              <Button variant="outline" className="w-full" type="button" disabled>
-                <KeyRound className="h-4 w-4" />
-                Sign in with SSO
-              </Button>
+              {GOOGLE_SSO ? (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  type="button"
+                  onClick={() => {
+                    // Full-page redirect into allauth's OIDC flow; the workspace
+                    // slug tells the tenant-binding adapter which tenant to bind
+                    // (no JIT — the Google identity must already be a user there).
+                    const slug = encodeURIComponent(form.getValues("tenant") || "");
+                    window.location.href = `/accounts/oidc/google/login/?process=login&tenant=${slug}`;
+                  }}
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Sign in with Google
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full" type="button" disabled>
+                  <KeyRound className="h-4 w-4" />
+                  Sign in with SSO
+                </Button>
+              )}
+
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                New organization?{" "}
+                <Link to="/signup" className="font-medium text-primary hover:underline">
+                  Create your workspace
+                </Link>
+              </p>
 
               {USING_MOCKS && (
                 <div className="mt-6 rounded-lg border border-dashed border-border bg-secondary/40 p-3">
@@ -222,7 +257,7 @@ function MfaStep({
     }
     setLoading(true);
     try {
-      const tokens = await authApi.mfaChallenge({ challenge, code });
+      const tokens = await authApi.mfaChallenge({ mfa_token: challenge, code });
       await onVerified(tokens);
     } catch {
       setError("That code wasn't valid. Try again.");

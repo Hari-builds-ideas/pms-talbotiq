@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
   Inbox,
@@ -33,7 +34,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { LinesSkeleton } from "@/components/Skeletons";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { useDirectory } from "@/lib/hooks/useDirectory";
+import { useScopedPeople } from "@/lib/hooks/useScopedPeople";
 import { humanize } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { notifyError, notifySuccess } from "@/lib/toast";
@@ -48,17 +49,24 @@ import {
   useMySummary,
   useReviewQueue,
 } from "./useFeedback";
-import type { FeedbackCycle, MyFeedbackCycle } from "@/lib/types";
+import type { MyFeedbackCycle } from "@/lib/types";
+
+const FEEDBACK_TABS = ["inbox", "mine", "cycles", "review"];
 
 export function FeedbackPage() {
   const { atLeast } = useAuth();
+  // Honour a ?tab= deep-link so dashboard cards can land on the right tab (e.g. a
+  // "Summaries to release" row → the review tab). Uncontrolled after mount so manual
+  // tab switching still works. BUGS_FOUND #9.
+  const [sp] = useSearchParams();
+  const initialTab = FEEDBACK_TABS.includes(sp.get("tab") ?? "") ? sp.get("tab")! : "inbox";
   return (
     <div>
       <PageHeader
         eyebrow="Performance" title="360 Feedback"
         description="Request, give and summarise multi-rater feedback. Responses are anonymised and threshold-gated; every AI summary passes a human gate before release."
       />
-      <Tabs defaultValue="inbox">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           {/* "For me" + "My 360" are for everyone (give feedback / see own released
               360). Managing cycles is Manager+ (MANAGE_FEEDBACK_CYCLE); releasing
@@ -180,8 +188,18 @@ function MySummaryCard({ cycle }: { cycle: MyFeedbackCycle }) {
 function CyclesTab() {
   const cycles = useCycles();
   const [createOpen, setCreateOpen] = React.useState(false);
-  const [selected, setSelected] = React.useState<FeedbackCycle | null>(null);
+  // Hold only the id and derive the row from the LIVE list, so a mutation (Open for
+  // collection / close) that invalidates ["feedback"] reflects in the open sheet
+  // immediately — a captured object snapshot went stale until reopen (BUGS_FOUND P1-4).
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const rows = cycles.data?.results ?? [];
+  const selected = rows.find((c) => c.id === selectedId) ?? null;
+  // Deep-link: /feedback?tab=cycles&cycle=<id> opens that cycle's Manage sheet directly.
+  const [cycleSp] = useSearchParams();
+  const deepCycle = cycleSp.get("cycle");
+  React.useEffect(() => {
+    if (deepCycle) setSelectedId(deepCycle);
+  }, [deepCycle]);
 
   return (
     <div className="space-y-4">
@@ -207,7 +225,7 @@ function CyclesTab() {
                 </div>
                 <div className="flex items-center gap-2">
                   <StatusBadge status={c.status} dot />
-                  <Button variant="outline" size="sm" onClick={() => setSelected(c)}>Manage</Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedId(c.id)}>Manage</Button>
                 </div>
               </li>
             ))}
@@ -215,13 +233,15 @@ function CyclesTab() {
         </Panel>
       )}
       <CreateCycleDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <CycleSheet cycle={selected} onOpenChange={(o) => !o && setSelected(null)} />
+      <CycleSheet cycle={selected} onOpenChange={(o) => !o && setSelectedId(null)} />
     </div>
   );
 }
 
 function CreateCycleDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { nodes } = useDirectory();
+  // Only subjects the caller can open a cycle for (server scope rule on create) —
+  // an out-of-subtree pick would 403 "outside your access scope" (FINAL D2).
+  const subjects = useScopedPeople();
   const { createCycle, openCycle } = useFeedbackMutations();
   const [subject, setSubject] = React.useState("");
   const [minVolume, setMinVolume] = React.useState("3");
@@ -254,7 +274,7 @@ function CreateCycleDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <Select value={subject} onValueChange={setSubject}>
               <SelectTrigger><SelectValue placeholder="Select a person…" /></SelectTrigger>
               <SelectContent>
-                {Object.values(nodes).map((p) => (
+                {subjects.map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.display}</SelectItem>
                 ))}
               </SelectContent>

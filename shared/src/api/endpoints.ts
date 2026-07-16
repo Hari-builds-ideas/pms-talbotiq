@@ -99,20 +99,76 @@ export interface AdminUserParams extends PageParams {
 export const authApi = {
   login: (body: { email: string; password: string; tenant_slug: string }) =>
     unwrap<import("../types").LoginResponse>(api.post("/auth/login", body)),
-  mfaChallenge: (body: { challenge?: string; code: string }) =>
+  // Self-serve new-organization signup (PROD_B): creates a workspace + first
+  // admin and logs them in. Returns tenant-scoped tokens + the workspace slug.
+  signup: (body: {
+    org_name: string;
+    display_name: string;
+    email: string;
+    password: string;
+    workspace_slug?: string;
+  }) =>
+    unwrap<TokenPair & { tenant_slug: string; workspace_name: string }>(
+      api.post("/auth/signup", body),
+    ),
+  // Field names match the REAL backend contract (apps/identity): the login
+  // response's `mfa_token` is posted back with the TOTP code.
+  mfaChallenge: (body: { mfa_token: string; code: string }) =>
     unwrap<TokenPair>(api.post("/auth/mfa/challenge", body)),
   mfaEnroll: () =>
-    unwrap<{ secret: string; otpauth_url: string }>(api.post("/auth/mfa/enroll", {})),
+    unwrap<{ secret: string; config_url: string }>(api.post("/auth/mfa/enroll", {})),
   mfaEnrollConfirm: (body: { code: string }) =>
     unwrap<{ ok: boolean }>(api.post("/auth/mfa/enroll/confirm", body)),
   me: () => unwrap<Me>(api.get("/auth/me")),
-  logout: () => unwrap<unknown>(api.post("/auth/logout", {})),
+  // Server-side revocation needs the refresh token in the body (the server
+  // blacklists it) — callers pass it BEFORE clearing local storage.
+  logout: (refresh?: string | null) =>
+    unwrap<unknown>(api.post("/auth/logout", refresh ? { refresh } : {})),
+  // Self-service password reset — always 200 (no account enumeration).
+  passwordResetRequest: (body: { tenant_slug: string; email: string }) =>
+    unwrap<{ ok: boolean }>(api.post("/auth/password-reset", body)),
+  passwordResetConfirm: (body: {
+    tenant_slug: string;
+    uid: string;
+    token: string;
+    new_password: string;
+  }) => unwrap<{ ok: boolean }>(api.post("/auth/password-reset/confirm", body)),
+  // ── PHASE2 L1.1/L1.3 — profile, security, sessions (all self-scoped) ──
+  profile: () => unwrap<import("../types").Profile>(api.get("/auth/profile")),
+  profileUpdate: (body: Partial<Pick<import("../types").Profile, "display_name" | "phone" | "timezone" | "language" | "preferences">>) =>
+    unwrap<import("../types").Profile>(api.patch("/auth/profile", body)),
+  photoUpload: (file: File | Blob) => {
+    const form = new FormData();
+    form.append("photo", file);
+    return unwrap<{ ok: boolean }>(api.put("/auth/profile/photo", form));
+  },
+  photoDelete: () => unwrap<{ ok: boolean }>(api.delete("/auth/profile/photo")),
+  passwordChange: (body: { current_password: string; new_password: string }) =>
+    unwrap<{ ok: boolean } & TokenPair>(api.post("/auth/password-change", body)),
+  emailChangeRequest: (body: { new_email: string; current_password: string }) =>
+    unwrap<{ ok: boolean }>(api.post("/auth/email-change", body)),
+  emailChangeConfirm: (token: string) =>
+    unwrap<{ ok: boolean; email: string }>(api.post("/auth/email-change/confirm", { token })),
+  mfaDisable: (current_password: string) =>
+    unwrap<{ ok: boolean }>(api.post("/auth/mfa/disable", { current_password })),
+  sessions: () => unwrap<import("../types").DeviceSessionRow[]>(api.get("/auth/sessions")),
+  sessionRevoke: (id: string) =>
+    unwrap<{ ok: boolean }>(api.post(`/auth/sessions/${id}/revoke`, {})),
+  sessionsRevokeOthers: () =>
+    unwrap<{ ok: boolean; revoked: number }>(api.post("/auth/sessions/revoke-others", {})),
+  loginHistory: () => unwrap<import("../types").LoginEventRow[]>(api.get("/auth/login-history")),
+  myActivity: () => unwrap<import("../types").ActivityRow[]>(api.get("/auth/my-activity")),
 };
 
 // ---- Billing ---------------------------------------------------------------
 
 export const billingApi = {
   myFeatures: () => unwrap<FeatureFlags>(api.get("/billing/my-features")),
+  // ── PHASE2 L1.4 — the internal subscription (Admin) ──
+  subscription: () =>
+    unwrap<import("../types").SubscriptionInfo>(api.get("/billing/subscription")),
+  subscriptionUpdate: (body: { plan?: string; status?: string }) =>
+    unwrap<import("../types").SubscriptionInfo>(api.patch("/billing/subscription", body)),
   featureFlags: () => unwrap<FeatureFlags>(api.get("/billing/feature-flags")),
   entitlement: () => unwrap<Entitlement>(api.get("/billing/entitlement")),
   upgradePrompt: () => unwrap<UpgradePrompt>(api.get("/billing/upgrade-prompt")),
@@ -120,6 +176,36 @@ export const billingApi = {
     unwrap<Entitlement>(api.post("/billing/upgrade", body)),
   setSeats: (body: { seat_count: number }) =>
     unwrap<Entitlement>(api.patch("/billing/seats", body)),
+  // ── PROD_C — payments (Stripe + Razorpay, test mode; Admin) ──
+  paymentsConfig: () =>
+    unwrap<{
+      payments_enabled: boolean;
+      stripe_publishable_key: string;
+      prices: Record<string, Record<string, Record<string, number>>>;
+      cycles: string[];
+    }>(api.get("/billing/payments-config")),
+  checkout: (body: { plan: string; cycle?: string }) =>
+    unwrap<{
+      status: "activated" | "pending";
+      paid: boolean;
+      plan: string;
+      cycle?: string;
+      amount?: number;
+      currency?: string;
+      checkout_url?: string;
+      session_id?: string;
+    }>(api.post("/billing/checkout", body)),
+  invoices: () =>
+    unwrap<
+      {
+        id: string;
+        number: string;
+        total: number;
+        currency: string;
+        line_items: unknown[];
+        issued_at: string;
+      }[]
+    >(api.get("/billing/invoices")),
 };
 
 // ---- Admin -----------------------------------------------------------------
@@ -127,7 +213,32 @@ export const billingApi = {
 export const adminApi = {
   users: (params: AdminUserParams = {}) =>
     unwrap<Paginated<AdminUser>>(api.get("/admin/users", { params })),
+  // ── invitations (PHASE2 L1.2; HRBP+) ──
+  invitations: () => unwrap<import("../types").InvitationRow[]>(api.get("/admin/invitations")),
+  invite: (body: { email: string; role: Role; manager?: string | null }) =>
+    unwrap<import("../types").InvitationRow & { emailed: boolean }>(
+      api.post("/admin/invitations", body),
+    ),
+  inviteRevoke: (id: string) =>
+    unwrap<{ ok: boolean }>(api.post(`/admin/invitations/${id}/revoke`, {})),
+  inviteResend: (id: string) =>
+    unwrap<import("../types").InvitationRow & { emailed: boolean }>(
+      api.post(`/admin/invitations/${id}/resend`, {}),
+    ),
   userStats: () => unwrap<AdminUserStats>(api.get("/admin/users/stats")),
+  // Bulk employee onboarding (PROD_B; HRBP+). CSV with header row:
+  // name,email,role,department,designation,manager. Idempotent (upsert by email).
+  bulkImport: (file: File | Blob) => {
+    const form = new FormData();
+    form.append("file", file);
+    return unwrap<{
+      created: number;
+      updated: number;
+      skipped: number;
+      total: number;
+      errors: { row: number | string; email: string; error: string }[];
+    }>(api.post("/admin/users/import", form));
+  },
   createUser: (body: {
     email: string;
     role: Role;

@@ -30,6 +30,24 @@ export function normalizeOrgTree(raw: RawOrgTree | null | undefined): OrgTree {
   return { nodes, edges, roots };
 }
 
+/** The set of ids AT OR BELOW `rootId` in the reporting tree (self + all reports,
+ *  transitively), walked over `direct_report_ids`. Used to scope "who can I create a
+ *  goal for" to a manager's own line — mirroring the server's TEAM-scope rule
+ *  (`actor_can_access`: self + reporting subtree). `rootId` is always included. */
+export function subtreeIds(rootId: string, nodes: Record<string, OrgNode>): Set<string> {
+  const out = new Set<string>();
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop() as string;
+    if (out.has(id)) continue;
+    out.add(id);
+    for (const cid of nodes[id]?.direct_report_ids ?? []) {
+      if (!out.has(cid)) stack.push(cid);
+    }
+  }
+  return out;
+}
+
 /** The loaded children of a node (its `direct_report_ids` that are present in the
  *  node map). Used by the lazy org tree to render a node's expanded children. */
 export function childrenOf(id: string, nodes: Record<string, OrgNode>): OrgNode[] {

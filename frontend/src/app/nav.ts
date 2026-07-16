@@ -9,7 +9,6 @@ import {
   GitBranch,
   LayoutDashboard,
   MessageSquareText,
-  Plug,
   Route,
   ScrollText,
   Settings,
@@ -20,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { ROLE_RANK, type Role } from "@/lib/enums";
+import { isHiddenInV1 } from "./v1";
 
 export interface NavItem {
   label: string;
@@ -92,7 +92,9 @@ export const NAV: NavSection[] = [
       { label: "Users & Roles", to: "/admin/users", icon: UserCog, minRole: "ADMIN" },
       { label: "Configure", to: "/admin/tenant", icon: Settings, minRole: "ADMIN" },
       { label: "Entitlements", to: "/admin/billing", icon: CreditCard, minRole: "ADMIN" },
-      { label: "Integrations", to: "/admin/integrations", icon: Plug, minRole: "ADMIN" },
+      // "Integrations" nav item removed — there is no /admin/integrations page (Jira/Slack
+      // aren't wired), so the link went nowhere. Re-add with a real "not connected" page
+      // when integrations ship. BUGS_FOUND #6/#16.
     ],
   },
 ];
@@ -105,8 +107,34 @@ export const NAV: NavSection[] = [
 export function navForRole(role: Role): NavSection[] {
   return NAV.map((section) => ({
     ...section,
-    items: section.items.filter((item) => ROLE_RANK[role] >= ROLE_RANK[item.minRole]),
+    items: section.items.filter(
+      // Role gate AND the v1 scope cut (Career/Succession/tenant-config hidden in v1).
+      (item) => ROLE_RANK[role] >= ROLE_RANK[item.minRole] && !isHiddenInV1(item.to),
+    ),
   })).filter((section) => section.items.length > 0);
+}
+
+/**
+ * Clamp a post-login redirect target to something the role can actually view.
+ * If `from` points at a gated nav destination the role can't reach (e.g. an admin
+ * route after switching to an HRBP account), fall back to "/" (the dashboard, which
+ * every role can see) so the user never lands on a "You don't have access" page.
+ * Unknown paths are left as-is; a missing role → "/". (BUGS_FOUND P0-3.)
+ */
+export function landingPathFor(from: string | undefined, role: Role | undefined): string {
+  if (!role) return "/";
+  const target = from || "/";
+  let match: NavItem | null = null;
+  for (const section of NAV) {
+    for (const item of section.items) {
+      if (item.to === "/") continue;
+      if (target === item.to || target.startsWith(item.to + "/")) {
+        if (!match || item.to.length > match.to.length) match = item;
+      }
+    }
+  }
+  if (match && ROLE_RANK[role] < ROLE_RANK[match.minRole]) return "/";
+  return target;
 }
 
 /** Brand mark (TalbotIQ leaf). */

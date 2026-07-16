@@ -23,6 +23,11 @@ interface AuthContextValue {
   hasFeature: (key: FeatureKey) => boolean;
   /** True when the current role is at least `min` (display gating only). */
   atLeast: (min: Role) => boolean;
+  /** True when the caller holds `capability` per the SERVER's grant list on /me —
+   *  the single source of truth for hiding action controls (FINAL D2). Fails
+   *  closed (false) while unauthenticated or if the list is absent. Server-side
+   *  enforcement is unchanged — this is display gating (defense in depth). */
+  can: (capability: string) => boolean;
 }
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
@@ -80,8 +85,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = React.useCallback(async () => {
+    // Capture the refresh token BEFORE clearing so the server can blacklist it
+    // (without it, "logout" leaves a valid 7-day refresh token in the wild).
+    const refresh = tokenStore.getRefresh();
     try {
-      await authApi.logout();
+      await authApi.logout(refresh);
     } catch {
       /* best-effort — clear locally regardless */
     }
@@ -107,6 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [me],
   );
 
+  const can = React.useCallback(
+    (capability: string) => Boolean(me?.capabilities?.includes(capability)),
+    [me],
+  );
+
   const value: AuthContextValue = {
     status,
     me,
@@ -116,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshFeatures,
     hasFeature,
     atLeast,
+    can,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

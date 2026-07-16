@@ -21,7 +21,7 @@ user created via the invite flow — the demo accounts are never mutated. Re-run
 
 This is the AUTOMATED half. The visual/UX half a script can't see (layout, dark
 mode, toasts, chart labels, the AI spinner resolving on screen) lives in
-docs/HARI_FULL_TEST.md — walk that after this is green.
+docs/TESTING_GUIDE.md — walk that after this is green.
 """
 from __future__ import annotations
 
@@ -542,7 +542,7 @@ def main() -> int:
         print(f"{R}Failures:{X}")
         for sec, name, _, note in fails:
             print(f"  • [{sec}] {name}  {DIM}{note}{X}")
-    print(f"\n{DIM}Automated half done. Now walk the visual/UX half in docs/HARI_FULL_TEST.md.{X}")
+    print(f"\n{DIM}Automated half done. Now walk the visual/UX half in docs/TESTING_GUIDE.md.{X}")
     return 1 if fails else 0
 
 

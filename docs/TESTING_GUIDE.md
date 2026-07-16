@@ -81,9 +81,9 @@ hygiene. **Extend beyond these — don't repeat them.**
 ## 6. Already covered (baseline — extend these)
 
 Injection matrix, cross-tenant isolation harness, RBAC-per-role matrix, auth edges,
-the 5 QA-NIGHT bug regressions, the payment trust-boundary (9 tests), AI
-retry/degrade (6 tests). See `BUGS_FOUND.md`, `docs/QA_NIGHT/*`,
-`docs/FUNCTIONAL_TEST_MATRIX.md`, `docs/SECURITY_TESTING_HANDOVER.md`.
+the bug regressions, the payment trust-boundary (9 tests), AI
+retry/degrade (6 tests) — all in the pytest suite. See
+`docs/FUNCTIONAL_TEST_MATRIX.md` and `docs/SECURITY_TESTING_HANDOVER.md`.
 
 ## 7. Honest STAGED list (known, not bugs)
 

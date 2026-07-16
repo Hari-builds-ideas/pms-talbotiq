@@ -68,7 +68,7 @@ class _EntitlementThrottle(SimpleRateThrottle):
     # NOTE: DRF SimpleRateThrottle is a rolling-log window (it stores request
     # timestamps in the cache). Fixed-window is acceptable for MVP; the
     # precise-sliding-window upgrade path is a Redis sorted-set + Lua INCR/EXPIRE
-    # script (see BUILD_NOTES) — swap the storage here when that lands.
+    # script — swap the storage here when that lands (BUILD_3).
 
     def get_rate(self):
         # Resolved dynamically per request in allow_request, not from settings.

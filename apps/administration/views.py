@@ -297,7 +297,7 @@ class OrgSettingsView(RBACMixin, APIView):
     TenantConfig bag under ``org``. Branding fields are gated server-side by the
     plan's ``custom_branding`` feature. Served to every user via /me
     (``tenant_branding``) so the shell can theme. Custom domains are a designed
-    future item (docs/PHASE2/FUTURE_INTEGRATIONS.md), not built."""
+    future item (not built)."""
 
     _caps = {"GET": Capability.MANAGE_TENANT, "PATCH": Capability.MANAGE_TENANT}
 

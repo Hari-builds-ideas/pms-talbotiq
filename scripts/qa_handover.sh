@@ -12,7 +12,7 @@
 #   5. Clean      — reseed once more so QA inherits pristine demo data.
 #
 # Then it prints the verdict and points you at the visual/UX checklist
-# (docs/HARI_FULL_TEST.md) for the half a script can't see.
+# (docs/TESTING_GUIDE.md) for the half a script can't see.
 #
 #   ./scripts/qa_handover.sh                       # against http://localhost:8090
 #   BASE=http://host:port ./scripts/qa_handover.sh
@@ -85,7 +85,7 @@ fi
 cat <<EOF
 
 ${BOLD}Next — the manual/visual half a script can't see:${RESET}
-  Open ${BASE} and walk ${BOLD}docs/HARI_FULL_TEST.md${RESET} (layout, dark mode, toasts,
+  Open ${BASE} and walk ${BOLD}docs/TESTING_GUIDE.md${RESET} (layout, dark mode, toasts,
   live spinner resolving, chart labels, the demo story on screen). Log in with tenant
   ${BOLD}acme${RESET} / password ${BOLD}Passw0rd!demo${RESET} as admin@ / priya@ / ada@ / akhil@ (all @acme.test).
   Reset/invite/email links print in: ${DIM}docker compose logs web -f${RESET}

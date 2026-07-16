@@ -212,5 +212,5 @@ docker compose exec web python manage.py seed_demo_rich
 | `/metrics` returns 404 | `METRICS_TOKEN` unset (fail-closed) → set it and send the Bearer. |
 | Queued AI jobs vanish under load | broker Redis is evicting → it MUST be `--maxmemory-policy noeviction`. |
 
-See also: `docs/DEPLOYMENT_HANDOVER.md`, `docs/DATA_HANDOVER.md`,
-`docs/AI_ROBUSTNESS.md`, `docs/OBSERVABILITY.md`, `docs/RUNBOOK.md`.
+See also: `docs/DATA_HANDOVER.md`, `docs/AI_ROBUSTNESS.md`,
+`docs/OBSERVABILITY.md`, `docs/RUNBOOK.md`.

@@ -106,7 +106,7 @@ class Command(BaseCommand):
         )
         with tenant_context(tenant.id):
             with transaction.atomic():
-                self._purge_qa_artifacts(tenant)
+                self._purge_junk(tenant)
                 self._entitlement(tenant)
                 people = self._people(tenant)
                 cycle = self._cycle(tenant)
@@ -132,34 +132,74 @@ class Command(BaseCommand):
             f"Login with any seeded email + password '{DEMO_PASSWORD}'. Demo manager: ada@acme.test"
         ))
 
-    # ── purge QA-verifier artifacts (idempotent demo hygiene) ───────────────────
-    def _purge_qa_artifacts(self, tenant):
-        """Delete rows the QA verifier (scripts/qa_verify.py) creates against the
-        live demo tenant — the duplicate "QA kudos" recognitions, "QA probe" goals/
-        check-ins, and "QA JD" drafts. Runs on every reseed so repeated QA runs can
-        NEVER accumulate junk in the demo feed. Tenant-scoped and matched to the
-        specific QA-probe markers only — it never touches real demo/customer data."""
-        purged = {}
+    # ── purge junk / test artifacts (idempotent demo hygiene) ───────────────────
+    def _purge_junk(self, tenant):
+        """Delete the test/placeholder rows that QA runs + manual poking leave in
+        the live demo tenant — "QA kudos"/"QA probe" cards, char-spam ("xxxxx…"),
+        gibberish ("lijil", "kn", "d"), and other placeholders — so the demo that
+        goes to the testing team reads like a real company. Runs on every reseed
+        (so repeated QA runs never accumulate junk), tenant-scoped, and matched to
+        junk HEURISTICS only — the seed's own content is full sentences / real
+        titles and never matches, so real demo data is untouched. Reviews with a
+        junk body are deleted so _reviews rebuilds them clean."""
+        import re
 
-        def _delete(label, qs):
-            try:
-                n = qs.delete()[0]
-                if n:
-                    purged[label] = n
-            except Exception:  # noqa: BLE001 — hygiene must never break the seed
-                pass
+        repeat_re = re.compile(r"(.)\1{6,}")   # 7+ repeated chars, e.g. "xxxxxxx"
+        longtok_re = re.compile(r"\S{35,}")    # a 35+ char no-space token
+        placeholders = ("qa ", "lijil", "lorem", "asdf", "test", "probe", "bug1",
+                        "placeholder", "rb probe", "goal 1")
+
+        def is_junk(text):
+            if not text:
+                return False
+            s = str(text)
+            low = s.lower().strip()
+            if repeat_re.search(s) or longtok_re.search(s):
+                return True
+            if any(low.startswith(p) for p in placeholders):
+                return True
+            if len(low) <= 3 and low.replace(" ", "").isalpha():
+                return True
+            return False
 
         from apps.recognition.models import Recognition
         from apps.goals.models import Goal
+        from apps.reviews.models import Review, ReviewComment
+        from apps.feedback.models import Feedback
         from apps.checkins.models import CheckIn
         from apps.jd.models import JobDescription
 
-        _delete("recognition", Recognition.objects.filter(message__startswith="QA "))
-        _delete("goals", Goal.objects.filter(title__startswith="QA probe"))
-        _delete("checkins", CheckIn.objects.filter(wins__startswith="QA probe"))
-        _delete("jd", JobDescription.objects.filter(title__startswith="QA JD"))
+        purged = {}
+
+        def purge(label, model, text_fields):
+            # Scan ALL rows incl. soft-deleted (all_objects), and HARD-delete the
+            # junk — a soft delete would leave the row lingering (still counted by
+            # unique constraints, e.g. it would block _reviews from rebuilding a
+            # cleaned review). This truly removes the junk, no residue.
+            ids = [
+                r.id for r in model.all_objects.all()
+                if any(is_junk(getattr(r, f, "")) for f in text_fields)
+            ]
+            if ids:
+                try:
+                    purged[label] = model.all_objects.filter(id__in=ids).hard_delete()[0]
+                except Exception:  # noqa: BLE001 — hygiene must never break the seed
+                    pass
+
+        purge("recognition", Recognition, ["message"])
+        purge("goals", Goal, ["title"])
+        purge("review_comments", ReviewComment, ["body"])
+        purge("feedback", Feedback, ["body"])
+        purge("checkins", CheckIn, ["wins", "blockers", "learning"])
+        purge("jd", JobDescription, ["title"])
+        # Reviews carry a junk AI-draft body from qa_verify; hard-delete so
+        # _reviews rebuilds the canonical (clean) review below in the same reseed
+        # (a soft delete would leave the row and trip the (tenant,emp,cycle) unique
+        # constraint, leaving the person review-less).
+        purge("reviews", Review, ["draft_body", "final_body"])
+
         if purged:
-            self.stdout.write(f"  purged QA-probe artifacts: {purged}")
+            self.stdout.write(f"  purged junk/test rows: {purged}")
 
     # ── entitlement (FULL_AI) ───────────────────────────────────────────────────
     def _entitlement(self, tenant):
@@ -207,12 +247,17 @@ class Command(BaseCommand):
             if existing.role != role:
                 existing.role = role
                 fields.append("role")
+            # Backfill department so every seeded person has a real function (the
+            # org chart, people list + department-keyed goals all depend on it).
+            if department and existing.department != department:
+                existing.department = department
+                fields.append("department")
             if fields:
                 existing.save(update_fields=fields)
             return existing
         return User.objects.create_user(
             email=email, password=DEMO_PASSWORD, tenant=tenant, role=role,
-            display_name=display_name, manager=manager,
+            display_name=display_name, manager=manager, department=(department or ""),
         )
 
     def _gen_name(self, i: int) -> str:
@@ -381,22 +426,70 @@ class Command(BaseCommand):
         from apps.identity.models import User
 
         # Two goals per person, weights 60 + 40 = 100 (so a person never shows
-        # 200/100); each goal's KPIs also sum to 100.
-        # Concrete, role-appropriate KPI names (no more Impact/Throughput/Quality
-        # shells — AGENT_UX_V3 Part 2.3): they read like real objectives.
-        goal_specs = [
+        # 200/100); each goal's KPIs also sum to 100. Titles + KPIs are drawn from a
+        # DEPARTMENT-KEYED pool so the Goals screen reads like a real company (varied
+        # OKRs per function) rather than the same two titles on all 200 people.
+        # Concrete, role-appropriate KPI names — no Impact/Throughput/Quality shells.
+        GOAL_POOL = {
+            "Engineering": [
+                ("Ship the H1 platform roadmap", Decimal("60.00"),
+                 [("Roadmap features delivered", Decimal("60.00")),
+                  ("Release quality (defect-free %)", Decimal("40.00"))]),
+                ("Strengthen engineering craft", Decimal("40.00"),
+                 [("Code-review turnaround", Decimal("50.00")),
+                  ("Mentoring & knowledge-sharing", Decimal("50.00"))])],
+            "Sales": [
+                ("Hit the H1 revenue quota", Decimal("60.00"),
+                 [("New ARR closed (% of quota)", Decimal("70.00")),
+                  ("Pipeline coverage", Decimal("30.00"))]),
+                ("Deepen customer relationships", Decimal("40.00"),
+                 [("Account expansion", Decimal("50.00")),
+                  ("Customer references secured", Decimal("50.00"))])],
+            "Product": [
+                ("Launch the priority product bets", Decimal("60.00"),
+                 [("Roadmap milestones hit", Decimal("60.00")),
+                  ("New-feature adoption", Decimal("40.00"))]),
+                ("Sharpen product discovery", Decimal("40.00"),
+                 [("Customer interviews run", Decimal("50.00")),
+                  ("Experiments shipped", Decimal("50.00"))])],
+            "Customer Success": [
+                ("Drive customer retention", Decimal("60.00"),
+                 [("Net revenue retention (%)", Decimal("60.00")),
+                  ("CSAT", Decimal("40.00"))]),
+                ("Scale the success playbook", Decimal("40.00"),
+                 [("Playbooks documented", Decimal("50.00")),
+                  ("Onboarding time reduced", Decimal("50.00"))])],
+            "Data": [
+                ("Deliver decision-grade analytics", Decimal("60.00"),
+                 [("Dashboards delivered", Decimal("50.00")),
+                  ("Data quality (%)", Decimal("50.00"))]),
+                ("Advance the data platform", Decimal("40.00"),
+                 [("Pipeline reliability (%)", Decimal("50.00")),
+                  ("Self-serve adoption", Decimal("50.00"))])],
+            "Design": [
+                ("Raise the product-design bar", Decimal("60.00"),
+                 [("Design reviews delivered", Decimal("60.00")),
+                  ("Design-system adoption", Decimal("40.00"))]),
+                ("Grow design craft", Decimal("40.00"),
+                 [("Usability tests run", Decimal("50.00")),
+                  ("Cross-functional collaboration", Decimal("50.00"))])],
+        }
+        GENERIC_GOALS = [
             ("Deliver cycle objectives", Decimal("60.00"),
-             [("Features shipped this cycle", Decimal("60.00")),
-              ("Release quality (defect-free %)", Decimal("40.00"))]),
+             [("Key deliverables shipped", Decimal("60.00")),
+              ("Quality (defect-free %)", Decimal("40.00"))]),
             ("Grow craft & collaboration", Decimal("40.00"),
              [("Cross-team impact", Decimal("50.00")),
               ("Collaboration & mentoring", Decimal("50.00"))]),
         ]
-        spec_titles = [s[0] for s in goal_specs]
         # EVERY non-admin in ACME (including accounts seeded by earlier commands /
         # sessions) gets this clean setup; deterministic order keeps scores stable.
         subjects = self._subjects(tenant)
         for i, emp in enumerate(subjects):
+            # Department-keyed OKRs so each function shows its own believable
+            # objectives (idempotent — same person always gets the same set).
+            goal_specs = GOAL_POOL.get(emp.department or "", GENERIC_GOALS)
+            spec_titles = [s[0] for s in goal_specs]
             # Akhil is the showcase record → force strong (On Track) attainment.
             attain = 0.96 if emp.email == "akhil@acme.test" else ATTAINMENT[i % len(ATTAINMENT)]
             for gi, (title, gweight, kpis) in enumerate(goal_specs):

@@ -48,12 +48,14 @@ const AXIOM: BrandConfig = {
   name: "Axiom",
   shortName: "Axiom",
   tagline: "Talent intelligence & performance management for modern teams.",
-  // The real brand PNGs live in frontend/public/favicon/ (served at /favicon/*).
-  // Green marks on light surfaces; white marks on dark surfaces. The square
-  // icon (icon-*) is used where a mark fits; the horizontal wordmark (logo-*)
-  // is the full lockup for the sidebar header + login panel.
-  iconOnLight: "/favicon/icon-green.png",
-  iconOnDark: "/favicon/icon-white.png",
+  // The real brand PNGs live in frontend/public/favicon/. The source icon-*.png
+  // has heavy transparent padding (the mark fills only ~50%×64%), so it renders
+  // as a tiny speck at small sizes — we use tightly-cropped derivatives
+  // (/brand/mark-*.png, cropped to the mark's alpha bbox) so it fills its box and
+  // reads as a real logo. Green on light surfaces, white on dark. The horizontal
+  // wordmark (logo-*, already edge-to-edge) is the full lockup for the login panel.
+  iconOnLight: "/brand/mark-green.png",
+  iconOnDark: "/brand/mark-white.png",
   wordmarkOnLight: "/favicon/logo-green.png",
   wordmarkOnDark: "/favicon/logo-white.png",
 };

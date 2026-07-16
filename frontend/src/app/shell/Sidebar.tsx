@@ -20,18 +20,18 @@ function SidebarBrand({
   const [broken, setBroken] = React.useState(false);
   const showTenantLogo = Boolean(logoUrl) && !broken;
   return (
-    <span className="flex items-center gap-2.5">
+    <span className="flex items-center gap-3">
       {showTenantLogo ? (
         <img
           src={logoUrl as string}
           alt=""
           onError={() => setBroken(true)}
-          className="h-9 w-9 rounded-xl object-contain"
+          className="h-10 w-10 rounded-xl object-contain"
         />
       ) : (
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
-          <BrandMark className="h-6 w-6" />
-        </span>
+        // The cropped mark fills its frame — render it a proper ~40px tall so it
+        // reads as a real logo (not a speck) next to the wordmark text.
+        <BrandMark className="h-10 w-auto shrink-0" />
       )}
       <span className="leading-tight">
         <span className="block text-base font-bold tracking-tight text-foreground">

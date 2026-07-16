@@ -82,7 +82,7 @@ export function LoginPage() {
       {/* Brand panel */}
       <div className="relative hidden w-1/2 flex-col justify-between bg-sidebar p-12 text-white lg:flex">
         <div className="flex items-center gap-2.5">
-          <BrandWordmark onDark className="h-9 w-auto" />
+          <BrandWordmark onDark className="h-12 w-auto" />
         </div>
         <div className="max-w-md space-y-4">
           <h1 className="text-3xl font-semibold leading-tight">

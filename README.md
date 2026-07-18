@@ -44,10 +44,11 @@ in an append-only audit log. Each customer is an isolated **tenant**.
 
 ```bash
 # 1. Bring the stack up (web + celery worker/beat + MySQL + Redis + frontend).
+#    Migrations run AUTOMATICALLY when web starts — do not run migrate manually.
 docker compose up -d
 
-# 2. Run migrations (advisory-locked; the only place migrations run).
-docker compose run --rm web python manage.py deploy_migrate
+# 2. Watch web apply migrations and boot gunicorn (Ctrl-C when it's serving).
+docker compose logs -f web
 
 # 3. Seed the rich demo tenant (~210 people across every module; idempotent).
 docker compose exec web python manage.py seed_demo_rich
@@ -55,6 +56,17 @@ docker compose exec web python manage.py seed_demo_rich
 # 4. Open the app.
 open http://localhost:8090
 ```
+
+> **Do not run `migrate` / `deploy_migrate` alongside `docker compose up`.** The
+> `web` container runs `migrate --noinput` itself on every start; a second, parallel
+> migrate races it (typical symptom: `Duplicate column name …`). `deploy_migrate`
+> (advisory-locked) is for **production** deploys, where the web tier does not
+> auto-migrate.
+
+> **First boot on a fresh volume:** MySQL initializes itself on its very first start
+> and can report *Healthy* (local socket) a few seconds before it accepts network
+> connections. If `web` exits with `Can't connect to server on 'mysql'`, just wait
+> ~30–60 s and run `docker compose up -d` again — nothing is broken.
 
 **Demo accounts** — tenant **`acme`**, password **`Passw0rd!demo`**:
 
@@ -68,6 +80,28 @@ open http://localhost:8090
 One-command full check: `./scripts/qa_handover.sh` (reseeds, seeds the `globex`
 cross-tenant fixture, runs 131 API checks). Backend tests: `docker compose exec web pytest`.
 
+## Run it in GitHub Codespaces
+
+The default Codespaces image has everything needed (Docker, Compose) — no setup.
+
+1. **Create a codespace** — repo page → **Code ▾ → Codespaces → Create codespace on main**.
+2. **Start the stack** (first run builds the images, ~4 min):
+   ```bash
+   docker compose up -d
+   docker compose logs -f web     # wait for migrations + "Booting worker" — Ctrl-C after
+   ```
+   On the very first boot MySQL initializes a fresh volume — if `web` exits with
+   `Can't connect to server on 'mysql'`, wait ~30–60 s and `docker compose up -d` again.
+   **Don't run migrations manually** — `web` migrates itself (see the note above).
+3. **Seed the demo data**:
+   ```bash
+   docker compose exec web python manage.py seed_demo_rich
+   ```
+4. **Open the app** — Codespaces forwards ports automatically: open the **Ports** tab
+   and follow the forwarded URL for port **8090** (the SPA + API edge). Port 5555 is
+   Flower (Celery monitoring, basic-auth).
+5. Log in with the demo accounts above (tenant `acme`, password `Passw0rd!demo`).
+
 ## Key features
 
 - **Goals & OKRs** — weighted goals + KPIs, cycle scoring, progress timelines.
@@ -79,6 +113,72 @@ cross-tenant fixture, runs 131 API checks). Backend tests: `docker compose exec 
 - **Billing** — plans + a payment gate (Stripe + Razorpay, **test mode**).
 - **AI assistant** — a propose-confirm agent that only ever executes registered,
   RBAC-checked, human-approved actions.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U["Browser<br/>React + TS SPA"]
+
+    subgraph EDGE["frontend · nginx :8090"]
+        N["Serves the built SPA<br/>proxies /api /admin /accounts<br/>/static /healthz → web"]
+    end
+
+    subgraph APP["Application tier (stateless)"]
+        W["web<br/>Django 4.2 + DRF · gunicorn<br/>JWT: tenant_id + role · RBAC"]
+        CW["celery-worker<br/>AI jobs off the request thread"]
+        CB["celery-beat<br/>schedules & escalations"]
+    end
+
+    subgraph DATA["Data tier"]
+        M[("MySQL 8<br/>tenant-scoped models<br/>INSERT-only audit log")]
+        R[("Redis 7<br/>/0 broker · /1 cache · /2 sessions")]
+    end
+
+    subgraph AI["AI layer"]
+        G["LLMGateway<br/>provider-agnostic · budgets & call caps"]
+        P["Gemini (default)<br/>OpenAI / Groq pluggable"]
+    end
+
+    FL["Flower :5555<br/>queue monitoring (basic-auth)"]
+
+    U -->|HTTPS| N
+    N --> W
+    W --> M
+    W --> R
+    CB --> R
+    R --> CW
+    CW --> M
+    W --> G
+    CW --> G
+    G --> P
+    FL --> R
+```
+
+Every AI feature follows the same **human-in-the-loop** path — the AI can only ever
+*propose*; a human approves before anything is published or executed:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor H as Human (RBAC-checked)
+    participant S as SPA
+    participant W as web (DRF)
+    participant Q as Redis queue
+    participant C as celery-worker
+    participant G as LLMGateway
+    participant DB as MySQL
+
+    H->>S: Ask for an AI draft (review / 360 summary / JD / plan)
+    S->>W: POST /api/… (JWT: tenant_id + role)
+    W->>Q: enqueue AI job (request thread stays free)
+    Q->>C: deliver job
+    C->>G: prompt built from REAL tenant data only
+    G-->>C: draft (or clean 503 — never fabricated)
+    C->>DB: save as PENDING_HUMAN_REVIEW
+    H->>W: review → approve / edit / reject
+    W->>DB: publish + append to INSERT-only audit log
+```
 
 ## Architecture principles (non-negotiable)
 

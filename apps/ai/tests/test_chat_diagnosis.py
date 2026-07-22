@@ -189,6 +189,36 @@ def test_at_risk_scan_excludes_behind_only(org):
 
 
 @override_settings(**FAKE)
+def test_status_how_is_x_is_reasoned_not_a_flat_list(org):
+    """THE original complaint: "how is Mei Patel?" must be a reasoned status, not the
+    flat "has N goal(s): …" template."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Mei Patel"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=False)
+        _goal_with_kpi(org.tenant, org.report, "Ship the roadmap", target=100, actual=86,
+                       created_by=org.manager)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is Mei Patel?"}, format="json")
+    ans = r.json()["answer"]
+    assert "on track" in ans.lower()        # reasoned status
+    assert "has 2 goal(s):" not in ans       # NOT the old flat template
+    assert "Mei Patel" in ans
+
+
+@override_settings(**FAKE)
+def test_show_my_goals_still_returns_the_flat_list(org):
+    """An explicit "show/list my goals" still gets the raw title list (unchanged)."""
+    with tenant_context(org.tenant):
+        _goal_with_kpi(org.tenant, org.report, "Alpha goal", target=100, actual=50,
+                       created_by=org.manager)
+    c = _client(org.report)
+    r = c.post(CHAT, {"query": "show me my goals"}, format="json")
+    ans = r.json()["answer"]
+    assert "goal(s):" in ans and "Alpha goal" in ans
+
+
+@override_settings(**FAKE)
 def test_llm_phrasing_is_used_when_the_model_answers(org):
     """When a model returns a phrased answer, it's used verbatim — the LLM only
     rewords the grounded draft."""

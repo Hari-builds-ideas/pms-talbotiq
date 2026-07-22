@@ -218,6 +218,14 @@ _AGG_RE = re.compile(
     re.I,
 )
 
+#: An EXPLICIT request for the raw goal LIST ("show/list my goals", "what are my
+#: goals"). Only these get the flat title list; everything else about a person
+#: ("how is X?", bare status) gets the reasoned, phrased answer.
+_LIST_GOALS_RE = re.compile(
+    r"\b(show|list|see|what(?:'s| is| are)?|which)\b[\w\s'’]{0,24}\bgoals?\b",
+    re.I,
+)
+
 #: An "open/show the <thing we just made>" imperative — DEFINITE reference only
 #: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
 _OPEN_REF_RE = re.compile(
@@ -885,10 +893,11 @@ def chat_answer(caller, query: str, session=None) -> dict:
     ):
         return _answer_counts(caller, target, query, intent)
 
-    # A DIAGNOSIS question ("does she need help?", "is X on track / at risk /
-    # behind?") gets a reasoned answer grounded in real cycle status + KPI
-    # attainment — not the flat goal list. Scope already re-checked inside.
-    if _DIAGNOSE_RE.search(_q):
+    # STATUS + DIAGNOSIS — "how is X?", "does she need help?", "is X on track / at
+    # risk / behind?" — get a REASONED answer grounded in real cycle status + KPI
+    # attainment, phrased in natural language. Only an explicit "show/list my goals"
+    # falls through to the raw title list below. Scope re-checked inside.
+    if not _LIST_GOALS_RE.search(_q):
         from apps.ai.insight import diagnose_person, llm_phrase
 
         diag = diagnose_person(caller, target)

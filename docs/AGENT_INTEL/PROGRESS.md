@@ -121,23 +121,39 @@ mistyping a peer → still "couldn't find", no name revealed. **278 AI tests** g
 
 ---
 
-## RESUME HERE → Increment 5
+## Increment 5 — "how is X" status is now reasoned + phrased (FLAGSHIP)  ✅ (committed)
+
+The original complaint is fixed. Any status question about a person now routes
+through `diagnose_person` + `llm_phrase` (reasoned over real cycle status + KPI
+attainment, natural language) instead of the flat "has N goal(s): …" template. Only
+an explicit "show/list my goals" (`_LIST_GOALS_RE`) still returns the raw title list.
+
+**Zero test churn** — existing tests assert on the `data` array (goal titles, which
+diagnosis preserves) and negative "goal(s):" checks, so all stayed green. 280 AI
+tests (2 new: status-is-reasoned, show-goals-still-flat).
+
+**Before → after (live):** "how is Mei Patel?" — before: *"Mei has 2 goal(s): …;
+Latest cycle: On track — behind pace."* → after: *"Mei Patel is currently on track
+and keeping pace this cycle… her 'Roadmap features delivered' is at 86% of target,
+the primary area to keep an eye on… no additional support appears necessary."*
+"show me my goals" → still the flat list.
+
+---
+
+## RESUME HERE → Increment 6
 
 Next cycle, in priority order:
-1. **Migrate "how is X" status** to the reasoned+phrased answer (STILL the flat
-   "has N goal(s): …" template — confirmed in live smoke). Route status queries
-   through `diagnose_person` + `llm_phrase`; keep an explicit "show/list my goals" →
-   flat list. This WILL change several summary tests in `test_chat.py` /
-   `test_chat_memory.py` that assert "has N goal(s):" — update them intentionally to
-   the reasoned shape while keeping the name + scope assertions. Do this as its own
-   focused increment (it's the biggest test-churn item).
-2. **"what about the other one"** after a disambiguation — remember the offered set
-   on the session, resolve "the other/first/second one".
-3. **Two-named-people comparison** ("how are Akhil and Mei doing?") — resolve both
-   in scope, diagnose each briefly.
-4. Grow harness: topic-switch-then-refer-back, multi-person, "the other one".
+1. **"what about the other one"** after a disambiguation — persist the offered set on
+   the session (a new ref type, or reuse turn refs), then resolve "the other/first/
+   second one" / "the second". Scope re-checked on use.
+2. **Two-named-people comparison** ("how are Akhil and Mei doing?", "compare Akhil and
+   Mei") — resolve BOTH in scope, diagnose each briefly, one combined reply; refuse
+   per-person if either is out of scope (never leak the in-scope one's data alongside
+   a leak).
+3. Grow harness: topic-switch-then-refer-back, "the other one", two-person compare.
+4. Refresh `docs/AGENT_INTEL/REPORT.md` (status row now reasoned).
 
-Known weaknesses: status "how is X" still templated (diagnosis + team intents ARE
-reasoned/phrased); no "the other one"; no two-person compare.
+Known weaknesses: no "the other one"; no two-person compare; phrasing adds 1 LLM call
+per status/diagnosis (flag-gated, fallback-safe).
 
 To re-run the harness: `python scripts/agent_intel_suite.py` (server on :8090, seeded).

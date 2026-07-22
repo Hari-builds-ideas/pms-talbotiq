@@ -140,20 +140,37 @@ the primary area to keep an eye on… no additional support appears necessary."*
 
 ---
 
-## RESUME HERE → Increment 6
+## Increment 6 — two-named-people comparison  ✅ (committed)
+
+**Built:** `_resolve_multiple` (splits on and/vs/comma, resolves each segment in
+scope independently) + `_answer_two_people` (diagnoses each, combined reply, optional
+phrasing over BOTH people's facts). Fires only when ≥2 DISTINCT in-scope people
+resolve, so "goals and KPIs" is untouched and an out-of-scope name is simply excluded
+(never a leak). 282 AI tests (2 new); harness 36/36.
+
+**Before → after (live):** "how are Akhil Menon and Mei Patel doing?" → *"Both Akhil
+Menon and Mei Patel are on track and keeping pace this cycle. Akhil has delivered 90%
+of roadmap features, and Mei is at 86% for the same goal… no immediate additional
+support appears needed for either."* Comparing an out-of-scope person → safe
+non-answer, no leak.
+
+---
+
+## RESUME HERE → Increment 7
 
 Next cycle, in priority order:
-1. **"what about the other one"** after a disambiguation — persist the offered set on
-   the session (a new ref type, or reuse turn refs), then resolve "the other/first/
-   second one" / "the second". Scope re-checked on use.
-2. **Two-named-people comparison** ("how are Akhil and Mei doing?", "compare Akhil and
-   Mei") — resolve BOTH in scope, diagnose each briefly, one combined reply; refuse
-   per-person if either is out of scope (never leak the in-scope one's data alongside
-   a leak).
-3. Grow harness: topic-switch-then-refer-back, "the other one", two-person compare.
-4. Refresh `docs/AGENT_INTEL/REPORT.md` (status row now reasoned).
+1. **"what about the other one"** after a disambiguation — persist the offered
+   candidate users on the session (ground them as `user` refs on the disambiguation
+   turn), then resolve "the other/first/second one". Scope re-checked on use.
+2. **Comparison polish**: when one of two named people is out of scope, answer the
+   in-scope one AND say the other is out of your access (today it's a generic
+   "couldn't find"). Aggregation over two named people ("how many goals do X and Y
+   have") could route to counts.
+3. Grow harness: topic-switch-then-refer-back, "the other one", HRBP deeper probes.
+4. Refresh `docs/AGENT_INTEL/REPORT.md` (add comparison row).
 
-Known weaknesses: no "the other one"; no two-person compare; phrasing adds 1 LLM call
-per status/diagnosis (flag-gated, fallback-safe).
+Known weaknesses: no "the other one"; comparison with a mixed in/out-of-scope pair
+degrades to "couldn't find" (safe, but could be more helpful); phrasing adds 1 LLM
+call per reasoned answer (flag-gated, fallback-safe).
 
 To re-run the harness: `python scripts/agent_intel_suite.py` (server on :8090, seeded).

@@ -108,6 +108,8 @@ SCENARIOS = [
         ("how is Akil Menonn doing?", [alive()]),
         # a very long, rambling input must not crash or dead-reply
         ("how is " + "really " * 80 + "Akhil Menon doing?", [alive()]),
+        # two-person comparison names both, grounded
+        ("how are Akhil Menon and Mei Patel doing?", [contains("Akhil"), contains("Mei")]),
     ]),
     ("HRBP", "priya@acme.test", [
         ("how is Leon Petrova doing?", [contains("several") ]),  # two real people

@@ -254,6 +254,39 @@ def test_phrasing_disabled_falls_back_to_grounded_draft(org):
 
 
 @override_settings(**FAKE)
+def test_two_person_comparison_diagnoses_both(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Akhil Rao"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK")
+        mei = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                          display_name="Mei Patel")
+        _score(org.tenant, mei, risk="AT_RISK", pace_behind=True)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how are Akhil Rao and Mei Patel doing?"}, format="json")
+    ans = r.json()["answer"]
+    assert "Akhil Rao" in ans and "Mei Patel" in ans   # both diagnosed
+
+
+@override_settings(**FAKE)
+def test_comparison_never_leaks_out_of_scope_people(org):
+    """An employee comparing two people they can't see gets refused — no data,
+    no goal titles, for either."""
+    with tenant_context(org.tenant):
+        org.manager.display_name = "Mona Manager"
+        org.manager.save(update_fields=["display_name"])
+        org.peer.display_name = "Pax Peer"
+        org.peer.save(update_fields=["display_name"])
+        _score(org.tenant, org.peer, risk="AT_RISK", pace_behind=True)
+    c = _client(org.report)  # EMPLOYEE — sees only self
+    r = c.post(CHAT, {"query": "how are Mona Manager and Pax Peer doing?"}, format="json")
+    ans = r.json()["answer"]
+    # Honest non-answer, and CRUCIALLY no leaked data for either person.
+    assert "don't have access" in ans.lower() or "couldn't find" in ans.lower()
+    assert "goal(s):" not in ans and "at risk" not in ans.lower()
+
+
+@override_settings(**FAKE)
 def test_capability_answer_is_role_aware(org):
     mgr = _client(org.manager).post(CHAT, {"query": "what can you do?"}, format="json").json()["answer"]
     emp = _client(org.report).post(CHAT, {"query": "what can you do?"}, format="json").json()["answer"]

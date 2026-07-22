@@ -625,6 +625,53 @@ def _answer_team_counts(caller, intent="performance"):
     }
 
 
+_COMPARE_SPLIT_RE = re.compile(r"\b(?:and|vs\.?|versus|compared\s+to)\b|,", re.I)
+
+
+def _resolve_multiple(caller, query):
+    """People named in a comparison ("how are Akhil and Mei doing?", "compare X and
+    Y"). Splits on and/vs/comma, resolves each segment IN SCOPE independently, and
+    returns the DISTINCT in-scope targets. Empty unless a comparison connector is
+    present AND ≥1 resolves — so "goals and KPIs" (no second person) is unaffected.
+    Every target is scope-checked by ``_resolve_in_scope`` — never a leak."""
+    if not re.search(r"\band\b|\bvs\b|\bversus\b|\bcompare|,", (query or ""), re.I):
+        return []
+    targets, seen = [], set()
+    for part in _COMPARE_SPLIT_RE.split(query or ""):
+        if not part.strip():
+            continue
+        named, _amb, _oos = _resolve_in_scope(caller, part)
+        if named is not None and named.id not in seen:
+            seen.add(named.id)
+            targets.append(named)
+    return targets
+
+
+def _answer_two_people(caller, query, targets, intent="performance"):
+    """A per-person reasoned reply for a comparison. Each person is diagnosed
+    independently (already in-scope via ``_resolve_multiple``); read-only, grounded,
+    no fabrication. The optional LLM phrasing gets ONLY these people's facts."""
+    from apps.ai.insight import diagnose_person, llm_phrase
+
+    drafts, facts, names = [], [], []
+    for t in targets[:3]:
+        diag = diagnose_person(caller, t)
+        if diag is None:  # defensive — resolver already scoped
+            continue
+        drafts.append(diag["answer"])
+        facts.append(diag["facts"])
+        names.append(t.display)
+    if not drafts:
+        return {"status": "ok", "intent": intent, "data": [],
+                "answer": "I couldn't pull those people up in your scope."}
+    draft = " ".join(drafts)
+    answer = llm_phrase(caller.tenant_id, query, {"people": facts}, draft)
+    return {
+        "status": "ok", "intent": intent, "answer": answer, "data": names,
+        "refs": [{"type": "user", "id": str(t.id), "label": t.display} for t in targets[:3]],
+    }
+
+
 def _latest_score(target):
     """The target's latest CycleScore (for grounding the answer). The caller's
     access to ``target`` is already gated by ``_scoped_goal_titles`` upstream, so
@@ -777,6 +824,14 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # → a person NAMED in the query (unique tenant match). The fetch is ALWAYS
     # scope-checked, so memory/names can never surface out-of-scope data (C2).
     from apps.identity.models import User
+
+    # TWO-OR-MORE named people ("how are Akhil and Mei doing?", "compare X and Y") →
+    # a per-person reasoned reply, each resolved + scope-checked INDEPENDENTLY. Only
+    # fires when ≥2 DISTINCT in-scope people resolve, so "goals and KPIs" is untouched
+    # and an out-of-scope name simply isn't included (never a leak).
+    _multi = _resolve_multiple(caller, query)
+    if len(_multi) >= 2:
+        return _answer_two_people(caller, query, _multi, intent)
 
     match = _EMAIL_RE.search(query or "")
     target = caller

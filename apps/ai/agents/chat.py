@@ -124,7 +124,18 @@ def _scoped_goal_titles(caller, target):
 
     if not actor_can_access(caller, target):
         return None
-    return list(Goal.objects.filter(employee_id=target.id).values_list("title", flat=True))
+    # ACTIVE goals only = the CURRENT cycle. Listing every cycle repeated titles
+    # ("Cycle objectives" ×3) and read like filler; dedupe (preserve order) so the
+    # answer is the person's real current objectives.
+    titles = Goal.objects.filter(
+        employee_id=target.id, status="ACTIVE"
+    ).values_list("title", flat=True)
+    seen, out = set(), []
+    for t in titles:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
 
 
 # ── conversation memory (C2) ─────────────────────────────────────────────────
@@ -427,22 +438,42 @@ def chat_answer(caller, query: str, session=None) -> dict:
         found = User.objects.filter(email=match.group(0)).first()  # tenant-scoped
         target = found  # may be None (cross-tenant / unknown) → empty answer
     else:
-        remembered = None
-        if session is not None:
-            from apps.ai.sessions import resolve_person_reference
-
-            remembered = resolve_person_reference(caller, session, query)
-        if remembered is not None:
-            target = remembered
+        # An explicitly NAMED person ALWAYS wins over remembered context: after
+        # "how is Vera doing?", the follow-up "Ethan Nguyen, how is he doing?" must
+        # resolve to Ethan — not stay on Vera via the pronoun. Only a PURELY deictic
+        # follow-up ("how is she doing?", with no name typed) falls back to memory.
+        named, ambiguous = _resolve_named_person(caller, query)
+        # A deictic pronoun ("she", "he", "them", "that person") is NOT a name — it
+        # points at the remembered person. Only a real name token counts as "typed
+        # a name" (which is what should override memory / trigger a not-found).
+        _deictic = {"they", "them", "their", "her", "him", "his", "she", "he", "person"}
+        typed_a_name = bool([
+            w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
+            if w not in _NAME_STOP_WORDS and w not in _deictic
+        ])
+        if named is not None:
+            target = named
+        elif ambiguous:
+            return {
+                "status": "ok", "intent": intent, "data": [],
+                "answer": f"Several people match that name: {', '.join(ambiguous)}. "
+                          "Try their email address.",
+            }
         else:
-            named, ambiguous = _resolve_named_person(caller, query)
-            if named is not None:
-                target = named
-            elif ambiguous:
+            remembered = None
+            if session is not None and not typed_a_name:
+                from apps.ai.sessions import resolve_person_reference
+
+                remembered = resolve_person_reference(caller, session, query)
+            if remembered is not None:
+                target = remembered
+            elif typed_a_name:
+                # They named someone we can't find — say so; never silently answer
+                # about a stale remembered person.
                 return {
                     "status": "ok", "intent": intent, "data": [],
-                    "answer": f"Several people match that name: {', '.join(ambiguous)}. "
-                              "Try their email address.",
+                    "answer": "I couldn't find anyone by that name in your scope — "
+                              "try their full name or their email address.",
                 }
 
     if target is None:

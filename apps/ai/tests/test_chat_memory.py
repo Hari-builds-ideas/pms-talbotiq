@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from apps.identity.tokens import issue_tokens_for_user
 from apps.tenancy.context import tenant_context
-from apps.testsupport.factories import CycleFactory, ReviewFactory
+from apps.testsupport.factories import CycleFactory, ReviewFactory, UserFactory
 
 pytestmark = pytest.mark.django_db
 FAKE = {"LLM_PROVIDER": "apps.ai.providers.FakeLLMProvider"}
@@ -34,6 +34,29 @@ def _client(user):
 def _name(user, name):
     user.display_name = name
     user.save(update_fields=["display_name"])
+
+
+@override_settings(**FAKE)
+def test_new_named_person_overrides_remembered_context(org):
+    # Regression: after grounding person A, naming a DIFFERENT person by full name
+    # must resolve to B — not stay on A via the earlier context (tester bug).
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        # a SECOND report of the same manager (both in scope) with a distinct name
+        bob = UserFactory(tenant=org.tenant, manager=org.manager,
+                          role="EMPLOYEE", display_name="Bob Builder")
+    c = _client(org.manager)
+    r1 = c.post(CHAT, {"query": "how is Rhea Report doing on her goals?"}, format="json")
+    sid = r1.json()["session_id"]
+    assert "Rhea Report" in r1.json()["answer"]
+    # Turn 2 — a NEW full name (with a pronoun too) must switch to Bob, not Rhea.
+    r2 = c.post(CHAT, {"query": "Bob Builder how are his goals?", "session_id": sid}, format="json")
+    body2 = r2.json()
+    assert "Bob Builder" in body2["answer"]
+    assert "Rhea Report" not in body2["answer"]
+    # Turn 3 — a PURE pronoun (no name) still follows the last person (Bob).
+    r3 = c.post(CHAT, {"query": "how are his goals?", "session_id": sid}, format="json")
+    assert "Bob Builder" in r3.json()["answer"]
 
 
 @override_settings(**FAKE)

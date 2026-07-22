@@ -872,13 +872,16 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # behind?") gets a reasoned answer grounded in real cycle status + KPI
     # attainment — not the flat goal list. Scope already re-checked inside.
     if _DIAGNOSE_RE.search(_q):
-        from apps.ai.insight import diagnose_person
+        from apps.ai.insight import diagnose_person, llm_phrase
 
         diag = diagnose_person(caller, target)
         if diag is None:
             return _scope_denied_answer(caller, intent, target.display)
+        # The LLM rephrases the already-correct, in-scope draft in natural language,
+        # grounded ONLY in these facts; falls back to the draft on any error/no-key.
+        answer = llm_phrase(caller.tenant_id, query, diag["facts"], diag["answer"])
         return {
-            "status": "ok", "intent": intent, "answer": diag["answer"],
+            "status": "ok", "intent": intent, "answer": answer,
             "data": [g["title"] for g in diag["facts"]["goals"]],
             "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
         }

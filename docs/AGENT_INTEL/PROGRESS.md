@@ -85,24 +85,41 @@ fixes.
 
 ---
 
-## RESUME HERE → Increment 3
+## Increment 3 — Gemini natural-language phrasing over grounded facts  ✅ (committed)
+
+**Built:** `insight.llm_phrase(tenant_id, query, facts, draft)` — rephrases the
+already-correct, in-scope deterministic diagnosis draft in natural language, grounded
+ONLY in the facts we hand it (strict "never invent / never mention anyone else"
+prompt, separate agent code `chat_phrase`). Falls back to the draft on ANY
+error/no-key/disabled, so it can only improve wording, never correctness or safety.
+Flag: `AGENT_INTEL_LLM_PHRASING` (default on). Wired into the diagnosis route in
+chat.py. Tests: phrasing-used-when-model-answers, disabled→grounded-draft. First
+`docs/AGENT_INTEL/REPORT.md` written.
+
+**Before → after (live Gemini):** "does he need help?" → *"Akhil Menon is currently
+on track and keeping pace… his 'Roadmap features delivered' KPI is at 90% of target,
+the only area slightly below expectations. Overall, Akhil does not appear to need
+additional help."* — natural + reasoned + grounded (90% matches the real KPI). Harness
+32/32; **276 AI tests** green.
+
+---
+
+## RESUME HERE → Increment 4
 
 Next cycle, in priority order:
-1. **Gemini phrasing layer.** `insight.person_facts` → strong system prompt + ONLY
-   the permitted facts → Gemini writes the natural-language answer (reason, don't
-   template). Deterministic `diagnose_person` string is the fallback on any model
-   error/no-key. LLM must NEVER add data beyond `person_facts`. Guard with a
-   settings flag (`AGENT_INTEL_LLM_PHRASING`, default on when a key is present) +
-   a FakeLLM test that the fallback path stays grounded + a live smoke.
-2. **Migrate "how is X" status** to the reasoned diagnosis (still the flat goal
-   summary today). Update the affected summary tests intentionally.
-3. **Expand the harness**: name typos ("Akil Menon"), "what about the other one"
-   after a disambiguation, topic-switch-then-refer-back, very-long input, multi-
-   person ("how are Akhil and Mei doing"), comparison across two named people.
-4. First **docs/AGENT_INTEL/REPORT.md** milestone write-up.
+1. **Migrate "how is X" status** to the reasoned+phrased answer (still the flat
+   "has N goal(s): …" template today — see live smoke: status ≠ diagnosis yet).
+   Route status queries through `diagnose_person` + `llm_phrase`. Update the summary
+   tests intentionally (they assert the old "has N goal(s):" shape).
+2. **Name-typo tolerance**: "Akil Menon"/"Mai Patel" → fuzzy match within scope
+   (difflib ratio ≥ ~0.82 on tokens), then confirm ("Did you mean Akhil Menon?").
+3. **"what about the other one"** after a disambiguation (remember the offered set);
+   **two-named-people comparison** ("how are Akhil and Mei doing?").
+4. **Expand the harness** with the above + very-long input + topic-switch-refer-back,
+   and re-run/triage.
 
-Known weaknesses to attack: status "how is X" not yet reasoned; no LLM phrasing yet
-(answers grounded but templated); no typo tolerance on names; no two-named-people
-comparison.
+Known weaknesses: status "how is X" still templated (diagnosis IS phrased); no typo
+tolerance; no "the other one"; no two-person compare. Phrasing = 1 extra LLM call per
+diagnosis (flag-gated).
 
 To re-run the harness: `python scripts/agent_intel_suite.py` (server on :8090, seeded).

@@ -242,3 +242,55 @@ def team_ranking(caller, *, best=True, limit=5) -> dict:
 # Back-compat alias: the original team-risk scan is team_scan(mode="all").
 def team_risk(caller) -> dict:
     return team_scan(caller, mode="all")
+
+
+# ── Gemini phrasing layer ────────────────────────────────────────────────────
+# The LLM only ever REPHRASES an already-correct, RBAC-scoped draft using ONLY the
+# facts we hand it. It never reaches past RBAC (it gets no query access), never adds
+# data, and on ANY error/no-key we fall back to the deterministic draft — so the
+# assistant is never worse than increment 1, only more natural when a model is live.
+_PHRASE_AGENT = "chat_phrase"
+_PHRASE_SCHEMA = {"answer": str}
+_PHRASE_PROMPT = (
+    "You are a read-only performance-management assistant. Rewrite the DRAFT answer "
+    "into a warm, concise, natural reply (2-4 sentences). You may reason lightly about "
+    "what the numbers imply, but use ONLY the information in FACTS and DRAFT — never "
+    "invent names, numbers, goals, KPIs, or people that are not present, and never "
+    "mention anyone other than the subject. You cannot change anything (read-only); do "
+    "not offer to. If FACTS is thin, keep the reply short rather than padding it.\n\n"
+    "USER ASKED: {query}\n\n"
+    "FACTS (JSON — the ONLY data you may use):\n{facts}\n\n"
+    "DRAFT (already correct — preserve its meaning and every number):\n{draft}\n\n"
+    'Return JSON: {{"answer": "<your natural reply>"}}'
+)
+
+
+def llm_phrase(tenant_id, query, facts, draft) -> str:
+    """Rephrase ``draft`` in natural language via the LLM, grounded ONLY in ``facts``.
+    Returns ``draft`` unchanged on any error, empty result, disabled flag, or no key —
+    so this can only ever improve wording, never correctness or safety."""
+    from django.conf import settings
+
+    if not getattr(settings, "AGENT_INTEL_LLM_PHRASING", True):
+        return draft
+    try:
+        import json as _json
+
+        from apps.ai.gateway import gateway
+
+        prompt = _PHRASE_PROMPT.format(
+            query=(query or "")[:400],
+            facts=_json.dumps(facts, default=str)[:2500],
+            draft=draft,
+        )
+        res = gateway.run(
+            tenant=tenant_id, agent_code=_PHRASE_AGENT, prompt=prompt,
+            model="chat", schema=_PHRASE_SCHEMA,
+        )
+        if res.ok and res.content:
+            answer = (res.content.get("answer") or "").strip()
+            if answer:
+                return answer
+    except Exception:  # noqa: BLE001 — phrasing must never break the reply
+        pass
+    return draft

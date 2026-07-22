@@ -189,6 +189,41 @@ def test_at_risk_scan_excludes_behind_only(org):
 
 
 @override_settings(**FAKE)
+def test_llm_phrasing_is_used_when_the_model_answers(org):
+    """When a model returns a phrased answer, it's used verbatim — the LLM only
+    rewords the grounded draft."""
+    import apps.ai.providers as providers
+
+    with tenant_context(org.tenant):
+        org.report.display_name = "Ravi Report"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK")
+        _goal_with_kpi(org.tenant, org.report, "Ship it", target=100, actual=90,
+                       created_by=org.manager)
+    providers.register_fake_output("chat_phrase", lambda prompt, model: {"answer": "PHRASED-OK"})
+    try:
+        c = _client(org.manager)
+        r = c.post(CHAT, {"query": "does Ravi Report need help?"}, format="json")
+        assert r.json()["answer"] == "PHRASED-OK"
+    finally:
+        providers._FAKE_OUTPUTS.pop("chat_phrase", None)
+
+
+@override_settings(**FAKE, AGENT_INTEL_LLM_PHRASING=False)
+def test_phrasing_disabled_falls_back_to_grounded_draft(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Ravi Report"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=True)
+        _goal_with_kpi(org.tenant, org.report, "Ship the roadmap", target=100, actual=40,
+                       created_by=org.manager)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "does Ravi Report need help?"}, format="json")
+    ans = r.json()["answer"]
+    assert "40%" in ans and "Ship the roadmap" in ans  # the deterministic grounded draft
+
+
+@override_settings(**FAKE)
 def test_capability_answer_is_role_aware(org):
     mgr = _client(org.manager).post(CHAT, {"query": "what can you do?"}, format="json").json()["answer"]
     emp = _client(org.report).post(CHAT, {"query": "what can you do?"}, format="json").json()["answer"]

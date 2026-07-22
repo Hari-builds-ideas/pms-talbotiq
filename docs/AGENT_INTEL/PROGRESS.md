@@ -219,7 +219,16 @@ diagnosis narrative. `_answer_two_people` branches on `_COUNT_Q_RE`. 285 AI test
 
 ---
 
-## RESUME HERE → Increment 12
+## Increment 12 — empty/whitespace + very-long input regression coverage  ✅ (committed)
+
+Locked the goal's "empty input" + "very long input" cases as explicit tests: empty,
+"   ", "\n\t " → clean 400 (view already strips; no 500, no fabrication); a 300x
+"so " prefix before a real name still resolves the person + 200. Confirms existing
+graceful handling; no code change. 287 AI tests.
+
+---
+
+## RESUME HERE → Increment 13
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

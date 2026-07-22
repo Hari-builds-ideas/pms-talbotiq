@@ -189,6 +189,29 @@ def test_at_risk_scan_excludes_behind_only(org):
 
 
 @override_settings(**FAKE)
+def test_empty_and_whitespace_input_degrade_gracefully(org):
+    """Empty / whitespace-only input → a clean 400, never a 500 or a fabricated answer."""
+    c = _client(org.report)
+    for q in ["", "   ", "\n\t "]:
+        r = c.post(CHAT, {"query": q}, format="json")
+        assert r.status_code == 400, (q, r.content)
+
+
+@override_settings(**FAKE)
+def test_very_long_input_does_not_crash(org):
+    """A very long, rambling message still resolves the named person, never 500s."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Mei Patel"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK")
+    c = _client(org.manager)
+    q = "so " * 300 + "how is Mei Patel doing on her goals?"
+    r = c.post(CHAT, {"query": q}, format="json")
+    assert r.status_code == 200, r.content
+    assert "Mei Patel" in r.json()["answer"]
+
+
+@override_settings(**FAKE)
 def test_status_how_is_x_is_reasoned_not_a_flat_list(org):
     """THE original complaint: "how is Mei Patel?" must be a reasoned status, not the
     flat "has N goal(s): …" template."""

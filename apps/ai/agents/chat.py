@@ -226,6 +226,15 @@ _LIST_GOALS_RE = re.compile(
     re.I,
 )
 
+#: "the first / second / other one" — a pick from the most recent disambiguation.
+_ORDINAL_ONE_RE = re.compile(
+    r"\bthe\s+(first|1st|second|2nd|third|3rd|other|last)\b(?:\s+one)?|"
+    r"\b(first|second|third)\s+one\b",
+    re.I,
+)
+_ORDINAL_INDEX = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2,
+                  "other": 1}  # "last" handled specially
+
 #: An "open/show the <thing we just made>" imperative — DEFINITE reference only
 #: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
 _OPEN_REF_RE = re.compile(
@@ -354,21 +363,28 @@ def _pick_named(matches, wordset, tokens_of):
     return None, []
 
 
+def _dedup_sorted_users(users):
+    """Candidate users deduped by id, in a stable (display, email) order — the
+    canonical offered order shared by the labels AND the grounded refs, so "the
+    first one" later means the first label."""
+    seen, out = set(), []
+    for u in sorted(users, key=lambda x: (x.display or "", x.email or "")):
+        if u.id not in seen:
+            seen.add(u.id)
+            out.append(u)
+    return out
+
+
 def _disambiguation_labels(users):
     """Readable choices for a "several people match" reply. When two people share
     the SAME display name (e.g. two "Leon Petrova"), a bare name list collapses to
     one useless entry — so we append the email to disambiguate ONLY the colliding
-    names. Deduped by user id, stable order."""
+    names. Deduped, in the canonical offered order."""
     from collections import Counter
 
-    counts = Counter(u.display for u in users)
-    seen, labels = set(), []
-    for u in sorted(users, key=lambda x: (x.display or "", x.email or "")):
-        if u.id in seen:
-            continue
-        seen.add(u.id)
-        labels.append(f"{u.display} ({u.email})" if counts[u.display] > 1 else u.display)
-    return labels
+    us = _dedup_sorted_users(users)
+    counts = Counter(u.display for u in us)
+    return [f"{u.display} ({u.email})" if counts[u.display] > 1 else u.display for u in us]
 
 
 def _resolve_named_person(caller, query):
@@ -382,9 +398,10 @@ def _resolve_named_person(caller, query):
 def _resolve_in_scope(caller, query):
     """Scope-aware person resolution for a performance question.
 
-    Returns ``(target, ambiguous_names, out_of_scope)``:
+    Returns ``(target, ambiguous, out_of_scope)``:
       * ``target``          — the resolved IN-SCOPE user, or None.
-      * ``ambiguous_names`` — >1 in-scope match → labels to disambiguate, else [].
+      * ``ambiguous``       — >1 in-scope match → the candidate **User** list to
+        disambiguate (labels + refs built by the caller), else ``[]``.
       * ``out_of_scope``    — a **User** matching the TYPED NAME but OUTSIDE the
         caller's scope (so the caller can ground it and name it), or ``""`` when
         several out-of-scope people match, or ``None`` when the name simply isn't
@@ -416,7 +433,7 @@ def _resolve_in_scope(caller, query):
         if len(picks) == 1:
             return picks[0], [], None
         if len(picks) > 1:
-            return None, _disambiguation_labels(picks), None
+            return None, _dedup_sorted_users(picks), None
         # Nobody in scope matches the FULL name. Out of scope iff the tenant has one.
         tenant_full = _full(matches)
         return None, [], (_oos(tenant_full) if tenant_full else None)
@@ -425,7 +442,7 @@ def _resolve_in_scope(caller, query):
     if len(in_scope) == 1:
         return in_scope[0], [], None
     if len(in_scope) > 1:
-        return None, _disambiguation_labels(in_scope), None
+        return None, _dedup_sorted_users(in_scope), None
     # None in scope, but the name matched tenant users → it's a scope boundary.
     return None, [], _oos(matches)
 
@@ -773,6 +790,30 @@ def chat_answer(caller, query: str, session=None) -> dict:
             "answer": write_refusal(caller, query)
             or "I'm a read-only assistant — I can't make changes or approvals.",
         }
+    # "the first / second / other one" — a pick from the most recent disambiguation.
+    # Checked pre-branch so the short follow-up works however it classifies; only
+    # fires when an offered set actually exists (access re-checked in the session
+    # helper), so a stray "the first goal" without a prior disambiguation is untouched.
+    _ord = _ORDINAL_ONE_RE.search(query or "")
+    if _ord and session is not None:
+        from apps.ai.sessions import last_offered_people
+
+        offered = last_offered_people(caller, session)
+        if offered:
+            word = next((g for g in _ord.groups() if g), "first").lower()
+            idx = len(offered) - 1 if word == "last" else _ORDINAL_INDEX.get(word, 0)
+            picked = offered[min(max(idx, 0), len(offered) - 1)]
+            from apps.ai.insight import diagnose_person, llm_phrase
+
+            diag = diagnose_person(caller, picked)
+            if diag is not None:
+                answer = llm_phrase(caller.tenant_id, query, diag["facts"], diag["answer"])
+                return {
+                    "status": "ok", "intent": "performance", "answer": answer,
+                    "data": [g["title"] for g in diag["facts"]["goals"]],
+                    "refs": [{"type": "user", "id": str(picked.id), "label": picked.display}],
+                }
+
     # TEAM insight ("who's behind / at risk / doing best on my team?", "how many
     # of my reports are behind?") — reasoned over the caller's OWN reporting
     # subtree, gated by VIEW_TEAM_SCORES. Checked ahead of search/performance so
@@ -873,11 +914,17 @@ def chat_answer(caller, query: str, session=None) -> dict:
         ) or bool(re.search(r"\b(that|this|the same)\s+person\b", (query or "").lower()))
         if named is not None:
             target = named
-        elif ambiguous:
+        elif ambiguous:  # a list of candidate User objects (offered order)
+            labels = _disambiguation_labels(ambiguous)
             return {
-                "status": "ok", "intent": intent, "data": [],
-                "answer": f"Several people match that name: {', '.join(ambiguous)}. "
-                          "Try their full name or their email address.",
+                "status": "ok", "intent": intent, "data": labels,
+                "answer": f"Several people match that name: {', '.join(labels)}. "
+                          "Tell me which one — you can say “the first one” or use "
+                          "their email.",
+                # Ground the offered people so a follow-up ("the first/other one")
+                # can resolve them — access is STILL re-checked on use.
+                "refs": [{"type": "user", "id": str(u.id), "label": u.display}
+                         for u in _dedup_sorted_users(ambiguous)],
             }
         elif isinstance(out_of_scope, User):
             # Named a real person OUTSIDE scope this turn — refuse honestly AND

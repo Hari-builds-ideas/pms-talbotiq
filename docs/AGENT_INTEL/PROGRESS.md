@@ -156,21 +156,37 @@ non-answer, no leak.
 
 ---
 
-## RESUME HERE → Increment 7
+## Increment 7 — "the first/second/other one" after a disambiguation  ✅ (committed)
+
+**Built:** the disambiguation reply now GROUNDS the offered candidates as `user`
+refs in a canonical order (`_dedup_sorted_users`), and `sessions.last_offered_people`
+returns them (access re-checked). A pre-branch `_ORDINAL_ONE_RE` intercept resolves
+"the first/second/third/other/last one" from that set and diagnoses the pick — works
+however the short follow-up classifies, fires only when an offered set exists.
+283 AI tests (1 new); harness 39/39.
+
+**Before → after (live):** "how is yuki doing?" → "Several people match: … Tell me
+which one — you can say 'the first one' …" → "the first one" → *"Yuki Chen is
+currently on track, though pace is behind…"* (was: a dead "couldn't find").
+
+---
+
+## RESUME HERE → Increment 8
 
 Next cycle, in priority order:
-1. **"what about the other one"** after a disambiguation — persist the offered
-   candidate users on the session (ground them as `user` refs on the disambiguation
-   turn), then resolve "the other/first/second one". Scope re-checked on use.
-2. **Comparison polish**: when one of two named people is out of scope, answer the
-   in-scope one AND say the other is out of your access (today it's a generic
-   "couldn't find"). Aggregation over two named people ("how many goals do X and Y
-   have") could route to counts.
-3. Grow harness: topic-switch-then-refer-back, "the other one", HRBP deeper probes.
-4. Refresh `docs/AGENT_INTEL/REPORT.md` (add comparison row).
+1. **Comparison polish**: when one of two named people is out of scope, answer the
+   in-scope one AND note the other is out of your access (today a mixed pair falls to
+   a generic "couldn't find" — safe, not helpful).
+2. **Topic-switch-then-refer-back**: after switching people, "go back to the first
+   person" / re-referring an earlier-grounded person by role ("my report").
+3. Refresh `docs/AGENT_INTEL/REPORT.md` with the comparison + "the other one" rows
+   and updated weaknesses.
+4. Consider a harness quota note: with phrasing ON each reasoned turn = 2 LLM calls,
+   so a full run ≈ 40+ calls; RESET the ceiling before each run
+   (`atomic.reset_window('llm:global:calls')`) or raise `LLM_MAX_CALLS` in the
+   running container (env-for-testing sets 400 but the live container is on 60).
 
-Known weaknesses: no "the other one"; comparison with a mixed in/out-of-scope pair
-degrades to "couldn't find" (safe, but could be more helpful); phrasing adds 1 LLM
-call per reasoned answer (flag-gated, fallback-safe).
+Known weaknesses: mixed in/out-of-scope comparison → "couldn't find"; no explicit
+"go back to X"; harness is LLM-quota-heavy with phrasing on.
 
-To re-run the harness: `python scripts/agent_intel_suite.py` (server on :8090, seeded).
+To re-run the harness: reset the quota, then `python scripts/agent_intel_suite.py`.

@@ -254,6 +254,26 @@ def test_phrasing_disabled_falls_back_to_grounded_draft(org):
 
 
 @override_settings(**FAKE)
+def test_the_first_one_after_disambiguation_resolves(org):
+    """After "several people match: Sam Alpha, Sam Beta", "the first one" resolves to
+    the first offered person and diagnoses them (memory of the offered set)."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Sam Alpha"
+        org.report.save(update_fields=["display_name"])
+        beta = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                           display_name="Sam Beta")
+        _score(org.tenant, org.report, risk="ON_TRACK")
+        _score(org.tenant, beta, risk="AT_RISK", pace_behind=True)
+    c = _client(org.manager)
+    r1 = c.post(CHAT, {"query": "how is Sam doing on goals?"}, format="json")
+    sid = r1.json()["session_id"]
+    assert "Several people match" in r1.json()["answer"]
+    r2 = c.post(CHAT, {"query": "the first one", "session_id": sid}, format="json")
+    ans = r2.json()["answer"]
+    assert "Sam Alpha" in ans and "Sam Beta" not in ans
+
+
+@override_settings(**FAKE)
 def test_two_person_comparison_diagnoses_both(org):
     with tenant_context(org.tenant):
         org.report.display_name = "Akhil Rao"

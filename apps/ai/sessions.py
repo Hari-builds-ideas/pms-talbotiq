@@ -198,6 +198,29 @@ def resolve_person_reference(user, session: ChatSession, text: str):
                 return obj
 
 
+def last_offered_people(user, session: ChatSession):
+    """The ORDERED people offered in the most recent disambiguation ("several match:
+    A, B") — so a follow-up "the first/second/other one" can pick from them. Access
+    re-checked on each (a stored ref grants nothing). Empty when there was none."""
+    if session.is_expired:
+        return []
+    from apps.identity.models import User
+
+    for turn in reversed(recent_turns(session)):  # newest turn first
+        urefs = [
+            r for r in (turn.refs or [])
+            if isinstance(r, dict) and r.get("type") == "user" and _valid_uuid(r.get("id"))
+        ]
+        if len(urefs) >= 2:  # a disambiguation grounds ≥2 people, in offered order
+            out = []
+            for r in urefs:
+                u = User.objects.filter(id=r["id"]).first()
+                if u is not None and actor_can_access(user, u):
+                    out.append(u)
+            return out
+    return []
+
+
 def last_referenced_person_any_scope(user, session: ChatSession):
     """The most recent PERSON the caller referred to this session, WITHOUT the
     access gate — so a pronoun follow-up can be told "you still can't see X"

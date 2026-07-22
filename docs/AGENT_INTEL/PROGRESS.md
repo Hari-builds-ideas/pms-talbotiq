@@ -104,22 +104,40 @@ additional help."* — natural + reasoned + grounded (90% matches the real KPI).
 
 ---
 
-## RESUME HERE → Increment 4
+## Increment 4 — name-typo tolerance (scope-safe) + harness growth  ✅ (committed)
+
+**Built:** `insight.fuzzy_name_suggestions(caller, name_text)` — difflib close-match
+(cutoff 0.8) over the caller's IN-SCOPE people only (EMPLOYEE→none, MANAGER→subtree,
+HRBP/ADMIN→tenant capped), access re-checked. Wired into chat.py's "couldn't find"
+branch: a typo now yields *"I couldn't find that exact name — did you mean Akhil
+Menon?"* instead of a dead end — but NEVER suggests a name the caller couldn't see
+(an employee mistyping a peer gets the plain not-found, no leak). Harness grew to 34
+checks (added a manager typo + a very-long rambling input); all pass.
+
+**Before → after:** "how is Anastaesia doing?" (manager, report "Anastasia") →
+*"…did you mean Anastasia?"* (was: "couldn't find anyone by that name"). Employee
+mistyping a peer → still "couldn't find", no name revealed. **278 AI tests** green
+(2 new in `test_chat_typo.py`).
+
+---
+
+## RESUME HERE → Increment 5
 
 Next cycle, in priority order:
-1. **Migrate "how is X" status** to the reasoned+phrased answer (still the flat
-   "has N goal(s): …" template today — see live smoke: status ≠ diagnosis yet).
-   Route status queries through `diagnose_person` + `llm_phrase`. Update the summary
-   tests intentionally (they assert the old "has N goal(s):" shape).
-2. **Name-typo tolerance**: "Akil Menon"/"Mai Patel" → fuzzy match within scope
-   (difflib ratio ≥ ~0.82 on tokens), then confirm ("Did you mean Akhil Menon?").
-3. **"what about the other one"** after a disambiguation (remember the offered set);
-   **two-named-people comparison** ("how are Akhil and Mei doing?").
-4. **Expand the harness** with the above + very-long input + topic-switch-refer-back,
-   and re-run/triage.
+1. **Migrate "how is X" status** to the reasoned+phrased answer (STILL the flat
+   "has N goal(s): …" template — confirmed in live smoke). Route status queries
+   through `diagnose_person` + `llm_phrase`; keep an explicit "show/list my goals" →
+   flat list. This WILL change several summary tests in `test_chat.py` /
+   `test_chat_memory.py` that assert "has N goal(s):" — update them intentionally to
+   the reasoned shape while keeping the name + scope assertions. Do this as its own
+   focused increment (it's the biggest test-churn item).
+2. **"what about the other one"** after a disambiguation — remember the offered set
+   on the session, resolve "the other/first/second one".
+3. **Two-named-people comparison** ("how are Akhil and Mei doing?") — resolve both
+   in scope, diagnose each briefly.
+4. Grow harness: topic-switch-then-refer-back, multi-person, "the other one".
 
-Known weaknesses: status "how is X" still templated (diagnosis IS phrased); no typo
-tolerance; no "the other one"; no two-person compare. Phrasing = 1 extra LLM call per
-diagnosis (flag-gated).
+Known weaknesses: status "how is X" still templated (diagnosis + team intents ARE
+reasoned/phrased); no "the other one"; no two-person compare.
 
 To re-run the harness: `python scripts/agent_intel_suite.py` (server on :8090, seeded).

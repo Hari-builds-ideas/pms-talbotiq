@@ -19,9 +19,15 @@ increment) only ever rewords these same facts — it never adds data.
 """
 from __future__ import annotations
 
+import difflib
 from decimal import Decimal
 
-from apps.rbac.scope import actor_can_access, reporting_subtree_ids
+from apps.rbac.scope import (
+    Scope,
+    actor_can_access,
+    reporting_subtree_ids,
+    scope_for_role,
+)
 
 
 def _latest_measurement(kpi):
@@ -294,3 +300,32 @@ def llm_phrase(tenant_id, query, facts, draft) -> str:
     except Exception:  # noqa: BLE001 — phrasing must never break the reply
         pass
     return draft
+
+
+def fuzzy_name_suggestions(caller, name_text, *, limit=3, cutoff=0.8):
+    """Close in-scope display names for a typo'd name ("Akil Menon" → "Akhil Menon").
+    STRICTLY scoped: an EMPLOYEE gets nothing (they can only see themselves); a
+    MANAGER's candidates are their reporting subtree; TENANT-scope roles match the
+    whole tenant (capped). We never suggest a name the caller couldn't already see,
+    so this leaks nothing — it only helps them spell a name they may ask about."""
+    from apps.identity.models import User
+
+    typed = " ".join(name_text.lower().split()).strip()
+    if len(typed) < 3:
+        return []
+    scope = scope_for_role(caller.role)
+    if scope is Scope.OWN:
+        return []
+    if scope is Scope.TEAM:
+        ids = reporting_subtree_ids(caller) - {caller.id}
+        if not ids:
+            return []
+        people = User.objects.filter(id__in=ids)
+    else:  # TENANT (HRBP / ADMIN)
+        people = User.objects.all()[:2000]
+    by_lower = {}
+    for u in people:
+        by_lower.setdefault((u.display or "").lower(), u)
+    close = difflib.get_close_matches(typed, list(by_lower), n=limit, cutoff=cutoff)
+    # Access re-check (defence in depth) + preserve display casing.
+    return [by_lower[c].display for c in close if actor_can_access(caller, by_lower[c])]

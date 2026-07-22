@@ -825,6 +825,23 @@ def chat_answer(caller, query: str, session=None) -> dict:
             # Several out-of-scope people match the name — generic honest refusal.
             return _scope_denied_answer(caller, intent, None)
         elif typed_a_name:
+            # Before giving up, try a TYPO-tolerant suggestion within the caller's
+            # scope ("Akil Menon" → "Did you mean Akhil Menon?"). Suggestions are
+            # scope-limited, so this never reveals a name they couldn't already see.
+            from apps.ai.insight import fuzzy_name_suggestions
+
+            name_text = " ".join(
+                w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
+                if w not in _NAME_STOP_WORDS and w not in _deictic
+            )
+            suggestions = fuzzy_name_suggestions(caller, name_text)
+            if suggestions:
+                opts = " or ".join(suggestions) if len(suggestions) <= 2 else (
+                    ", ".join(suggestions[:-1]) + f", or {suggestions[-1]}")
+                return {
+                    "status": "ok", "intent": intent, "data": suggestions,
+                    "answer": f"I couldn't find that exact name — did you mean {opts}?",
+                }
             return {
                 "status": "ok", "intent": intent, "data": [],
                 "answer": "I couldn't find anyone by that name — "

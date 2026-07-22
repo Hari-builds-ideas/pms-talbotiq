@@ -104,6 +104,10 @@ SCENARIOS = [
         ("how many of my reports are behind?", [not_canned(), not_dead()]),
         ("how is Hugo O'Brien doing?", [refused()]),
         ("what can you do?", [not_canned()]),
+        # name typo → a scope-limited suggestion, not a dead end
+        ("how is Akil Menonn doing?", [alive()]),
+        # a very long, rambling input must not crash or dead-reply
+        ("how is " + "really " * 80 + "Akhil Menon doing?", [alive()]),
     ]),
     ("HRBP", "priya@acme.test", [
         ("how is Leon Petrova doing?", [contains("several") ]),  # two real people

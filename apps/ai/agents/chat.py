@@ -232,14 +232,29 @@ def _resolve_named_person(caller, query):
         cond = c if cond is None else (cond | c)
     matches = []
     wordset = set(words)
+    tokens_of = {}  # user.id -> set of name tokens (computed once, reused below)
     for u in User.objects.filter(cond)[:20]:  # tenant-scoped manager
         name_tokens = set(re.findall(r"[a-z]{3,}", (u.display_name or "").lower()))
+        tokens_of[u.id] = name_tokens
         email_local = u.email.split("@")[0].lower()
         if (name_tokens & wordset) or (email_local in wordset):
             matches.append(u)
     if len(matches) == 1:
         return matches[0], []
     if len(matches) > 1:
+        # A multi-word query may name ONE specific person ("leon petrova") whose
+        # full name is among the loose token-OR matches. Prefer the unique candidate
+        # whose name contains EVERY name-token the caller typed — so "Leon Petrova"
+        # wins over the "Leon *" / "* Petrova" family instead of being buried in a
+        # disambiguation list. Only the tokens that actually appear in some name
+        # count (so trailing words like "doing"/"cycle" don't disqualify anyone).
+        name_query_tokens = {
+            t for t in wordset if any(t in toks for toks in tokens_of.values())
+        }
+        if len(name_query_tokens) >= 2:
+            full = [u for u in matches if name_query_tokens <= tokens_of[u.id]]
+            if len(full) == 1:
+                return full[0], []
         return None, sorted({u.display for u in matches})
     return None, []
 

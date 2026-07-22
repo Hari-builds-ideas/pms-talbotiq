@@ -1,0 +1,140 @@
+"""AGENT_INTEL increment 1 — data-grounded DIAGNOSIS + TEAM-SCAN.
+
+The assistant no longer answers "does X need help?" with a flat goal list. It
+reasons over real, RBAC-scoped cycle status + KPI attainment:
+  * diagnosis of one person ("is X on track / does X need help") — grounded, and
+    STILL scope-checked (a report can't diagnose a peer);
+  * a team-scan ("who's behind on my team?") over the caller's OWN reports only;
+  * coreference: "does she need help?" after naming someone diagnoses THAT person.
+All deterministic (FakeLLMProvider) — no live calls.
+"""
+import datetime
+from decimal import Decimal
+
+import pytest
+from django.test import override_settings
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.identity.tokens import issue_tokens_for_user
+from apps.tenancy.context import tenant_context
+from apps.testsupport.factories import CycleFactory, UserFactory
+
+pytestmark = pytest.mark.django_db
+FAKE = {"LLM_PROVIDER": "apps.ai.providers.FakeLLMProvider"}
+CHAT = "/api/ai/chat"
+
+
+def _client(user):
+    access, _ = issue_tokens_for_user(user)
+    c = APIClient()
+    c.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+    return c
+
+
+def _score(tenant, employee, *, risk="ON_TRACK", pace_behind=False):
+    from apps.goals.models import CycleScore
+
+    cyc = CycleFactory(tenant=tenant)
+    return CycleScore.objects.create(
+        tenant_id=tenant.id, employee=employee, cycle=cyc,
+        raw_score=Decimal("1"), z_score=Decimal("0"), t_score=Decimal("50"),
+        cohort_size=5, risk_status=risk, pace_behind=pace_behind,
+        computed_at=timezone.now(),
+    )
+
+
+def _goal_with_kpi(tenant, employee, title, *, target, actual, created_by):
+    from apps.goals.models import Goal, Kpi, KpiMeasurement
+
+    cyc = CycleFactory(tenant=tenant)
+    g = Goal.objects.create(
+        tenant_id=tenant.id, employee=employee, cycle=cyc, title=title,
+        weight=Decimal("100.00"), status="ACTIVE", created_by=created_by,
+    )
+    k = Kpi.objects.create(
+        tenant_id=tenant.id, goal=g, name="Attainment", weight=Decimal("100.00"),
+        target_value=Decimal(str(target)), direction="INCREASING", unit="%", source="MANUAL",
+    )
+    KpiMeasurement.objects.create(
+        tenant_id=tenant.id, kpi=k, value=Decimal(str(actual)),
+        recorded_at=timezone.now(), source="MANUAL",
+    )
+    return g
+
+
+@override_settings(**FAKE)
+def test_diagnosis_reasons_over_kpi_attainment(org):
+    with tenant_context(org.tenant):
+        _name = org.report
+        _name.display_name = "Ravi Report"
+        _name.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=True)
+        _goal_with_kpi(org.tenant, org.report, "Ship the H1 roadmap",
+                       target=100, actual=55, created_by=org.manager)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "does Ravi Report need help with his goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"]
+    # Reasoned, not a flat list: names the weak KPI + the attainment number.
+    assert "Ship the H1 roadmap" in ans
+    assert "55%" in ans
+    assert "need" in ans.lower()  # a help verdict
+
+
+@override_settings(**FAKE)
+def test_diagnosis_coreference_after_naming(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Maya Report"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=False)
+        _goal_with_kpi(org.tenant, org.report, "Grow craft", target=100, actual=95,
+                       created_by=org.manager)
+    c = _client(org.manager)
+    r1 = c.post(CHAT, {"query": "how is Maya Report doing on her goals?"}, format="json")
+    sid = r1.json()["session_id"]
+    r2 = c.post(CHAT, {"query": "does she need help?", "session_id": sid}, format="json")
+    ans = r2.json()["answer"]
+    assert "Maya Report" in ans          # "she" resolved to Maya
+    assert "no extra help" in ans.lower()  # on track + strong KPI → no help needed
+
+
+@override_settings(**FAKE)
+def test_diagnosis_is_scope_checked(org):
+    """A report asking to diagnose a PEER is refused — intelligence never bypasses RBAC."""
+    with tenant_context(org.tenant):
+        org.peer.display_name = "Pax Peer"
+        org.peer.save(update_fields=["display_name"])
+        _score(org.tenant, org.peer, risk="AT_RISK", pace_behind=True)
+    c = _client(org.report)  # EMPLOYEE — cannot see the peer
+    r = c.post(CHAT, {"query": "is Pax Peer at risk?"}, format="json")
+    ans = r.json()["answer"]
+    assert "don't have access" in ans.lower()
+    assert "AT_RISK" not in ans and "at risk" not in ans.lower().replace("at risk?", "")
+
+
+@override_settings(**FAKE)
+def test_team_scan_lists_only_flagged_reports(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Behind Bob"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=True)
+        # a second, healthy report of the same manager
+        ok = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                         display_name="Fine Fiona")
+        _score(org.tenant, ok, risk="ON_TRACK", pace_behind=False)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "who's behind on my team?"}, format="json")
+    ans = r.json()["answer"]
+    assert "Behind Bob" in ans
+    assert "Fine Fiona" not in ans   # healthy report not flagged
+
+
+@override_settings(**FAKE)
+def test_team_scan_refused_for_individual_contributor(org):
+    """An employee has no reports → honest 'no team', never another person's data."""
+    c = _client(org.report)
+    r = c.post(CHAT, {"query": "who's at risk on my team?"}, format="json")
+    ans = r.json()["answer"]
+    assert "no team" in ans.lower() or "don't have any reports" in ans.lower()

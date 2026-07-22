@@ -49,6 +49,9 @@ _CAPABILITY_PHRASES = (
 _PERF_WORDS = (
     "goal", "kpi", "score", "rating", "review", "performance", "risk", "progress",
     "feedback", "cycle", "objective", "assessment", "appraisal", "how am i doing",
+    # diagnosis phrasings — "does she need help?", "is X on track / at risk / behind?"
+    "need help", "needs help", "on track", "at risk", "behind", "struggling",
+    "falling behind", "in trouble", "doing well", "doing okay", "how is", "how are",
 )
 #: Cues for a TEAM "find people" query (RW_BUILD_5 NL search). Checked BEFORE the
 #: performance words (a search mentions 'goal'/'check-in' too) so a manager's
@@ -147,10 +150,33 @@ _NAME_STOP_WORDS = frozenset(
     "on in at to from team report reports goal goals kpi kpis review reviews feedback "
     "score scores cycle cycles progress performance risk open active pending count number "
     "me i we you they show tell give latest current last week month quarter year today "
-    "track On track behind ahead risk please can could would".lower().split()
+    "track On track behind ahead risk please can could would "
+    # diagnosis vocabulary — never a person's name ("does she need help?")
+    "need needs help support struggling struggle falling trouble okay ok well badly "
+    "poorly attention flag flagged pace doing".lower().split()
 )
 
 _COUNT_Q_RE = re.compile(r"\bhow many\b|\bcount of\b|\bnumber of\b", re.I)
+
+#: A DIAGNOSIS question about a specific person ("does X need help", "is X on
+#: track / at risk / behind / struggling"). Routed to a reasoned, data-grounded
+#: answer instead of the plain goal list. ("how is X" status stays on the summary
+#: for now — migrated to the reasoned answer in a later increment.)
+_DIAGNOSE_RE = re.compile(
+    r"\bneeds?\s+help\b|\bneed\s+help\b|\bon\s+track\b|\bat\s+risk\b|\bbehind\b|"
+    r"\bstruggl|\bfalling\b|\bin\s+trouble\b|\bhelp\s+(?:them|him|her)\b|\bhow\s+are\s+they\s+doing\b",
+    re.I,
+)
+
+#: A TEAM-SCAN question ("who's behind / at risk / struggling / needs help",
+#: "anyone at risk", "how many of my reports are behind"). Answered from the
+#: caller's OWN reporting subtree only (managers/HRBP) — never the whole tenant.
+_TEAM_SCAN_RE = re.compile(
+    r"\bwho(?:'s| is| are|se)?\b.{0,40}\b(behind|at\s+risk|struggl|need|falling|trouble)\b|"
+    r"\banyone\b.{0,30}\b(behind|at\s+risk|struggl|need|trouble)\b|"
+    r"\bhow\s+many\b.{0,40}\b(behind|at\s+risk|struggl)\b",
+    re.I,
+)
 
 #: An "open/show the <thing we just made>" imperative — DEFINITE reference only
 #: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
@@ -457,6 +483,38 @@ def _answer_counts(caller, target, query, intent):
     }
 
 
+def _answer_team_risk(caller, intent="performance"):
+    """Reasoned scan of the caller's reporting subtree for at-risk / behind people.
+    Scoped to the caller's OWN reports (never the tenant). Read-only."""
+    from apps.ai.insight import team_risk
+
+    scan = team_risk(caller)
+    if not scan["manages"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "You don't have any reports, so there's no team to scan. "
+                      "I can tell you how you're doing this cycle instead.",
+        }
+    flagged = scan["flagged"]
+    if not flagged:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": f"Good news — none of your {scan['total']} team member(s) are "
+                      "flagged at risk or behind pace this cycle.",
+        }
+    lines = [
+        f"{f['name']} ({f['risk']}{', behind pace' if f['pace_behind'] else ''})"
+        for f in flagged
+    ]
+    n = len(flagged)
+    return {
+        "status": "ok", "intent": intent,
+        "answer": (f"{n} of your {scan['total']} team member(s) need attention: "
+                   f"{'; '.join(lines)}. Ask me about any of them for detail."),
+        "data": lines,
+    }
+
+
 def _latest_score(target):
     """The target's latest CycleScore (for grounding the answer). The caller's
     access to ``target`` is already gated by ``_scoped_goal_titles`` upstream, so
@@ -557,6 +615,20 @@ def chat_answer(caller, query: str, session=None) -> dict:
             "intent": "write",
             "answer": write_refusal(caller, query)
             or "I'm a read-only assistant — I can't make changes or approvals.",
+        }
+    # TEAM-SCAN diagnosis ("who's behind / at risk on my team?") — a reasoned scan
+    # of the caller's OWN reporting subtree, gated by VIEW_TEAM_SCORES. Checked
+    # ahead of search/performance so it isn't mis-routed to the goal-name search.
+    if _TEAM_SCAN_RE.search(query or ""):
+        from apps.rbac.matrix import Capability, role_has_capability
+
+        if role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
+            return _answer_team_risk(caller)
+        # An individual contributor manages no one — say so honestly, offer self.
+        return {
+            "status": "ok", "intent": "performance", "data": [],
+            "answer": "You don't have any reports, so there's no team to scan. "
+                      "I can tell you how you're doing this cycle instead.",
         }
     if intent == "search":
         # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An
@@ -678,6 +750,21 @@ def chat_answer(caller, query: str, session=None) -> dict:
         r"\b(goals?|kpis?|objectives?)\b", _q
     ):
         return _answer_counts(caller, target, query, intent)
+
+    # A DIAGNOSIS question ("does she need help?", "is X on track / at risk /
+    # behind?") gets a reasoned answer grounded in real cycle status + KPI
+    # attainment — not the flat goal list. Scope already re-checked inside.
+    if _DIAGNOSE_RE.search(_q):
+        from apps.ai.insight import diagnose_person
+
+        diag = diagnose_person(caller, target)
+        if diag is None:
+            return _scope_denied_answer(caller, intent, target.display)
+        return {
+            "status": "ok", "intent": intent, "answer": diag["answer"],
+            "data": [g["title"] for g in diag["facts"]["goals"]],
+            "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+        }
 
     titles = _scoped_goal_titles(caller, target)
     if titles is None:

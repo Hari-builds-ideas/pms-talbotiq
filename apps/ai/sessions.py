@@ -196,4 +196,22 @@ def resolve_person_reference(user, session: ChatSession, text: str):
             obj = _reaccess(user, ref)
             if obj is not None:
                 return obj
+
+
+def last_referenced_person_any_scope(user, session: ChatSession):
+    """The most recent PERSON the caller referred to this session, WITHOUT the
+    access gate — so a pronoun follow-up can be told "you still can't see X"
+    instead of silently switching to the caller. Tenant-scoped only (the scoped
+    manager still isolates tenants); the CALLER re-checks scope before showing any
+    data. Returns a ``User`` or ``None``."""
+    if session.is_expired:
+        return None
+    from apps.identity.models import User
+
+    for ref in _all_refs_newest_first(session):
+        if ref.get("type") == "user" and _valid_uuid(ref.get("id")):
+            u = User.objects.filter(id=ref["id"]).first()  # tenant-scoped
+            if u is not None:
+                return u
+    return None
     return None

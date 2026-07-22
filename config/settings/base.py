@@ -574,6 +574,12 @@ LLM_MAX_TOKENS = env.int("LLM_MAX_TOKENS", default=4096)
 # per-tenant budgets + a provider-side spend limit (audit Finding B; see AI_GOLIVE.md).
 LLM_MAX_CALLS = env.int("LLM_MAX_CALLS", default=500)
 
+# The ceiling is a ROLLING fixed window, not a one-shot lifetime cap: once it
+# trips it AUTOMATICALLY recovers after this many seconds (default 1h). A short
+# window keeps the cost backstop real while ensuring a busy demo/QA run is never
+# locked out for a whole day — the old 24h window read as "the assistant broke".
+LLM_CALL_WINDOW_SECONDS = env.int("LLM_CALL_WINDOW_SECONDS", default=3600)
+
 # Two-model strategy (OpenAI): a strong model for the human-read agents (review/
 # feedback/succession/JD/career), a fast/cheap one for chat + default. Per-agent →
 # trivially re-tunable here or per env var. (Groq switch-back: set these to

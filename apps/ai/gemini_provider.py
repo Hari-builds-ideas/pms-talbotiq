@@ -95,14 +95,16 @@ class GeminiProvider(LLMProvider):
     def _reserve_global(self) -> None:
         if self.global_ceiling <= 0:
             return
+        window_s = int(getattr(settings, "LLM_CALL_WINDOW_SECONDS", 3600))
         try:
-            count = atomic.incr_window(_GLOBAL_CALL_KEY, ttl_ms=24 * 3600 * 1000)
+            count = atomic.incr_window(_GLOBAL_CALL_KEY, ttl_ms=window_s * 1000)
         except Exception:  # noqa: BLE001 — a cache miss must not wedge the call
             return
         if count > self.global_ceiling:
+            mins = max(1, window_s // 60)
             raise LLMGlobalCeilingError(
-                f"Global LLM call ceiling ({self.global_ceiling}) reached for this "
-                "run — refusing further calls to protect the quota."
+                f"Global LLM call ceiling ({self.global_ceiling}) reached — pausing "
+                f"further calls to protect the quota. It resets within {mins} minute(s)."
             )
 
     # ── provider contract ─────────────────────────────────────────────────────

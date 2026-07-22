@@ -276,8 +276,25 @@ def _pick_named(matches, wordset, tokens_of):
             full = [u for u in matches if name_query_tokens <= tokens_of[u.id]]
             if len(full) == 1:
                 return full[0], []
-        return None, sorted({u.display for u in matches})
+        return None, _disambiguation_labels(matches)
     return None, []
+
+
+def _disambiguation_labels(users):
+    """Readable choices for a "several people match" reply. When two people share
+    the SAME display name (e.g. two "Leon Petrova"), a bare name list collapses to
+    one useless entry — so we append the email to disambiguate ONLY the colliding
+    names. Deduped by user id, stable order."""
+    from collections import Counter
+
+    counts = Counter(u.display for u in users)
+    seen, labels = set(), []
+    for u in sorted(users, key=lambda x: (x.display or "", x.email or "")):
+        if u.id in seen:
+            continue
+        seen.add(u.id)
+        labels.append(f"{u.display} ({u.email})" if counts[u.display] > 1 else u.display)
+    return labels
 
 
 def _resolve_named_person(caller, query):
@@ -293,11 +310,12 @@ def _resolve_in_scope(caller, query):
 
     Returns ``(target, ambiguous_names, out_of_scope)``:
       * ``target``          — the resolved IN-SCOPE user, or None.
-      * ``ambiguous_names`` — >1 in-scope match → names to disambiguate, else [].
-      * ``out_of_scope``    — the display name (or "" when >1) of a person who
-        matches the TYPED NAME but sits OUTSIDE the caller's scope; None when the
-        name simply isn't found at all. This lets the caller say "you don't have
-        access to X" instead of a misleading "not found".
+      * ``ambiguous_names`` — >1 in-scope match → labels to disambiguate, else [].
+      * ``out_of_scope``    — a **User** matching the TYPED NAME but OUTSIDE the
+        caller's scope (so the caller can ground it and name it), or ``""`` when
+        several out-of-scope people match, or ``None`` when the name simply isn't
+        found. This lets the caller say "you don't have access to X" — and REMEMBER
+        that attempt — instead of a misleading "not found" or a self-fallback.
 
     A multi-token name must FULLY match an in-scope person — so a manager asking
     about "Hugo O'Brien" never silently resolves to a same-surname "Hana O'Brien"
@@ -314,25 +332,28 @@ def _resolve_in_scope(caller, query):
     def _full(cands):
         return [u for u in cands if real_tokens and real_tokens <= tokens_of[u.id]]
 
+    def _oos(cands):
+        """Out-of-scope signal: the single matching User (to ground+name), or ""
+        when several match (name them generically), never leaking data either way."""
+        return cands[0] if len(cands) == 1 else ""
+
     if len(real_tokens) >= 2:
         picks = _full(in_scope)
         if len(picks) == 1:
             return picks[0], [], None
         if len(picks) > 1:
-            return None, sorted({u.display for u in picks}), None
+            return None, _disambiguation_labels(picks), None
         # Nobody in scope matches the FULL name. Out of scope iff the tenant has one.
         tenant_full = _full(matches)
-        if tenant_full:
-            return None, [], (tenant_full[0].display if len(tenant_full) == 1 else "")
-        return None, [], None  # a full name nobody actually has → not found
+        return None, [], (_oos(tenant_full) if tenant_full else None)
 
     # A single (or zero) real name-token — loose, first-name style ("yuki").
     if len(in_scope) == 1:
         return in_scope[0], [], None
     if len(in_scope) > 1:
-        return None, sorted({u.display for u in in_scope}), None
+        return None, _disambiguation_labels(in_scope), None
     # None in scope, but the name matched tenant users → it's a scope boundary.
-    return None, [], (matches[0].display if len(matches) == 1 else "")
+    return None, [], _oos(matches)
 
 
 def _accessible_report_names(caller, limit=12):
@@ -351,12 +372,17 @@ def _accessible_report_names(caller, limit=12):
     return names[:limit], total
 
 
-def _scope_denied_answer(caller, intent, name=None):
+def _scope_denied_answer(caller, intent, name=None, ground_user=None):
     """Honest, role-aware refusal when a caller asks about someone OUTSIDE their
     data scope. It is a guardrail, not a bug: an EMPLOYEE sees only themselves; a
     MANAGER sees their own reports; only ADMIN/HR see the whole company. We say so
     plainly, list who the caller CAN ask about, and never leak the out-of-scope
-    person's data."""
+    person's data.
+
+    When ``ground_user`` is given, the refused person is GROUNDED on the session
+    (a "user" ref) so a pronoun follow-up ("what about his reviews?") stays on them
+    and gets refused again — instead of silently falling back to the caller's own
+    data. The ref grants nothing: every read re-checks access."""
     role = getattr(caller, "role", "") or ""
     if role == "EMPLOYEE":
         subject = f"{name}'s" if name else "another person's"
@@ -384,7 +410,11 @@ def _scope_denied_answer(caller, intent, name=None):
             f"{subject} is outside the part of the organisation you can see, so I "
             "can't share their performance details."
         )
-    return {"status": "ok", "intent": intent, "answer": answer, "data": []}
+    out = {"status": "ok", "intent": intent, "answer": answer, "data": []}
+    if ground_user is not None:
+        out["refs"] = [{"type": "user", "id": str(ground_user.id),
+                        "label": ground_user.display}]
+    return out
 
 
 def _answer_counts(caller, target, query, intent):
@@ -557,8 +587,9 @@ def chat_answer(caller, query: str, session=None) -> dict:
         found = User.objects.filter(email=match.group(0)).first()  # tenant-scoped
         if found is not None and not actor_can_access(caller, found):
             # Exists in the tenant but outside the caller's data scope — say so
-            # honestly (who they are, who the caller CAN ask about), never leak.
-            return _scope_denied_answer(caller, intent, found.display)
+            # honestly (who they are, who the caller CAN ask about), never leak,
+            # and ground them so a pronoun follow-up stays on them.
+            return _scope_denied_answer(caller, intent, found.display, ground_user=found)
         target = found  # may be None (cross-tenant / unknown) → empty answer
     else:
         # An explicitly NAMED person ALWAYS wins over remembered context: after
@@ -577,10 +608,17 @@ def chat_answer(caller, query: str, session=None) -> dict:
         # points at the remembered person. Only a real name token counts as "typed
         # a name" (which is what should override memory / trigger a not-found).
         _deictic = {"they", "them", "their", "her", "him", "his", "she", "he", "person"}
+        _tokens = {w for w in re.findall(r"[a-z]+", (query or "").lower())}
         typed_a_name = bool([
             w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
             if w not in _NAME_STOP_WORDS and w not in _deictic
         ])
+        # A deictic PERSON reference ("he/she/they/his/her…", "that person") points
+        # at someone OTHER than the caller — it must bind to the LAST person named
+        # this conversation, and never silently fall back to the caller's own data.
+        person_deixis = bool(_tokens & {
+            "he", "she", "they", "him", "her", "them", "his", "their", "hers", "theirs"}
+        ) or bool(re.search(r"\b(that|this|the same)\s+person\b", (query or "").lower()))
         if named is not None:
             target = named
         elif ambiguous:
@@ -589,30 +627,56 @@ def chat_answer(caller, query: str, session=None) -> dict:
                 "answer": f"Several people match that name: {', '.join(ambiguous)}. "
                           "Try their full name or their email address.",
             }
-        else:
-            remembered = None
-            if session is not None and not typed_a_name:
-                from apps.ai.sessions import resolve_person_reference
+        elif isinstance(out_of_scope, User):
+            # Named a real person OUTSIDE scope this turn — refuse honestly AND
+            # ground them so a pronoun follow-up stays on them (never self).
+            return _scope_denied_answer(caller, intent, out_of_scope.display,
+                                        ground_user=out_of_scope)
+        elif out_of_scope == "":
+            # Several out-of-scope people match the name — generic honest refusal.
+            return _scope_denied_answer(caller, intent, None)
+        elif typed_a_name:
+            return {
+                "status": "ok", "intent": intent, "data": [],
+                "answer": "I couldn't find anyone by that name — "
+                          "try their full name or their email address.",
+            }
+        elif person_deixis:
+            # A pronoun/"that person" — bind to the MOST RECENT person referenced
+            # (regardless of scope), then access-check THAT one. Crucially we do NOT
+            # skip an out-of-scope referent to land on an older accessible one (e.g.
+            # the caller themselves) — "his" after asking about someone you can't see
+            # must stay refused, not silently switch to your own data.
+            prior = None
+            if session is not None:
+                from apps.ai.sessions import last_referenced_person_any_scope
 
-                remembered = resolve_person_reference(caller, session, query)
-            if remembered is not None:
-                target = remembered
-            elif out_of_scope is not None:
-                # The typed name matches a real person OUTSIDE the caller's scope —
-                # say so honestly and show who they CAN ask about (never a leak).
-                return _scope_denied_answer(caller, intent, out_of_scope or None)
-            elif typed_a_name:
+                prior = last_referenced_person_any_scope(caller, session)
+            if prior is None:
                 return {
                     "status": "ok", "intent": intent, "data": [],
-                    "answer": "I couldn't find anyone by that name — "
-                              "try their full name or their email address.",
+                    "answer": "I'm not sure who you mean — tell me the person's "
+                              "name or their email address.",
                 }
+            if not actor_can_access(caller, prior):
+                return _scope_denied_answer(caller, intent, prior.display,
+                                            ground_user=prior)
+            target = prior
+        # else: no name, no pronoun → answer about the caller (self).
 
     if target is None:
         return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
 
     # Count-questions get REAL counts (reviews/goals/feedback), not a goals dump.
     if _COUNT_Q_RE.search(query or ""):
+        return _answer_counts(caller, target, query, intent)
+
+    # A follow-up specifically about reviews/feedback ("what about his reviews?")
+    # answers THAT, not the default goals summary.
+    _q = (query or "").lower()
+    if re.search(r"\b(reviews?|feedback)\b", _q) and not re.search(
+        r"\b(goals?|kpis?|objectives?)\b", _q
+    ):
         return _answer_counts(caller, target, query, intent)
 
     titles = _scoped_goal_titles(caller, target)

@@ -1,4 +1,13 @@
-# AI Assistant — Intelligence Report (milestone: increment 8)
+# AI Assistant — Intelligence Report (milestone: increments 1–9)
+
+> **Morning status (branch `hari/agent-intelligence-v2`, NOT merged):** 9 increments
+> committed green tonight; **284 AI tests** pass; the self-test harness
+> (`scripts/agent_intel_suite.py`) is **46/46**. The assistant went from
+> keyword→canned-reply to memory-aware + reasoning + Gemini-phrased, all strictly
+> RBAC-scoped (read-only; no intelligence path reaches past permissions). Nothing is
+> merged into `hari/agent-ui-v2` or `main` — review the branch, then merge when happy.
+> To review: `git log --oneline hari/agent-ui-v2..hari/agent-intelligence-v2`.
+
 
 Branch: `hari/agent-intelligence-v2`. The read-only, RBAC-bound chat assistant has
 gone from keyword→canned-reply to a memory-aware, reasoning assistant that phrases

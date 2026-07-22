@@ -201,7 +201,16 @@ finding the boundaries hold.
 
 ---
 
-## RESUME HERE → Increment 10
+## Increment 10 — consolidation + morning handoff  ✅ (committed)
+
+Confirmed the whole night's work is green (284 AI tests) and the harness is 46/46.
+Added a "Morning status" block to `docs/AGENT_INTEL/REPORT.md`: the branch is NOT
+merged; review `git log --oneline hari/agent-ui-v2..hari/agent-intelligence-v2`, then
+merge when happy. No code change this cycle — a checkpoint before the next feature.
+
+---
+
+## RESUME HERE → Increment 11
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

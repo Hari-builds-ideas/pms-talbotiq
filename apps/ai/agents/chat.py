@@ -675,8 +675,15 @@ def _answer_two_people(caller, query, targets, intent="performance", oos_names=(
     data. The optional LLM phrasing gets ONLY the in-scope people's facts."""
     from apps.ai.insight import diagnose_person, llm_phrase
 
+    # A COUNT comparison ("how many goals/reviews do X and Y have?") gets precise
+    # per-person counts, not a diagnosis — and is NOT LLM-phrased (numbers stay exact).
+    is_count = bool(_COUNT_Q_RE.search(query or ""))
     drafts, facts, names = [], [], []
     for t in targets[:3]:
+        if is_count:
+            drafts.append(_answer_counts(caller, t, query, intent)["answer"])
+            names.append(t.display)
+            continue
         diag = diagnose_person(caller, t)
         if diag is None:  # defensive — resolver already scoped
             continue
@@ -686,7 +693,10 @@ def _answer_two_people(caller, query, targets, intent="performance", oos_names=(
     if not drafts and not oos_names:
         return {"status": "ok", "intent": intent, "data": [],
                 "answer": "I couldn't pull those people up in your scope."}
-    answer = llm_phrase(caller.tenant_id, query, {"people": facts}, " ".join(drafts)) if drafts else ""
+    if is_count:
+        answer = " ".join(drafts)
+    else:
+        answer = llm_phrase(caller.tenant_id, query, {"people": facts}, " ".join(drafts)) if drafts else ""
     if oos_names:
         who = " and ".join(oos_names[:3])
         note = (f"I can't share {who}'s performance — they're outside your access."

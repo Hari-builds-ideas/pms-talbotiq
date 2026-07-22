@@ -289,6 +289,25 @@ def test_two_person_comparison_diagnoses_both(org):
 
 
 @override_settings(**FAKE)
+def test_two_named_aggregation_gives_counts_not_diagnosis(org):
+    """"how many goals do X and Y have?" → precise per-person counts, both named."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Akhil Rao"
+        org.report.save(update_fields=["display_name"])
+        mei = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                          display_name="Mei Patel")
+        _goal_with_kpi(org.tenant, org.report, "Alpha", target=100, actual=50,
+                       created_by=org.manager)
+        _goal_with_kpi(org.tenant, mei, "Beta", target=100, actual=50,
+                       created_by=org.manager)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how many goals do Akhil Rao and Mei Patel have?"}, format="json")
+    ans = r.json()["answer"]
+    assert "Akhil Rao" in ans and "Mei Patel" in ans
+    assert "goal(s)" in ans   # a count, not a diagnosis narrative
+
+
+@override_settings(**FAKE)
 def test_comparison_mixed_scope_answers_in_scope_and_notes_the_rest(org):
     """"compare <my report> and <someone I can't see>" → diagnose the report AND
     honestly note the other is out of access (no data), not a blanket "couldn't find"."""

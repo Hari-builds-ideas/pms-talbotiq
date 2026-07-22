@@ -210,7 +210,16 @@ merge when happy. No code change this cycle — a checkpoint before the next fea
 
 ---
 
-## RESUME HERE → Increment 11
+## Increment 11 — two-named aggregation → per-person counts  ✅ (committed)
+
+"how many goals/reviews do X and Y have?" now returns PRECISE per-person counts (via
+`_answer_counts` per person, NOT LLM-phrased so numbers stay exact), instead of a
+diagnosis narrative. `_answer_two_people` branches on `_COUNT_Q_RE`. 285 AI tests
+(1 new). Scope unchanged (each person still resolved/gated independently).
+
+---
+
+## RESUME HERE → Increment 12
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

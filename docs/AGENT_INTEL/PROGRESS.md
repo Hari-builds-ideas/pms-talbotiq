@@ -171,22 +171,39 @@ currently on track, though pace is behind…"* (was: a dead "couldn't find").
 
 ---
 
-## RESUME HERE → Increment 8
+## Increment 8 — comparison polish for mixed in/out-of-scope pairs  ✅ (committed)
 
-Next cycle, in priority order:
-1. **Comparison polish**: when one of two named people is out of scope, answer the
-   in-scope one AND note the other is out of your access (today a mixed pair falls to
-   a generic "couldn't find" — safe, not helpful).
-2. **Topic-switch-then-refer-back**: after switching people, "go back to the first
-   person" / re-referring an earlier-grounded person by role ("my report").
-3. Refresh `docs/AGENT_INTEL/REPORT.md` with the comparison + "the other one" rows
-   and updated weaknesses.
-4. Consider a harness quota note: with phrasing ON each reasoned turn = 2 LLM calls,
-   so a full run ≈ 40+ calls; RESET the ceiling before each run
-   (`atomic.reset_window('llm:global:calls')`) or raise `LLM_MAX_CALLS` in the
-   running container (env-for-testing sets 400 but the live container is on 60).
+**Built:** `_resolve_multiple` now returns `(in_scope_targets, out_of_scope_names)`;
+`_answer_two_people` diagnoses the in-scope people AND honestly names the out-of-scope
+ones ("I can't share Hugo Ghost's — they're outside your access") — never their data.
+The call fires for ≥2 in-scope OR (≥1 in-scope + an out-of-scope name). Added
+"compare/vs/versus" to the FakeLLM perf-word set so "compare X and Y" classifies as
+performance. 284 AI tests (1 new); harness 39/39.
 
-Known weaknesses: mixed in/out-of-scope comparison → "couldn't find"; no explicit
-"go back to X"; harness is LLM-quota-heavy with phrasing on.
+**Before → after (live/logic):** manager "compare Akhil Rao and Hugo Ghost" (Hugo out
+of scope) — before: generic "couldn't find"; after: Akhil's diagnosis + "I can't share
+Hugo Ghost's — they're outside your access."
 
-To re-run the harness: reset the quota, then `python scripts/agent_intel_suite.py`.
+---
+
+## RESUME HERE → Increment 9
+
+The assistant now covers all the goal's named intents (memory/coref, status,
+diagnosis, comparison, aggregation, capability, disambiguation + "the other one",
+typo tolerance, mixed-scope) — reasoned + Gemini-phrased, all RBAC-scoped. Next,
+polish + breadth:
+1. **Topic-switch-then-refer-back**: "go back to the first person", re-refer an
+   earlier-grounded person ("my report", "the manager I mentioned").
+2. **Aggregation over two named people** ("how many goals do X and Y have") → counts,
+   not diagnosis.
+3. **Harness breadth**: HRBP deep probes, mid-conversation topic switches, trailing
+   punctuation/emoji, mixed-language greetings; reset quota before each run.
+4. Keep `docs/AGENT_INTEL/REPORT.md` current at each milestone.
+
+Known weaknesses: no explicit "go back to X"; two-named aggregation routes to
+diagnosis; harness is LLM-quota-heavy (phrasing = 2 calls/turn) — reset the ceiling
+before each run.
+
+To re-run the harness: reset the quota
+(`docker compose exec web python -c "from apps.billing import atomic; atomic.reset_window('llm:global:calls')"`),
+then `python scripts/agent_intel_suite.py`.

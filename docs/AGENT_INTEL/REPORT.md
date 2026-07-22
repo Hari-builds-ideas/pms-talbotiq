@@ -1,4 +1,4 @@
-# AI Assistant — Intelligence Report (milestone: increment 3)
+# AI Assistant — Intelligence Report (milestone: increment 8)
 
 Branch: `hari/agent-intelligence-v2`. The read-only, RBAC-bound chat assistant has
 gone from keyword→canned-reply to a memory-aware, reasoning assistant that phrases
@@ -10,12 +10,14 @@ its answers in natural language via Gemini — **without ever widening access**.
 |---|---|---|
 | **Memory + coreference** | "how is Akhil?" → "does he need help?" | "he" resolves to Akhil; a pronoun binds to the last person mentioned, re-checked for scope every turn |
 | **Diagnosis (reasoned + phrased)** | "does she need help?" | reasons over real cycle status/pace + weakest KPI vs target, phrased naturally by Gemini, grounded only in permitted data |
-| **Status** | "how is Mei Patel?" | goals + cycle status (reasoned migration pending — increment 4) |
+| **Status** | "how is Mei Patel?" | REASONED + Gemini-phrased (cycle status + weakest KPI vs target), grounded — no longer a flat list |
 | **Team scan** | "who's behind on my team?" | scoped to the caller's OWN reports; "at risk" (rating) vs "behind" (pace); capped list |
-| **Comparison** | "who's doing best/worst on my team?" | ranked top/bottom 5 by cycle score |
+| **Team comparison** | "who's doing best/worst on my team?" | ranked top/bottom 5 by cycle score |
+| **Two-person compare** | "how are Akhil and Mei doing?" / "compare X and Y" | each resolved + scoped independently, both diagnosed; a mixed pair answers the in-scope one and names the other as out-of-access |
 | **Aggregation** | "how many of my reports are behind?" | a count summary, not a name dump |
 | **Capability** | "what can you do?" | tailored to the caller's role/scope |
-| **Ambiguity** | "how is Leon Petrova?" (two exist) | lists both with emails to disambiguate |
+| **Ambiguity** | "how is Leon Petrova?" (two exist) | lists both with emails; "the first one" then resolves the pick |
+| **Name typos** | "how is Anastaesia doing?" | scope-limited "did you mean Anastasia?" (never a name out of scope) |
 | **Out of scope** | employee asks about a peer | honest refusal + who they CAN ask about; never leaks |
 
 ## Before → after (real, live)
@@ -47,12 +49,14 @@ its answers in natural language via Gemini — **without ever widening access**.
 
 ## Remaining weaknesses (next increments)
 
-- "how is X" **status** is still the flat template (not yet reasoned/phrased).
-- No **name-typo** tolerance ("Akil Menon").
-- No **"what about the other one"** after a disambiguation, no **two-named-people**
-  comparison ("how are Akhil and Mei doing?").
-- Phrasing adds one LLM call per diagnosis (latency/quota) — acceptable, flag-gated
-  (`AGENT_INTEL_LLM_PHRASING`).
+- No explicit **"go back to the first person"** / re-refer an earlier-grounded person
+  by role ("my report") after switching topics.
+- **Aggregation over two named people** ("how many goals do X and Y have") routes to
+  diagnosis, not counts.
+- Phrasing adds one LLM call per reasoned answer (latency/quota) — flag-gated
+  (`AGENT_INTEL_LLM_PHRASING`); the self-test harness is therefore quota-heavy (reset
+  `llm:global:calls` before each run).
+- Self-test suite (36–39 checks) is solid but not exhaustive; keep growing it.
 
 ## How to test it yourself (morning)
 

@@ -52,6 +52,8 @@ _PERF_WORDS = (
     # diagnosis phrasings — "does she need help?", "is X on track / at risk / behind?"
     "need help", "needs help", "on track", "at risk", "behind", "struggling",
     "falling behind", "in trouble", "doing well", "doing okay", "how is", "how are",
+    # comparison phrasings — "compare X and Y", "X vs Y"
+    "compare", "compared", " vs ", "versus",
 )
 #: Cues for a TEAM "find people" query (RW_BUILD_5 NL search). Checked BEFORE the
 #: performance words (a search mentions 'goal'/'check-in' too) so a manager's
@@ -647,27 +649,30 @@ _COMPARE_SPLIT_RE = re.compile(r"\b(?:and|vs\.?|versus|compared\s+to)\b|,", re.I
 
 def _resolve_multiple(caller, query):
     """People named in a comparison ("how are Akhil and Mei doing?", "compare X and
-    Y"). Splits on and/vs/comma, resolves each segment IN SCOPE independently, and
-    returns the DISTINCT in-scope targets. Empty unless a comparison connector is
-    present AND ≥1 resolves — so "goals and KPIs" (no second person) is unaffected.
-    Every target is scope-checked by ``_resolve_in_scope`` — never a leak."""
+    Y"). Splits on and/vs/comma, resolves each segment IN SCOPE independently.
+    Returns ``(in_scope_targets, out_of_scope_names)`` — the second list lets the
+    caller answer the in-scope people AND honestly name the ones it can't see
+    (never their data). Empty unless a comparison connector is present."""
     if not re.search(r"\band\b|\bvs\b|\bversus\b|\bcompare|,", (query or ""), re.I):
-        return []
-    targets, seen = [], set()
+        return [], []
+    targets, seen, oos_names = [], set(), []
     for part in _COMPARE_SPLIT_RE.split(query or ""):
         if not part.strip():
             continue
-        named, _amb, _oos = _resolve_in_scope(caller, part)
+        named, _amb, oos = _resolve_in_scope(caller, part)
         if named is not None and named.id not in seen:
             seen.add(named.id)
             targets.append(named)
-    return targets
+        elif hasattr(oos, "display") and oos.display not in oos_names:
+            oos_names.append(oos.display)  # a real person, outside the caller's scope
+    return targets, oos_names
 
 
-def _answer_two_people(caller, query, targets, intent="performance"):
-    """A per-person reasoned reply for a comparison. Each person is diagnosed
-    independently (already in-scope via ``_resolve_multiple``); read-only, grounded,
-    no fabrication. The optional LLM phrasing gets ONLY these people's facts."""
+def _answer_two_people(caller, query, targets, intent="performance", oos_names=()):
+    """A per-person reasoned reply for a comparison. Each in-scope person is diagnosed
+    independently (already scoped via ``_resolve_multiple``); read-only, grounded, no
+    fabrication. Any ``oos_names`` are named honestly as out-of-access — never their
+    data. The optional LLM phrasing gets ONLY the in-scope people's facts."""
     from apps.ai.insight import diagnose_person, llm_phrase
 
     drafts, facts, names = [], [], []
@@ -678,11 +683,16 @@ def _answer_two_people(caller, query, targets, intent="performance"):
         drafts.append(diag["answer"])
         facts.append(diag["facts"])
         names.append(t.display)
-    if not drafts:
+    if not drafts and not oos_names:
         return {"status": "ok", "intent": intent, "data": [],
                 "answer": "I couldn't pull those people up in your scope."}
-    draft = " ".join(drafts)
-    answer = llm_phrase(caller.tenant_id, query, {"people": facts}, draft)
+    answer = llm_phrase(caller.tenant_id, query, {"people": facts}, " ".join(drafts)) if drafts else ""
+    if oos_names:
+        who = " and ".join(oos_names[:3])
+        note = (f"I can't share {who}'s performance — they're outside your access."
+                if not answer else
+                f" I can't share {who}'s though — they're outside your access.")
+        answer = (answer + note).strip()
     return {
         "status": "ok", "intent": intent, "answer": answer, "data": names,
         "refs": [{"type": "user", "id": str(t.id), "label": t.display} for t in targets[:3]],
@@ -870,9 +880,9 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # a per-person reasoned reply, each resolved + scope-checked INDEPENDENTLY. Only
     # fires when ≥2 DISTINCT in-scope people resolve, so "goals and KPIs" is untouched
     # and an out-of-scope name simply isn't included (never a leak).
-    _multi = _resolve_multiple(caller, query)
-    if len(_multi) >= 2:
-        return _answer_two_people(caller, query, _multi, intent)
+    _multi, _oos_names = _resolve_multiple(caller, query)
+    if len(_multi) >= 2 or (_multi and _oos_names):
+        return _answer_two_people(caller, query, _multi, intent, oos_names=_oos_names)
 
     match = _EMAIL_RE.search(query or "")
     target = caller

@@ -289,6 +289,23 @@ def test_two_person_comparison_diagnoses_both(org):
 
 
 @override_settings(**FAKE)
+def test_comparison_mixed_scope_answers_in_scope_and_notes_the_rest(org):
+    """"compare <my report> and <someone I can't see>" → diagnose the report AND
+    honestly note the other is out of access (no data), not a blanket "couldn't find"."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Akhil Rao"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK")
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE",
+                    display_name="Hugo Ghost")  # out of the manager's scope
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "compare Akhil Rao and Hugo Ghost"}, format="json")
+    ans = r.json()["answer"]
+    assert "Akhil Rao" in ans                     # the in-scope person is answered
+    assert "Hugo Ghost" in ans and "outside your access" in ans.lower()  # honest note
+
+
+@override_settings(**FAKE)
 def test_comparison_never_leaks_out_of_scope_people(org):
     """An employee comparing two people they can't see gets refused — no data,
     no goal titles, for either."""

@@ -105,9 +105,80 @@ def test_memory_never_widens_access(org):
     r = peer.post(CHAT, {"query": "how is Rhea doing on her goals?"}, format="json")
     body = r.json()
     assert body["status"] == "ok"
-    # Named resolution finds Rhea, but the scoped fetch refuses: no data leaked.
-    assert "No data in your scope" in body["answer"]
+    # Named resolution matches Rhea tenant-wide, but she is outside the peer's
+    # scope: an honest guardrail reply (no access, only admin/HR sees everyone) —
+    # and, crucially, NO performance data leaked.
+    ans = body["answer"].lower()
+    assert "don't have access" in ans and "admin" in ans
     assert "goal(s):" not in body["answer"]
+
+
+@override_settings(**FAKE)
+def test_manager_asking_outside_team_gets_guardrail_naming_who_they_can_see(org):
+    """A manager who asks about someone NOT on their team is told plainly they
+    don't have access (only admin/HR sees everyone) AND is shown who they CAN ask
+    about — never a bare "no data" that reads like a bug, never a leak."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")   # the manager's direct report
+        _name(org.peer, "Pax Peer")        # reports to hrbp, NOT the manager
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is Pax Peer doing on their goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"]
+    assert "don't have access" in ans.lower() and "admin" in ans.lower()
+    assert "Rhea Report" in ans            # names who the manager CAN ask about
+    assert "goal(s):" not in ans           # no performance data leaked
+
+
+@override_settings(**FAKE)
+def test_employee_asking_about_another_person_gets_self_only_guardrail(org):
+    with tenant_context(org.tenant):
+        _name(org.manager, "Meg Manager")
+    c = _client(org.report)  # EMPLOYEE — OWN scope
+    r = c.post(CHAT, {"query": "how is Meg Manager doing on her goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"].lower()
+    assert "don't have access" in ans and "your own" in ans
+    assert "goal(s):" not in body["answer"]
+
+
+@override_settings(**FAKE)
+def test_full_name_never_resolves_to_a_same_surname_teammate(org):
+    """Live-found bug: a manager asking about "Hugo O'Brien" (out of scope) must NOT
+    silently resolve to a same-surname "Hana O'Brien" on their own team. A full name
+    must FULLY match an in-scope person — otherwise it's an honest scope refusal."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Hana O'Brien")  # the manager's report (in scope)
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE",
+                    display_name="Hugo O'Brien")  # out of the manager's scope
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is Hugo O'Brien doing on his goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"]
+    assert "Hana O'Brien has" not in ans             # did NOT answer about the teammate
+    assert "Hugo O'Brien" in ans                      # names the person actually asked for
+    assert "don't have access" in ans.lower()         # honest scope refusal
+    assert "goal(s):" not in ans
+
+
+@override_settings(**FAKE)
+def test_bare_first_name_resolves_to_the_one_on_your_team(org):
+    """Scope-aware resolution: many people share a first name tenant-wide, but a
+    manager asking "how is yuki doing?" gets the ONE Yuki on their team — not a
+    disambiguation list of strangers they can't open."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Yuki Onteam")  # the manager's report
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE", display_name="Yuki Stranger")
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE", display_name="Yuki Faraway")
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is yuki doing on her goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "Yuki Onteam" in body["answer"]
+    assert "Several people match" not in body["answer"]
 
 
 @override_settings(**FAKE)

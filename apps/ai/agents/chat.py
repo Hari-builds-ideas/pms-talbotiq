@@ -222,11 +222,12 @@ def _classification_prompt(query: str, session) -> str:
     )
 
 
-def _resolve_named_person(caller, query):
-    """A person NAMED in the query — a unique, whole-token match on a tenant user's
-    display name (or email local-part). Returns ``(user|None, ambiguous_names)``.
-    Access is NOT granted here — the caller's scope is re-checked downstream
-    exactly like an email mention (out-of-scope → the same empty answer)."""
+def _named_candidates(query):
+    """Every TENANT user whose display name (or email local-part) matches a name
+    token in ``query``. Tenant-scoped (never cross-tenant) but NOT data-scope
+    filtered — the caller's scope is applied by the call site, so we can tell
+    "no such person" apart from "exists but outside your scope" and answer
+    honestly. Returns ``(matches, wordset, tokens_of)``."""
     from django.db.models import Q
 
     from apps.identity.models import User
@@ -236,7 +237,7 @@ def _resolve_named_person(caller, query):
         if w not in _NAME_STOP_WORDS
     ][:8]
     if not words:
-        return None, []
+        return [], set(), {}
     cond = None
     for w in words:
         c = Q(display_name__icontains=w) | Q(email__istartswith=w)
@@ -250,6 +251,15 @@ def _resolve_named_person(caller, query):
         email_local = u.email.split("@")[0].lower()
         if (name_tokens & wordset) or (email_local in wordset):
             matches.append(u)
+    return matches, wordset, tokens_of
+
+
+def _pick_named(matches, wordset, tokens_of):
+    """From a candidate set, pick the ONE person named, or a disambiguation list.
+    Returns ``(user|None, ambiguous_names)``. Works on whatever set it is given —
+    the call site passes only the IN-SCOPE candidates so a manager who names a
+    colleague on their team resolves cleanly instead of being offered tenant-wide
+    strangers they can't see."""
     if len(matches) == 1:
         return matches[0], []
     if len(matches) > 1:
@@ -270,11 +280,120 @@ def _resolve_named_person(caller, query):
     return None, []
 
 
+def _resolve_named_person(caller, query):
+    """Scope-agnostic name resolution (unit-test entry point): resolve a NAMED
+    person from the whole tenant. Production goes through the scope-aware path in
+    ``run`` — but the raw name-matching rules are identical and proven here."""
+    matches, wordset, tokens_of = _named_candidates(query)
+    return _pick_named(matches, wordset, tokens_of)
+
+
+def _resolve_in_scope(caller, query):
+    """Scope-aware person resolution for a performance question.
+
+    Returns ``(target, ambiguous_names, out_of_scope)``:
+      * ``target``          — the resolved IN-SCOPE user, or None.
+      * ``ambiguous_names`` — >1 in-scope match → names to disambiguate, else [].
+      * ``out_of_scope``    — the display name (or "" when >1) of a person who
+        matches the TYPED NAME but sits OUTSIDE the caller's scope; None when the
+        name simply isn't found at all. This lets the caller say "you don't have
+        access to X" instead of a misleading "not found".
+
+    A multi-token name must FULLY match an in-scope person — so a manager asking
+    about "Hugo O'Brien" never silently resolves to a same-surname "Hana O'Brien"
+    on their own team. A single first-name token ("yuki") resolves to the one
+    person on the caller's team when unique."""
+    matches, wordset, tokens_of = _named_candidates(query)
+    if not matches:
+        return None, [], None
+    in_scope = [u for u in matches if actor_can_access(caller, u)]
+    # Tokens that are genuinely NAMES — they appear in some tenant user's name,
+    # counted tenant-wide so "hugo" still counts even when Hugo is out of scope.
+    real_tokens = {t for t in wordset if any(t in toks for toks in tokens_of.values())}
+
+    def _full(cands):
+        return [u for u in cands if real_tokens and real_tokens <= tokens_of[u.id]]
+
+    if len(real_tokens) >= 2:
+        picks = _full(in_scope)
+        if len(picks) == 1:
+            return picks[0], [], None
+        if len(picks) > 1:
+            return None, sorted({u.display for u in picks}), None
+        # Nobody in scope matches the FULL name. Out of scope iff the tenant has one.
+        tenant_full = _full(matches)
+        if tenant_full:
+            return None, [], (tenant_full[0].display if len(tenant_full) == 1 else "")
+        return None, [], None  # a full name nobody actually has → not found
+
+    # A single (or zero) real name-token — loose, first-name style ("yuki").
+    if len(in_scope) == 1:
+        return in_scope[0], [], None
+    if len(in_scope) > 1:
+        return None, sorted({u.display for u in in_scope}), None
+    # None in scope, but the name matched tenant users → it's a scope boundary.
+    return None, [], (matches[0].display if len(matches) == 1 else "")
+
+
+def _accessible_report_names(caller, limit=12):
+    """Display names of the people ``caller`` may ask about (their reporting
+    subtree, excluding themselves) — used to tell a manager who they CAN see when
+    they hit a scope boundary. Capped so the reply stays readable."""
+    from apps.identity.models import User
+    from apps.rbac.scope import reporting_subtree_ids
+
+    ids = reporting_subtree_ids(caller) - {caller.id}
+    if not ids:
+        return [], 0
+    qs = User.objects.filter(id__in=ids).order_by("display_name")
+    names = [u.display for u in qs[: limit + 1]]
+    total = len(ids)
+    return names[:limit], total
+
+
+def _scope_denied_answer(caller, intent, name=None):
+    """Honest, role-aware refusal when a caller asks about someone OUTSIDE their
+    data scope. It is a guardrail, not a bug: an EMPLOYEE sees only themselves; a
+    MANAGER sees their own reports; only ADMIN/HR see the whole company. We say so
+    plainly, list who the caller CAN ask about, and never leak the out-of-scope
+    person's data."""
+    role = getattr(caller, "role", "") or ""
+    if role == "EMPLOYEE":
+        subject = f"{name}'s" if name else "another person's"
+        answer = (
+            f"You don't have access to {subject} data — only an admin or HR can "
+            "see everyone across the company. I can show your own goals, reviews, "
+            "feedback and recognition."
+        )
+    elif role == "MANAGER":
+        subject = f"{name}'s" if name else "that person's"
+        names, total = _accessible_report_names(caller)
+        if names:
+            shown = ", ".join(names)
+            more = f", and {total - len(names)} more" if total > len(names) else ""
+            can = f" You can ask about the people on your team: {shown}{more}."
+        else:
+            can = " You can ask about your own goals, reviews and feedback."
+        answer = (
+            f"You don't have access to {subject} data — only an admin or HR can "
+            f"see everyone across the company.{can}"
+        )
+    else:  # HRBP / ADMIN normally have tenant scope and never reach this branch.
+        subject = f"{name}" if name else "That person"
+        answer = (
+            f"{subject} is outside the part of the organisation you can see, so I "
+            "can't share their performance details."
+        )
+    return {"status": "ok", "intent": intent, "answer": answer, "data": []}
+
+
 def _answer_counts(caller, target, query, intent):
     """Deterministic counts for 'how many reviews/goals/feedback …' — real scoped
     querysets, never a goals-only misroute. Scope-checked like every read."""
-    if target is None or not actor_can_access(caller, target):
-        return {"status": "ok", "intent": intent, "answer": "No data in your scope.", "data": []}
+    if target is None:
+        return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
+    if not actor_can_access(caller, target):
+        return _scope_denied_answer(caller, intent, target.display)
     from apps.feedback.models import FeedbackRequest
     from apps.goals.models import Goal
     from apps.reviews.models import Review
@@ -436,13 +555,24 @@ def chat_answer(caller, query: str, session=None) -> dict:
     target = caller
     if match:
         found = User.objects.filter(email=match.group(0)).first()  # tenant-scoped
+        if found is not None and not actor_can_access(caller, found):
+            # Exists in the tenant but outside the caller's data scope — say so
+            # honestly (who they are, who the caller CAN ask about), never leak.
+            return _scope_denied_answer(caller, intent, found.display)
         target = found  # may be None (cross-tenant / unknown) → empty answer
     else:
         # An explicitly NAMED person ALWAYS wins over remembered context: after
         # "how is Vera doing?", the follow-up "Ethan Nguyen, how is he doing?" must
         # resolve to Ethan — not stay on Vera via the pronoun. Only a PURELY deictic
         # follow-up ("how is she doing?", with no name typed) falls back to memory.
-        named, ambiguous = _resolve_named_person(caller, query)
+        #
+        # Resolution is SCOPE-AWARE: match names tenant-wide, keep only the people
+        # the caller may actually see, and require a full-name match. So a manager
+        # asking "how is yuki doing?" resolves to the one Yuki ON THEIR TEAM (not a
+        # list of strangers), "Hugo O'Brien" never silently becomes a same-surname
+        # teammate, and a name that exists only outside their scope gets an honest
+        # "you don't have access" reply.
+        named, ambiguous, out_of_scope = _resolve_in_scope(caller, query)
         # A deictic pronoun ("she", "he", "them", "that person") is NOT a name — it
         # points at the remembered person. Only a real name token counts as "typed
         # a name" (which is what should override memory / trigger a not-found).
@@ -457,7 +587,7 @@ def chat_answer(caller, query: str, session=None) -> dict:
             return {
                 "status": "ok", "intent": intent, "data": [],
                 "answer": f"Several people match that name: {', '.join(ambiguous)}. "
-                          "Try their email address.",
+                          "Try their full name or their email address.",
             }
         else:
             remembered = None
@@ -467,12 +597,14 @@ def chat_answer(caller, query: str, session=None) -> dict:
                 remembered = resolve_person_reference(caller, session, query)
             if remembered is not None:
                 target = remembered
+            elif out_of_scope is not None:
+                # The typed name matches a real person OUTSIDE the caller's scope —
+                # say so honestly and show who they CAN ask about (never a leak).
+                return _scope_denied_answer(caller, intent, out_of_scope or None)
             elif typed_a_name:
-                # They named someone we can't find — say so; never silently answer
-                # about a stale remembered person.
                 return {
                     "status": "ok", "intent": intent, "data": [],
-                    "answer": "I couldn't find anyone by that name in your scope — "
+                    "answer": "I couldn't find anyone by that name — "
                               "try their full name or their email address.",
                 }
 
@@ -485,8 +617,9 @@ def chat_answer(caller, query: str, session=None) -> dict:
 
     titles = _scoped_goal_titles(caller, target)
     if titles is None:
-        # Out of the caller's scope — return nothing, exactly like a scoped API call.
-        return {"status": "ok", "intent": intent, "answer": "No data in your scope.", "data": []}
+        # Out of the caller's scope — an honest, role-aware guardrail reply (who
+        # they CAN ask about), never a bare "no data" that reads like a bug.
+        return _scope_denied_answer(caller, intent, target.display)
 
     # Grounded answer: name the goals and (if present + in scope) the latest cycle
     # score/risk — never vague. Still read-only; the data is exactly what a scoped

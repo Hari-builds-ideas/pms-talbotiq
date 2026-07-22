@@ -48,25 +48,61 @@ was). No reasoning over the actual cycle/KPI data.
 
 ---
 
-## RESUME HERE → Increment 2
+## Increment 2 — self-test harness + comparison/aggregation + role-aware help  ✅ (committed)
+
+Built the **self-test harness** first (the "core of the night") and let it drive the
+fixes.
+
+**Built:**
+- `scripts/agent_intel_suite.py` — a live, multi-role adversarial conversation suite
+  (employee/manager/HRBP/admin) with heuristic checks (no-leak, honest-refusal,
+  not-canned, not-dead, no-dup-filler). Exit 1 on any failure so it can gate CI.
+  First run flagged **2 real gaps**; now **32/32 checks pass**.
+- `apps/ai/insight.py`: `team_scan(mode=at_risk|behind|all)`, `team_ranking(best=)`,
+  `team_counts` — all scoped to the caller's OWN reporting subtree.
+- `apps/ai/agents/chat.py`:
+  - **Comparison** intent ("who's doing best/worst") → ranked top/bottom 5 (was a
+    DEAD "couldn't find" reply — the harness caught this).
+  - **Aggregation** intent ("how many of my reports are behind?") → a COUNT summary
+    ("5 on track, 3 at risk, 9 behind pace"), not the full name list.
+  - **Team-scan** now distinguishes "at risk" (rating) from "behind" (pace) and
+    **caps** the list at 8 with "and N more" (HRBP scan went from 65 names → a
+    focused 22-at-risk with a cap).
+  - **Role-aware capability** answer — a manager hears about team insight, an
+    employee hears "I can only see your own data" (fixes the "same scripted blurb").
+- Tests: 4 new in `test_chat_diagnosis.py` (ranking order, count-not-list, at-risk
+  excludes behind-only, capability is role-aware). **274 AI tests green.**
+
+**Before → after (live, manager ada):**
+- `who is doing best on my team?` — before: *"I couldn't find anyone by that name"*;
+  after: *"Your top performers this cycle: 1. Akhil Menon (On track); 2. Mateo
+  Santos…"*.
+- `how many of my reports are behind?` — before: full 9-name list; after: *"Of your
+  14 report(s): 5 on track, 3 at risk, 9 behind pace."*
+- `who is at risk?` — before: 65 names (over-broad); after: *"3 of your 14… are at
+  risk: Hana O'Brien; Liam Costa; Noah Cohen."*
+- `what can you do?` — before: one blurb for everyone; after: role-specific.
+
+---
+
+## RESUME HERE → Increment 3
 
 Next cycle, in priority order:
-1. **Gemini phrasing layer.** Add `insight.person_facts` → a strong system prompt +
+1. **Gemini phrasing layer.** `insight.person_facts` → strong system prompt + ONLY
    the permitted facts → Gemini writes the natural-language answer (reason, don't
-   template). Deterministic fallback = the current `diagnose_person` string on any
-   model error/no-key. LLM must NEVER add data beyond `person_facts`. Add a live
-   smoke + a FakeLLM test that the fallback path stays grounded.
-2. **Migrate "how is X" status** to the reasoned answer (currently still the flat
-   goal summary). Update the affected summary tests.
-3. **Distinguish "at risk" vs "behind pace"** in team-scan (right now both are
-   listed together); cap long lists with an "and N more".
-4. **Comparison + aggregation intents:** "who's doing best/worst on my team",
-   "how many of my reports are behind" (a count, not the full list).
-5. **Grow the self-test harness** (`scripts/agent_intel_suite.py` — to be created):
-   multi-turn conversations per role, pronoun chains, ambiguous names, typos, empty
-   /gibberish/very-long input, permission-boundary probes. Run it, triage failures,
-   fix+test+log each, expand, repeat.
+   template). Deterministic `diagnose_person` string is the fallback on any model
+   error/no-key. LLM must NEVER add data beyond `person_facts`. Guard with a
+   settings flag (`AGENT_INTEL_LLM_PHRASING`, default on when a key is present) +
+   a FakeLLM test that the fallback path stays grounded + a live smoke.
+2. **Migrate "how is X" status** to the reasoned diagnosis (still the flat goal
+   summary today). Update the affected summary tests intentionally.
+3. **Expand the harness**: name typos ("Akil Menon"), "what about the other one"
+   after a disambiguation, topic-switch-then-refer-back, very-long input, multi-
+   person ("how are Akhil and Mei doing"), comparison across two named people.
+4. First **docs/AGENT_INTEL/REPORT.md** milestone write-up.
 
-Known weaknesses to attack: team-scan answer can be very long; "at risk" currently
-over-broad; status "how is X" not yet reasoned; no LLM phrasing yet (answers are
-templated, if grounded).
+Known weaknesses to attack: status "how is X" not yet reasoned; no LLM phrasing yet
+(answers grounded but templated); no typo tolerance on names; no two-named-people
+comparison.
+
+To re-run the harness: `python scripts/agent_intel_suite.py` (server on :8090, seeded).

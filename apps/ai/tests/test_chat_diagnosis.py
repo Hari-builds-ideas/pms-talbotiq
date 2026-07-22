@@ -32,13 +32,13 @@ def _client(user):
     return c
 
 
-def _score(tenant, employee, *, risk="ON_TRACK", pace_behind=False):
+def _score(tenant, employee, *, risk="ON_TRACK", pace_behind=False, t_score="50"):
     from apps.goals.models import CycleScore
 
     cyc = CycleFactory(tenant=tenant)
     return CycleScore.objects.create(
         tenant_id=tenant.id, employee=employee, cycle=cyc,
-        raw_score=Decimal("1"), z_score=Decimal("0"), t_score=Decimal("50"),
+        raw_score=Decimal("1"), z_score=Decimal("0"), t_score=Decimal(str(t_score)),
         cohort_size=5, risk_status=risk, pace_behind=pace_behind,
         computed_at=timezone.now(),
     )
@@ -138,3 +138,60 @@ def test_team_scan_refused_for_individual_contributor(org):
     r = c.post(CHAT, {"query": "who's at risk on my team?"}, format="json")
     ans = r.json()["answer"]
     assert "no team" in ans.lower() or "don't have any reports" in ans.lower()
+
+
+@override_settings(**FAKE)
+def test_comparison_ranks_team_best_first(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Star Performer"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", t_score="80")
+        weak = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                           display_name="Weak Link")
+        _score(org.tenant, weak, risk="AT_RISK", pace_behind=True, t_score="30")
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "who is doing best on my team?"}, format="json")
+    ans = r.json()["answer"]
+    assert "couldn't find" not in ans.lower()   # no longer a dead reply
+    # Best-first: the star ranks ahead of the weak link.
+    assert ans.index("Star Performer") < ans.index("Weak Link")
+
+
+@override_settings(**FAKE)
+def test_aggregation_returns_counts_not_the_full_list(org):
+    with tenant_context(org.tenant):
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=True)
+        ok = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                         display_name="Fine Fiona")
+        _score(org.tenant, ok, risk="ON_TRACK", pace_behind=False)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how many of my reports are behind?"}, format="json")
+    ans = r.json()["answer"]
+    assert "on track" in ans.lower() and "at risk" in ans.lower()  # a count summary
+    assert "Fine Fiona" not in ans   # a count, NOT the name list
+
+
+@override_settings(**FAKE)
+def test_at_risk_scan_excludes_behind_only(org):
+    """"who's at risk" (rating) must not sweep in people who are only behind pace."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Risk Ray"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=False)
+        pacey = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                            display_name="Pacey Pat")
+        _score(org.tenant, pacey, risk="ON_TRACK", pace_behind=True)
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "who is at risk on my team?"}, format="json")
+    ans = r.json()["answer"]
+    assert "Risk Ray" in ans
+    assert "Pacey Pat" not in ans   # behind pace but ON_TRACK rating → not "at risk"
+
+
+@override_settings(**FAKE)
+def test_capability_answer_is_role_aware(org):
+    mgr = _client(org.manager).post(CHAT, {"query": "what can you do?"}, format="json").json()["answer"]
+    emp = _client(org.report).post(CHAT, {"query": "what can you do?"}, format="json").json()["answer"]
+    assert "team" in mgr.lower() and ("who's behind" in mgr.lower() or "doing best" in mgr.lower())
+    assert "only see your own" in emp.lower()
+    assert mgr != emp   # not one scripted blurb for everyone

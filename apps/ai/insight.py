@@ -159,31 +159,86 @@ def diagnose_person(caller, target) -> dict | None:
     return {"answer": lead + detail + verdict, "facts": facts, "needs_help": needs_help}
 
 
-def team_risk(caller) -> dict:
-    """People in the caller's reporting subtree who are at risk or behind pace.
-    Scoped: only the caller's own reports (never the whole tenant). Read-only."""
+def _subtree_latest_scores(caller):
+    """(user, latest CycleScore|None) for each person in the caller's reporting
+    subtree (excluding self). Scoped: never the whole tenant. Read-only."""
     from apps.goals.models import CycleScore
     from apps.identity.models import User
 
     ids = reporting_subtree_ids(caller) - {caller.id}
     if not ids:
-        return {"manages": False, "flagged": [], "total": 0}
-
-    people = {u.id: u for u in User.objects.filter(id__in=ids)}
-    flagged = []
-    for uid, user in people.items():
+        return []
+    rows = []
+    for user in User.objects.filter(id__in=ids):
         score = (
-            CycleScore.objects.filter(employee_id=uid)
+            CycleScore.objects.filter(employee_id=user.id)
             .order_by("-computed_at")
             .first()
         )
+        rows.append((user, score))
+    return rows
+
+
+def team_scan(caller, mode="all") -> dict:
+    """People in the caller's reporting subtree matching ``mode``:
+      * ``at_risk`` — risk_status is not ON_TRACK (a rating flag);
+      * ``behind``  — behind pace (a pace flag), regardless of rating;
+      * ``all``     — either of the above.
+    Scoped to the caller's OWN reports. Read-only."""
+    rows = _subtree_latest_scores(caller)
+    if not rows:
+        return {"manages": False, "flagged": [], "total": 0, "mode": mode}
+    flagged = []
+    for user, score in rows:
         if score is None:
             continue
-        if score.risk_status != "ON_TRACK" or score.pace_behind:
+        at_risk = score.risk_status != "ON_TRACK"
+        behind = bool(score.pace_behind)
+        hit = {"at_risk": at_risk, "behind": behind, "all": at_risk or behind}[mode]
+        if hit:
             flagged.append({
                 "name": user.display,
                 "risk": score.get_risk_status_display(),
-                "pace_behind": bool(score.pace_behind),
+                "at_risk": at_risk,
+                "pace_behind": behind,
             })
-    flagged.sort(key=lambda f: (f["risk"] == "On track", f["name"]))
-    return {"manages": True, "flagged": flagged, "total": len(people)}
+    flagged.sort(key=lambda f: (not f["at_risk"], f["name"]))
+    return {"manages": True, "flagged": flagged, "total": len(rows), "mode": mode}
+
+
+def team_counts(caller) -> dict:
+    """Headline counts for the caller's reporting subtree (for "how many are
+    behind?"). Scoped; read-only."""
+    rows = _subtree_latest_scores(caller)
+    if not rows:
+        return {"manages": False}
+    scored = [(u, s) for u, s in rows if s is not None]
+    at_risk = sum(1 for _, s in scored if s.risk_status != "ON_TRACK")
+    behind = sum(1 for _, s in scored if s.pace_behind)
+    on_track = sum(1 for _, s in scored if s.risk_status == "ON_TRACK" and not s.pace_behind)
+    return {
+        "manages": True, "total": len(rows), "scored": len(scored),
+        "at_risk": at_risk, "behind": behind, "on_track": on_track,
+    }
+
+
+def team_ranking(caller, *, best=True, limit=5) -> dict:
+    """The caller's reports ranked by cycle T-score (best or worst first). Scoped;
+    read-only. People without a score are excluded (and reported separately)."""
+    rows = _subtree_latest_scores(caller)
+    if not rows:
+        return {"manages": False, "ranked": [], "unscored": 0}
+    scored = [(u, s) for u, s in rows if s is not None]
+    unscored = len(rows) - len(scored)
+    scored.sort(key=lambda r: float(r[1].t_score), reverse=best)
+    ranked = [{
+        "name": u.display,
+        "risk": s.get_risk_status_display(),
+        "pace_behind": bool(s.pace_behind),
+    } for u, s in scored[:limit]]
+    return {"manages": True, "ranked": ranked, "unscored": unscored, "total": len(rows)}
+
+
+# Back-compat alias: the original team-risk scan is team_scan(mode="all").
+def team_risk(caller) -> dict:
+    return team_scan(caller, mode="all")

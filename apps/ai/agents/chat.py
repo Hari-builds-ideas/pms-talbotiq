@@ -72,6 +72,30 @@ _CAPABILITY_ANSWER = (
     "within what you're allowed to see. I can't make changes or approvals. "
     "Try: “what are my goals?” or “how am I doing this cycle?”"
 )
+
+
+def _capability_answer(caller):
+    """A capability reply tailored to the CALLER's role/scope — not one scripted
+    blurb for everyone. It names what they can actually ask about, so a manager
+    hears about team insight and an employee hears about their own data."""
+    role = getattr(caller, "role", "") or ""
+    self_part = ("For you, I can summarise your goals and KPIs, your cycle score and "
+                 "pace, and your review and feedback status — and reason about how "
+                 "you're tracking (e.g. “do I need help this cycle?”).")
+    if role in ("MANAGER", "HRBP", "ADMIN"):
+        scope = {"MANAGER": "your team (everyone who reports to you)",
+                 "HRBP": "your business unit",
+                 "ADMIN": "everyone in the organisation"}[role]
+        team_part = (
+            f" For {scope}, I can tell you how any individual is doing, diagnose who "
+            "needs help, list who's at risk or behind pace, rank who's doing best or "
+            "worst, and count how many are off track — try “who's behind on my team?”, "
+            "“who's doing best?”, or “does <name> need help?”.")
+    else:
+        team_part = (" I can only see your own data — not other people's — so I can't "
+                     "report on colleagues.")
+    return ("I'm your read-only performance assistant (I can't make changes or "
+            f"approvals). {self_part}{team_part}")
 _GENERAL_ANSWER = (
     "I'm a read-only performance assistant, so that's outside what I can help with — "
     "but I can tell you about your goals, KPIs, cycle scores, or reviews (within your "
@@ -175,6 +199,22 @@ _TEAM_SCAN_RE = re.compile(
     r"\bwho(?:'s| is| are|se)?\b.{0,40}\b(behind|at\s+risk|struggl|need|falling|trouble)\b|"
     r"\banyone\b.{0,30}\b(behind|at\s+risk|struggl|need|trouble)\b|"
     r"\bhow\s+many\b.{0,40}\b(behind|at\s+risk|struggl)\b",
+    re.I,
+)
+
+#: A COMPARISON question ("who's doing best/worst on my team", "top/lowest
+#: performer", "who's strongest/weakest"). Ranked over the caller's OWN reports.
+_COMPARE_RE = re.compile(
+    r"\bwho(?:'s| is| are)?\b.{0,40}\b(doing\s+best|doing\s+worst|best|worst|top|"
+    r"strongest|weakest|highest|lowest|ahead)\b|\btop\s+performer|\bbest\s+performer|"
+    r"\bworst\s+performer|\brank\b",
+    re.I,
+)
+
+#: An AGGREGATION question — a COUNT over the team ("how many of my reports are
+#: behind / at risk / on track"), answered as a number + summary, not a full list.
+_AGG_RE = re.compile(
+    r"\bhow\s+many\b.{0,40}\b(behind|at\s+risk|struggl|on\s+track|report|team)\b",
     re.I,
 )
 
@@ -483,35 +523,97 @@ def _answer_counts(caller, target, query, intent):
     }
 
 
-def _answer_team_risk(caller, intent="performance"):
-    """Reasoned scan of the caller's reporting subtree for at-risk / behind people.
-    Scoped to the caller's OWN reports (never the tenant). Read-only."""
-    from apps.ai.insight import team_risk
+_TEAM_LIST_CAP = 8  # keep a scan reply readable; summarise the rest as "and N more"
 
-    scan = team_risk(caller)
+
+def _answer_team_risk(caller, intent="performance", mode="all"):
+    """Reasoned scan of the caller's reporting subtree for at-risk / behind people.
+    Scoped to the caller's OWN reports (never the tenant). Read-only. ``mode`` is
+    'at_risk' (rating), 'behind' (pace) or 'all'."""
+    from apps.ai.insight import team_scan
+
+    scan = team_scan(caller, mode=mode)
     if not scan["manages"]:
         return {
             "status": "ok", "intent": intent, "data": [],
             "answer": "You don't have any reports, so there's no team to scan. "
                       "I can tell you how you're doing this cycle instead.",
         }
+    label = {"at_risk": "at risk", "behind": "behind pace", "all": "at risk or behind pace"}[mode]
     flagged = scan["flagged"]
     if not flagged:
         return {
             "status": "ok", "intent": intent, "data": [],
             "answer": f"Good news — none of your {scan['total']} team member(s) are "
-                      "flagged at risk or behind pace this cycle.",
+                      f"{label} this cycle.",
         }
+    shown = flagged[:_TEAM_LIST_CAP]
     lines = [
         f"{f['name']} ({f['risk']}{', behind pace' if f['pace_behind'] else ''})"
-        for f in flagged
+        for f in shown
     ]
+    more = len(flagged) - len(shown)
+    tail = f", and {more} more" if more > 0 else ""
     n = len(flagged)
     return {
         "status": "ok", "intent": intent,
-        "answer": (f"{n} of your {scan['total']} team member(s) need attention: "
-                   f"{'; '.join(lines)}. Ask me about any of them for detail."),
-        "data": lines,
+        "answer": (f"{n} of your {scan['total']} team member(s) are {label}: "
+                   f"{'; '.join(lines)}{tail}. Ask me about any of them for detail."),
+        "data": [f["name"] for f in flagged],
+    }
+
+
+def _answer_team_ranking(caller, intent="performance", best=True):
+    """Rank the caller's reports by cycle score (best/worst first). Scoped, read-only."""
+    from apps.ai.insight import team_ranking
+
+    rk = team_ranking(caller, best=best, limit=5)
+    if not rk["manages"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "You don't have any reports to compare. I can tell you how "
+                      "you're doing this cycle instead.",
+        }
+    if not rk["ranked"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "None of your reports have a scored cycle yet, so I can't rank "
+                      "them. Ask me once this cycle is scored.",
+        }
+    which = "top" if best else "lowest"
+    lines = [
+        f"{i}. {r['name']} ({r['risk']}{', behind pace' if r['pace_behind'] else ''})"
+        for i, r in enumerate(rk["ranked"], 1)
+    ]
+    note = (f" ({rk['unscored']} report(s) aren't scored yet.)"
+            if rk["unscored"] else "")
+    return {
+        "status": "ok", "intent": intent,
+        "answer": f"Your {which} performers this cycle: {'; '.join(lines)}.{note}",
+        "data": [r["name"] for r in rk["ranked"]],
+    }
+
+
+def _answer_team_counts(caller, intent="performance"):
+    """A COUNT summary over the caller's reports (for "how many are behind?").
+    Scoped, read-only."""
+    from apps.ai.insight import team_counts
+
+    c = team_counts(caller)
+    if not c["manages"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "You don't have any reports. I can tell you how you're doing "
+                      "this cycle instead.",
+        }
+    unscored = c["total"] - c["scored"]
+    tail = f" ({unscored} not scored yet.)" if unscored else ""
+    return {
+        "status": "ok", "intent": intent,
+        "answer": (f"Of your {c['total']} report(s): {c['on_track']} on track, "
+                   f"{c['at_risk']} at risk, {c['behind']} behind pace.{tail} "
+                   "Ask 'who's behind?' for the names."),
+        "data": [f"on_track={c['on_track']}", f"at_risk={c['at_risk']}", f"behind={c['behind']}"],
     }
 
 
@@ -616,20 +718,34 @@ def chat_answer(caller, query: str, session=None) -> dict:
             "answer": write_refusal(caller, query)
             or "I'm a read-only assistant — I can't make changes or approvals.",
         }
-    # TEAM-SCAN diagnosis ("who's behind / at risk on my team?") — a reasoned scan
-    # of the caller's OWN reporting subtree, gated by VIEW_TEAM_SCORES. Checked
-    # ahead of search/performance so it isn't mis-routed to the goal-name search.
-    if _TEAM_SCAN_RE.search(query or ""):
+    # TEAM insight ("who's behind / at risk / doing best on my team?", "how many
+    # of my reports are behind?") — reasoned over the caller's OWN reporting
+    # subtree, gated by VIEW_TEAM_SCORES. Checked ahead of search/performance so
+    # it isn't mis-routed to the goal-name search or a single-person lookup.
+    _tq = query or ""
+    _is_compare = bool(_COMPARE_RE.search(_tq))
+    _is_agg = bool(_AGG_RE.search(_tq))
+    _is_scan = bool(_TEAM_SCAN_RE.search(_tq))
+    if _is_compare or _is_agg or _is_scan:
         from apps.rbac.matrix import Capability, role_has_capability
 
-        if role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
-            return _answer_team_risk(caller)
-        # An individual contributor manages no one — say so honestly, offer self.
-        return {
-            "status": "ok", "intent": "performance", "data": [],
-            "answer": "You don't have any reports, so there's no team to scan. "
-                      "I can tell you how you're doing this cycle instead.",
-        }
+        if not role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
+            # An individual contributor manages no one — say so honestly, offer self.
+            return {
+                "status": "ok", "intent": "performance", "data": [],
+                "answer": "You don't have any reports, so there's no team to scan. "
+                          "I can tell you how you're doing this cycle instead.",
+            }
+        if _is_compare:
+            worst = bool(re.search(r"worst|weakest|lowest|struggl|behind", _tq, re.I))
+            return _answer_team_ranking(caller, best=not worst)
+        if _is_agg:
+            return _answer_team_counts(caller)
+        # A scan: pick the mode from the phrasing.
+        low = _tq.lower()
+        mode = "at_risk" if ("at risk" in low and "behind" not in low) else (
+            "behind" if "behind" in low else "all")
+        return _answer_team_risk(caller, mode=mode)
     if intent == "search":
         # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An
         # employee's search-shaped query falls through to the general redirect — the
@@ -641,7 +757,8 @@ def chat_answer(caller, query: str, session=None) -> dict:
             return _answer_search(caller, query)
         intent = "general"
     if intent == "capability":
-        return {"status": "ok", "intent": "capability", "answer": _CAPABILITY_ANSWER, "data": []}
+        return {"status": "ok", "intent": "capability",
+                "answer": _capability_answer(caller), "data": []}
     if intent not in ("performance", "read"):  # "read" = legacy alias for performance
         # General / conversational / out-of-domain ("what day is today?", "I feel
         # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.

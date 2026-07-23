@@ -574,10 +574,12 @@ def _answer_counts(caller, target, query, intent):
 _TEAM_LIST_CAP = 8  # keep a scan reply readable; summarise the rest as "and N more"
 
 
-def _answer_team_risk(caller, intent="performance", mode="all"):
+def _answer_team_risk(caller, intent="performance", mode="all", exclude=None):
     """Reasoned scan of the caller's reporting subtree for at-risk / behind people.
     Scoped to the caller's OWN reports (never the tenant). Read-only. ``mode`` is
-    'at_risk' (rating), 'behind' (pace) or 'all'."""
+    'at_risk' (rating), 'behind' (pace) or 'all'. ``exclude`` is an optional User to
+    drop from the list — used for "the OTHER engineer who's behind / who ELSE?" so
+    the person just discussed isn't repeated."""
     from apps.ai.insight import team_scan
 
     scan = team_scan(caller, mode=mode)
@@ -589,12 +591,16 @@ def _answer_team_risk(caller, intent="performance", mode="all"):
         }
     label = {"at_risk": "at risk", "behind": "behind pace", "all": "at risk or behind pace"}[mode]
     flagged = scan["flagged"]
+    excluded_here = bool(exclude) and any(f.get("id") == exclude.id for f in flagged)
+    if excluded_here:
+        flagged = [f for f in flagged if f.get("id") != exclude.id]
     if not flagged:
-        return {
-            "status": "ok", "intent": intent, "data": [],
-            "answer": f"Good news — none of your {scan['total']} team member(s) are "
-                      f"{label} this cycle.",
-        }
+        base = (f"Good news — none of your {scan['total']} team member(s) are "
+                f"{label} this cycle.")
+        if excluded_here:
+            base = (f"Aside from {exclude.display}, none of your other team member(s) "
+                    f"are {label} this cycle.")
+        return {"status": "ok", "intent": intent, "data": [], "answer": base}
     shown = flagged[:_TEAM_LIST_CAP]
     lines = [
         f"{f['name']} ({f['risk']}{', behind pace' if f['pace_behind'] else ''})"
@@ -603,10 +609,13 @@ def _answer_team_risk(caller, intent="performance", mode="all"):
     more = len(flagged) - len(shown)
     tail = f", and {more} more" if more > 0 else ""
     n = len(flagged)
+    lead = (f"Aside from {exclude.display}, {n} other of your {scan['total']} team "
+            f"member(s) {'is' if n == 1 else 'are'} {label}: "
+            if excluded_here else
+            f"{n} of your {scan['total']} team member(s) are {label}: ")
     return {
         "status": "ok", "intent": intent,
-        "answer": (f"{n} of your {scan['total']} team member(s) are {label}: "
-                   f"{'; '.join(lines)}{tail}. Ask me about any of them for detail."),
+        "answer": f"{lead}{'; '.join(lines)}{tail}. Ask me about any of them for detail.",
         "data": [f["name"] for f in flagged],
     }
 
@@ -977,7 +986,14 @@ def chat_answer(caller, query: str, session=None) -> dict:
         low = _tq.lower()
         mode = "at_risk" if ("at risk" in low and "behind" not in low) else (
             "behind" if "behind" in low else "all")
-        return _answer_team_risk(caller, mode=mode)
+        # "the OTHER engineer who's behind" / "who ELSE is behind?" → drop the person
+        # just discussed from the list so it reads as "aside from them, …".
+        exclude = None
+        if session is not None and re.search(r"\b(other|else|another)\b", low):
+            from apps.ai.sessions import last_referenced_person_any_scope
+
+            exclude = last_referenced_person_any_scope(caller, session)
+        return _answer_team_risk(caller, mode=mode, exclude=exclude)
     if intent == "search":
         # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An
         # employee's search-shaped query falls through to the general redirect — the

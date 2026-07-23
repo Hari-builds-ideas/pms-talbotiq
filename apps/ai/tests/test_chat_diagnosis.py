@@ -461,3 +461,25 @@ def test_group_support_followup_stays_scope_safe(org):
     # No leak, no crash; a non-empty scoped reply.
     assert ans.strip()
     assert "at risk" not in ans.lower()   # no other person's status leaked
+
+
+# ── AGENT_INTEL_V2 §8: "who ELSE / the OTHER … behind pace?" drops the person
+#    just discussed from the team-scan list ──────────────────────────────────
+@override_settings(**FAKE)
+def test_who_else_behind_excludes_just_discussed_person(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Aarav Rossi"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=True)
+        other = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                            display_name="Bea Kline")
+        _score(org.tenant, other, risk="AT_RISK", pace_behind=True)
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "how is Aarav Rossi?"}, format="json").json()["session_id"]
+    r = c.post(CHAT, {"query": "who else on my team is behind pace?", "session_id": sid},
+               format="json")
+    ans = r.json()["answer"]
+    assert "Bea Kline" in ans                      # the OTHER behind-pace person
+    assert "Aside from Aarav Rossi" in ans          # the discussed person set aside
+    # data list no longer repeats the just-discussed person
+    assert "Aarav Rossi" not in (r.json().get("data") or [])

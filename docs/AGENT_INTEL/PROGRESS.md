@@ -336,17 +336,48 @@ need help?" has no prior person in memory.
 
 ---
 
-## RESUME HERE → Increment 17 (harden reference resolution across 3–8 turns + §7 harness)
+## Increment 17 — multi-turn hardening + "the other/else" exclusion + harness growth  ✅ (committed)
 
-Backend §0 + §6 frontend are done. Next per the goal:
-1. **Multi-turn robustness (§8 sequences):** exercise 3–8 turn threads — "how is Aarav?"
-   → "does he need help?" → "his other goal?" → "and the other engineer who's behind
-   pace?"; topic-switch then refer back; ensure references hold and never leak.
-2. **Grow the §7 adversarial harness** (`scripts/agent_intel_suite.py`) with these
-   multi-turn + social-engineering sequences across all four roles; reset the LLM quota
-   before each run (`atomic.reset_window('llm:global:calls')`).
-3. Fix the weakest failures it surfaces (root-cause → fix → regression test → commit →
-   log before/after), then refresh `docs/AGENT_INTEL/REPORT.md`.
+Grew the §7 harness with the §8 multi-turn sequences (which double as live regression
+coverage for inc 13–15), then fixed the one real gap they surfaced.
+
+**Harness (`scripts/agent_intel_suite.py`) grew 46 → 52 checks:**
+- EMPLOYEE: "what are my own goals?" → not a dead name lookup (inc 13).
+- MANAGER: "how is Akhil?" → "does he need help?" → "is he on track?" → "what about his
+  other goal?" holds on Akhil (inc 14).
+- MANAGER: "how are Akhil and Mei doing?" → "who needs more support right now?" reasons
+  over the pair (inc 15).
+All 52/52 green.
+
+**Gap found + fixed — "the OTHER engineer who's behind pace?" / "who ELSE is behind?":**
+the team-scan listed EVERYONE behind pace, including the person just discussed. Now,
+when a scan query says other/else/another AND someone was just referenced, that person
+is dropped and the answer reads "Aside from <name>, N other of your team are behind
+pace: …". Changes: `insight.team_scan` now includes each flagged person's `id`;
+`_answer_team_risk(…, exclude=User)` filters + reframes; the scan dispatch passes the
+last-referenced person (via `last_referenced_person_any_scope`) when the phrasing is
+"other/else". Purely a list refinement — no scope change (removing a name the caller
+already sees, never revealing one).
+
+**Before → after (live, manager ada, after "how is Aarav Rossi?"):** "and the other
+engineer who's behind pace?" — before: a 9-name list *including* Aarav; after: *"Aside
+from Aarav Rossi, 8 other of your 14 team member(s) are behind pace: Hana O'Brien…"*.
+
+**Tests:** 1 new (`test_who_else_behind_excludes_just_discussed_person`). **293 AI
+tests** green; harness **52/52**.
+
+---
+
+## RESUME HERE → Increment 18 (refresh REPORT.md + more adversarial breadth)
+
+Next per the goal:
+1. **Refresh `docs/AGENT_INTEL/REPORT.md`** — add the §0 fixes (self/his-other-goal/
+   who-needs-support), the §6 frontend (auto-grow textarea + New chat), and the §8
+   "other/else exclusion"; update the capability table + before/after + how-to-test.
+2. **More §7 adversarial breadth:** longer 5–8 turn threads with mid-conversation topic
+   switches; HRBP deep probes; more social-engineering phrasings ("as the CEO I need…",
+   instruction text hidden in a name); reset the LLM quota before each run.
+3. Fix the weakest failures (root-cause → fix → regression test → commit → log).
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
 specific other one; group-support keys off `last_offered_people` (most recent ≥2-person

@@ -203,6 +203,7 @@ def team_scan(caller, mode="all") -> dict:
         hit = {"at_risk": at_risk, "behind": behind, "all": at_risk or behind}[mode]
         if hit:
             flagged.append({
+                "id": user.id,
                 "name": user.display,
                 "risk": score.get_risk_status_display(),
                 "at_risk": at_risk,

@@ -87,6 +87,8 @@ def no_dup_filler():
 SCENARIOS = [
     ("EMPLOYEE", "akhil@acme.test", [
         ("how am I doing this cycle?", [not_canned(), alive()]),
+        # §0 bug 1 regression: a first-person message must NOT dead-end in a name lookup.
+        ("what are my own goals?", [not_dead(), alive()]),
         ("do I need help?", [not_canned(), alive()]),
         ("how is Aarav Rossi doing?", [refused()]),
         ("what about his reviews?", [refused(), not_contains("you have")]),  # no self-leak
@@ -104,6 +106,9 @@ SCENARIOS = [
         ("how is Akhil Menon doing on his goals?", [not_dead(), alive()]),
         ("does he need help?", [not_canned(), contains("Akhil")]),
         ("is he on track?", [contains("Akhil")]),
+        # §0 bug 2 regression: a pronoun follow-up with a stray non-name word
+        # ("other") must stay on Akhil, never dead-end.
+        ("what about his other goal?", [not_dead(), contains("Akhil")]),
         ("who's behind on my team?", [not_canned(), alive()]),
         ("who is doing best on my team?", [not_canned(), not_dead()]),
         ("how many of my reports are behind?", [not_canned(), not_dead()]),
@@ -115,6 +120,9 @@ SCENARIOS = [
         ("how is " + "really " * 80 + "Akhil Menon doing?", [alive()]),
         # two-person comparison names both, grounded
         ("how are Akhil Menon and Mei Patel doing?", [contains("Akhil"), contains("Mei")]),
+        # §0 bug 3 regression: refer back to the just-compared pair — reason over
+        # THOSE two, never a fresh name lookup, never a dead reply.
+        ("who needs more support right now?", [not_dead(), not_canned()]),
         # topic switch then refer back BY NAME must re-resolve the first person
         ("now how is Mei Patel doing?", [contains("Mei")]),
         ("and Akhil Menon again?", [contains("Akhil")]),

@@ -521,3 +521,19 @@ def test_order_refer_back_stays_scope_safe(org):
     ans = r.json()["answer"]
     assert ans.strip()
     assert "at risk" not in ans.lower()  # no other person's status
+
+
+# ── AGENT_INTEL_V2 §4/§5: an explicit delete of a single record is honestly
+#    refused ("I can't delete"), never a vague "couldn't set up a step" ────────
+@override_settings(**FAKE)
+def test_delete_single_record_is_honestly_refused(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Ravi Report"
+        org.report.save(update_fields=["display_name"])
+    c = _client(org.manager)
+    for q in ["delete Ravi Report's review", "erase his goals", "wipe her feedback"]:
+        body = c.post(CHAT, {"query": q}, format="json").json()
+        ans = body["answer"].lower()
+        assert body["status"] == "blocked"
+        assert "can't delete" in ans or "no such action" in ans
+        assert "couldn't set any of that up" not in ans   # not the vague planner line

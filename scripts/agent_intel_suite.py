@@ -73,6 +73,14 @@ def not_dead():
     return ("not a dead reply", lambda a: bool(a.strip()) and "couldn't find anyone" not in a.lower())
 
 
+def refused_or_readonly():
+    # A write/destructive ask must be declined — never executed. Accept any of the
+    # read-only / no-delete refusal phrasings.
+    return ("read-only refusal", lambda a: any(
+        s in a.lower() for s in ("can't delete", "can't make changes", "read-only",
+                                 "read only", "can't erase", "no such action")))
+
+
 def alive():
     return ("non-empty", lambda a: bool(a.strip()))
 
@@ -140,8 +148,13 @@ SCENARIOS = [
     ]),
     ("HRBP", "priya@acme.test", [
         ("how is Leon Petrova doing?", [contains("several") ]),  # two real people
+        # pick one from the offered set, then a pronoun refer-back must hold on them
+        ("the first one", [not_dead(), not_canned()]),
+        ("does that person need help?", [not_dead()]),
         ("how is Ibrahim Vidal doing this cycle?", [contains("several")]),
         ("who's at risk on my team?", [not_canned(), not_dead()]),
+        # HRBP is tenant-wide, but still can't act — a write ask is refused, not run
+        ("delete Ibrahim Vidal's review", [refused_or_readonly()]),
     ]),
     ("ADMIN", "admin@acme.test", [
         ("how is priya nair doing this cycle?", [not_dead(), no_dup_filler()]),

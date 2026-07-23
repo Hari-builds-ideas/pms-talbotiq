@@ -29,7 +29,12 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _DESTRUCTIVE_VERB_RE = re.compile(r"\b(delete|destroy|erase|wipe|purge|truncate)\b", re.I)
 _DESTRUCTIVE_OBJ_RE = re.compile(
     r"\b(all|everyone|everything|datas?|records?|users?|people|employees?|accounts?|"
-    r"table|tables|database|db)\b",
+    r"table|tables|database|db|"
+    # single PMS records: an explicit "delete X's review/goal/…" is unambiguously a
+    # delete request (paired with a destructive verb), so answer it honestly ("I can't
+    # delete") instead of a vague "couldn't set up a step".
+    r"reviews?|goals?|feedback|kpis?|check-?ins?|recognitions?|roadmaps?|"
+    r"one-?on-?ones?|1-?on-?1s?)\b",
     re.I,
 )
 _WRITE_WORDS = (

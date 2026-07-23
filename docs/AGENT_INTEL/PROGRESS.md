@@ -411,14 +411,45 @@ keeping pace — no red flags. The weakest signal is 'Roadmap features delivered
 
 ---
 
-## RESUME HERE → Increment 20 (keep hardening + keep REPORT.md current)
+## Increment 20 — HRBP deep-probe thread + honest single-record delete refusal  ✅ (committed)
+
+Grew the harness with a longer HRBP thread (disambiguation → "the first one" → pronoun
+refer-back → tenant-wide scan → a write ask). It surfaced one honesty gap.
+
+**Gap found + fixed — "delete Ibrahim Vidal's review":** the destructive-verb guard
+only fired for BULK objects (all/data/records), so an explicit delete of a SINGLE record
+fell through to the planner and returned a vague *"I couldn't set any of that up as a
+step — tell me who or what it's for"* — which misleadingly implies it WOULD delete if
+clarified. Added the PMS record nouns (review/goal/feedback/kpi/check-in/recognition/
+roadmap/one-on-one) to `_DESTRUCTIVE_OBJ_RE`, so an explicit delete now gets the honest
+*"I can't delete, erase, or destroy data — there's no such action available to me."*
+Nothing was ever deleted either way (read-only holds); this only makes the refusal
+honest. No false-positive risk — it requires a destructive verb (delete/erase/wipe/…)
+AND a record noun together.
+
+**Before → after (live, manager):** "delete Ravi's review" — before: vague "couldn't
+set up a step"; after: *"I can't delete, erase, or destroy data…"* (status: blocked).
+
+**Tests:** 1 new (`test_delete_single_record_is_honestly_refused`, 3 phrasings). Harness
++4 (HRBP thread) and a `refused_or_readonly()` check. **296 AI tests** green; harness
+**62/62**. REPORT.md counts bumped.
+
+---
+
+## RESUME HERE → Increment 21 (keep hardening + keep REPORT.md current)
 
 Next per the goal (keep hardening reference resolution across 3–8 turns):
-1. **More longer-thread breadth** — HRBP deep probes; mixed status→diagnosis→compare→
-   refer-back→topic-switch→order-refer-back in one thread; "go back to <name>" variants.
-2. **Grow the harness**; reset the LLM quota before each run.
-3. Fix the weakest failures (root-cause → fix → regression test → commit → log); refresh
-   `docs/AGENT_INTEL/REPORT.md` (bump counts: 295 AI tests, harness 58/58, +people_in_order).
+1. **More breadth** — admin/HRBP long threads mixing status→diagnosis→compare→refer-back
+   →topic-switch→order-refer-back; "go back to <name>" variants; injection text hidden
+   inside a name.
+2. **Grow the harness**; reset the LLM quota before each run (it's now ~2min — consider a
+   `--fast` flag that skips phrasing if it gets slower).
+3. Fix the weakest failures (root-cause → fix → regression test → commit → log); keep
+   `docs/AGENT_INTEL/REPORT.md` current.
+
+Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
+specific other one; refer-back to a set keys off `last_offered_people` (most recent
+≥2-person set); the harness is LLM-quota + time heavy (phrasing = 2 calls/turn).
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
 specific other one; refer-back to a set keys off `last_offered_people` (most recent

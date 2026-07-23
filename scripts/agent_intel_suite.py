@@ -20,14 +20,14 @@ PW = "Passw0rd!" + "demo"
 GENERIC_BLURB = "read-only performance assistant, so that's outside"
 
 
-#: In-container reset: clears BOTH the per-window global LLM ceiling AND the chat /
-#: chat_phrase DAILY agent-call budgets for the acme tenant — so the growing suite,
-#: re-run many times a day, never dead-ends on an HTTP 429 instead of the real answer.
-_RESET_SNIPPET = (
+#: Reset the DAILY per-agent budget (chat + chat_phrase) for acme — needs the app
+#: registry (Tenant/services), so it goes through `manage.py shell`. Run ONCE at start:
+#: it clears accumulation from EARLIER same-day runs; within a single run the daily
+#: limit isn't the binding ceiling (the per-window one below is).
+_DAILY_RESET_SNIPPET = (
     "from apps.billing import atomic, services;"
     "from apps.billing.models import AgentBudget;"
     "from apps.tenancy.models import Tenant;"
-    "atomic.reset_window('llm:global:calls');"
     "t=Tenant.objects.get(slug='acme');"
     "p=services._budget_period(AgentBudget.Window.DAILY);"
     "[atomic.reset_window(services.tenant_cache_key("
@@ -36,19 +36,29 @@ _RESET_SNIPPET = (
 )
 
 
-def reset_quota():
-    """Reset the LLM budgets so the GROWING suite doesn't trip a rate ceiling
-    (per-window global calls, or the per-agent DAILY budget after many runs) and
-    dead-end on an HTTP 429. Called before each role. Best-effort — a bare stack
-    without docker just skips it (uses `manage.py shell` so the app registry loads)."""
+def _docker_py(args, snippet, timeout):
+    """Best-effort in-container python — a bare stack without docker just skips it."""
     try:
         subprocess.run(
-            ["docker", "compose", "exec", "-T", "web",
-             "python", "manage.py", "shell", "-c", _RESET_SNIPPET],
-            check=False, capture_output=True, timeout=45,
+            ["docker", "compose", "exec", "-T", "web", "python"] + args + [snippet],
+            check=False, capture_output=True, timeout=timeout,
         )
     except Exception:  # noqa: BLE001 — reset is a convenience, never fatal
         pass
+
+
+def reset_daily_budget():
+    """Clear the DAILY agent-call budget once at start (via manage.py shell so models
+    load) — so the suite, re-run many times a day, doesn't dead-end on an HTTP 429."""
+    _docker_py(["manage.py", "shell", "-c"], _DAILY_RESET_SNIPPET, timeout=45)
+
+
+def reset_call_window():
+    """Reset the per-window global LLM ceiling (60 calls/window) before each role — a
+    long thread otherwise trips it mid-run. Fast: `atomic` needs no app registry, so a
+    plain `python -c` (no Django bootstrap) does it in a fraction of a `manage.py shell`."""
+    _docker_py(["-c"], "from apps.billing import atomic; atomic.reset_window('llm:global:calls')",
+               timeout=20)
 
 
 def login(email):
@@ -234,8 +244,9 @@ SCENARIOS = [
 def main():
     fails = []
     total = 0
+    reset_daily_budget()  # once: clear cross-run daily-budget accumulation
     for role, email, turns in SCENARIOS:
-        reset_quota()  # fresh LLM budget per role so a long thread never hits 429
+        reset_call_window()  # per role: fresh per-window ceiling so a long thread never 429s
         chat = Chat(email)
         print(f"\n=== {role} ({email}) ===")
         for q, checks in turns:

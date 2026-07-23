@@ -621,19 +621,36 @@ session, asserts the turn-1 person is still first). **304 AI tests** green; harn
 
 ---
 
-## RESUME HERE → Increment 27 (keep hardening + keep REPORT.md current)
+## Increment 27 — harness reset made fast (loop-efficiency)  ✅ (committed)
 
-Remaining, in priority order — pick ONE and land it fully:
+The Increment-23 per-role reset used `manage.py shell` (full Django bootstrap) ×4 roles,
+which grew each harness run to ~5 min and slowed the improvement loop.
+
+**Fix:** split the reset by what each part actually needs.
+- `reset_call_window()` (per role) — the per-window global ceiling (60 calls) only needs
+  `apps.billing.atomic`, which imports no Django models, so a plain `python -c` (NO
+  `django.setup()`) resets it in a fraction of a `manage.py shell` start-up.
+- `reset_daily_budget()` (ONCE at start) — the DAILY per-agent budget reset needs models
+  (Tenant / services), so it keeps `manage.py shell`; but it only clears cross-run
+  accumulation, so once per run suffices (within a run the per-window ceiling is the
+  binding one). Net: one slow bootstrap instead of four.
+
+No product-behaviour change; harness stays **80/80**, meaningfully faster per run.
+
+---
+
+## RESUME HERE → Increment 28 (keep hardening + keep REPORT.md current)
+
+Remaining product refinements, in priority order — pick ONE and land it fully:
 1. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
    goal was last discussed (ground a goal ref) rather than listing all the non-focus ones.
 2. **Mixed self+other for a MANAGER** naming an out-of-team person alongside "my team" —
    same pattern as Increment 25 but for the manager/team-scan path (verify it composes).
 3. **Pronoun refer-back beyond the window** — `resolve_person_reference` /
-   `last_referenced_person_any_scope` still key off `recent_turns`; consider whether a
-   pronoun should bind to a person mentioned >20 turns ago (the verbatim text is gone, so
-   this may be intentionally out of reach — decide deliberately).
+   `last_referenced_person_any_scope` still key off `recent_turns`; decide deliberately
+   whether a pronoun should bind to a person mentioned >20 turns ago (verbatim text gone).
 
-Grow the harness (quota auto-resets per role incl. the DAILY agent budget — Increment 23).
+Grow the harness (daily budget resets once at start; per-window ceiling per role — Inc 27).
 Fix the weakest failure (root-cause → fix → regression test → commit → log); keep
 `docs/AGENT_INTEL/REPORT.md` current.
 

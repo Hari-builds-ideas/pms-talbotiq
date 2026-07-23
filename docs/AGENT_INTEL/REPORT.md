@@ -1,4 +1,4 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 26)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 27)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
@@ -87,9 +87,9 @@ and phrases answers naturally via Gemini — **without ever widening access**.
   Conversation-ORDER refer-back ("the first person") DOES persist beyond the window
   (increment 26).
 - Phrasing adds one LLM call per reasoned answer (latency/quota) — flag-gated
-  (`AGENT_INTEL_LLM_PHRASING`); the harness is therefore quota-heavy, so it now auto-resets
-  the global window AND the per-agent DAILY budget before each role (best-effort
-  `docker compose exec … manage.py shell`).
+  (`AGENT_INTEL_LLM_PHRASING`); the harness is therefore quota-heavy, so it auto-resets the
+  per-window ceiling before each role (fast `python -c`) and the DAILY agent budget once at
+  start (`manage.py shell`) — best-effort, skipped on a bare stack.
 
 ## How to test it yourself
 

@@ -176,7 +176,7 @@ _NAME_STOP_WORDS = frozenset(
     "on in at to from team report reports goal goals kpi kpis review reviews feedback "
     "score scores cycle cycles progress performance risk open active pending count number "
     "me i we you they show tell give latest current last week month quarter year today "
-    "own mine myself owns "
+    "own mine myself owns other another else one ones "
     "track On track behind ahead risk please can could would "
     # diagnosis vocabulary — never a person's name ("does she need help?")
     "need needs help support struggling struggle falling trouble okay ok well badly "
@@ -972,9 +972,12 @@ def chat_answer(caller, query: str, session=None) -> dict:
             # the caller themselves (fixes "what are my own goals?" dead-ending
             # in a name lookup). A "show/list my goals" still flat-lists below.
             target = caller
-        elif typed_a_name:
-            # Before giving up, try a TYPO-tolerant suggestion within the caller's
-            # scope ("Akil Menon" → "Did you mean Akhil Menon?"). Suggestions are
+        elif typed_a_name and not person_deixis:
+            # A real 3rd-person pronoun ("his other goal") means COREFERENCE — it
+            # must win over a stray non-name token ("other"), so only treat this as
+            # a typed name when NO pronoun is present. Before giving up, try a
+            # TYPO-tolerant suggestion within the caller's scope ("Akil Menon" →
+            # "Did you mean Akhil Menon?"). Suggestions are
             # scope-limited, so this never reveals a name they couldn't already see.
             from apps.ai.insight import fuzzy_name_suggestions
 

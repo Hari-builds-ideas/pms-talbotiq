@@ -257,7 +257,37 @@ variants never dead-end). **289 AI tests** green (was 287), 0 regressions.
 
 ---
 
-## RESUME HERE → Increment 14 (§0 bug 2: "his other goal" / refer-back after compare)
+## Increment 14 — §0 bug 2: pronoun follow-up survives a stray non-name word  ✅ (committed)
+
+**Bug (live, MANAGER ada@):** "how is Aarav?" → "does he need help?" (both OK) →
+"what about **his other goal**?" → *"I couldn't find anyone by that name."* Same class
+of root cause as inc 13: the stray word **"other"** tripped `typed_a_name`, so the
+not-found/typo branch fired BEFORE the pronoun-resolution branch that would have bound
+"his" → Aarav.
+
+**Fix (chat.py):** a real 3rd-person pronoun means COREFERENCE and must win over the
+fragile name heuristic — guarded the not-found branch as `typed_a_name and not
+person_deixis`, so when a pronoun is present resolution falls through to the deixis
+binder (last person referenced, access re-checked). Added `other/another/else/one/ones`
+to `_NAME_STOP_WORDS` as defense-in-depth.
+
+**Before → after (live):** "what about his other goal?" — before: *"couldn't find
+anyone"*; after: *"Aarav Rossi has 2 goal(s): Strengthen engineering craft, Ship the H1
+platform roadmap. Latest cycle: On track — behind pace."* Reference holds; still fully
+scope-checked (the pronoun binder re-runs `actor_can_access`).
+
+**Tests:** 1 new (`test_his_other_goal_resolves_pronoun_not_dead`). **290 AI tests**
+green, 0 regressions. (Refinement noted: it lists both goals rather than isolating "the
+OTHER" one specifically — precise goal selection is a later polish.)
+
+---
+
+## RESUME HERE → Increment 15 (§0 bug 3: refer-back to compared entities)
+
+"who needs more support right now?" after "compare Aarav and Mei" still dead-ends —
+it needs recent-entity-**set** memory (§2 Example C): reason over the two people just
+compared, not a fresh name lookup and not the caller's full team. That's the next
+increment. Then §6 frontend (auto-growing textarea + New chat).
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

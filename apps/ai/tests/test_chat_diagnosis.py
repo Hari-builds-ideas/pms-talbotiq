@@ -400,3 +400,23 @@ def test_first_person_variants_never_trigger_name_lookup(org):
     for q in ["what are my own KPIs?", "show me my goals", "how am I tracking?"]:
         ans = c.post(CHAT, {"query": q}, format="json").json()["answer"]
         assert "couldn't find anyone" not in ans.lower(), f"{q!r} dead-ended"
+
+
+# ── AGENT_INTEL_V2 §0 bug 2: pronoun follow-up survives a stray non-name word ──
+@override_settings(**FAKE)
+def test_his_other_goal_resolves_pronoun_not_dead(org):
+    """"what about his other goal?" after diagnosing a person must stay on that
+    person — the stray word "other" must not be treated as a name and dead-end
+    ("I couldn't find anyone by that name"). AGENT_INTEL_V2 §0 bug 2 / §2 Ex B."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Aarav Rossi"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=True)
+        _goal_with_kpi(org.tenant, org.report, "Ship the roadmap",
+                       target=100, actual=60, created_by=org.manager)
+    c = _client(org.manager)               # MANAGER sees Aarav (their report)
+    sid = c.post(CHAT, {"query": "how is Aarav Rossi?"}, format="json").json()["session_id"]
+    r = c.post(CHAT, {"query": "what about his other goal?", "session_id": sid}, format="json")
+    ans = r.json()["answer"]
+    assert "couldn't find anyone" not in ans.lower()
+    assert "Aarav" in ans                  # stayed on the referenced person

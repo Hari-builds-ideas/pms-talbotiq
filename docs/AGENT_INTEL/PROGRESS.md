@@ -542,14 +542,28 @@ checks (emoji-only, long single token, emoji+name). **300 AI tests** green; harn
 
 ## RESUME HERE → Increment 24 (keep hardening + keep REPORT.md current)
 
-Next per the goal (keep hardening reference resolution across 3–8 turns):
-1. **More breadth** — mixed self+other queries ("what are my goals? and show me X's" →
-   answer self AND refuse X, rather than fully refusing); "his/her OTHER goal" isolating
-   the specific other goal instead of listing both; refer-back across a longer thread
-   (>10 turns) where older turns roll off the window.
-2. **Grow the harness**; the quota now auto-resets per role (Increment 21).
-3. Fix the weakest failures (root-cause → fix → regression test → commit → log); keep
-   `docs/AGENT_INTEL/REPORT.md` current.
+Two concrete gaps confirmed live (2026-07-23, manager ada / employee akhil), in priority
+order — pick ONE and land it fully (implement → test → commit → log → harness):
+
+1. **"his/her OTHER goal" doesn't isolate the other goal** (spec §0 Example B, longest-
+   standing backlog). Repro: "how is Akhil Menon on his goals?" → "tell me about his first
+   goal" → **"what about his other goal?"** currently returns *"Akhil Menon has 2 goal(s):
+   Strengthen engineering craft, Ship the H1 platform roadmap. Latest cycle: On track."* —
+   it LISTS BOTH instead of focusing the OTHER one. Not a leak/bug (accurate, scoped), just
+   imprecise. Proper fix needs a **goal-level entity memory**: when a specific goal is
+   discussed, ground it as a ref ({type:"goal", id, label, turn}); then resolve "the other/
+   first/second goal" against the person's goals minus the just-discussed one. This is a
+   new coref layer (bigger than a regex) — scope it deliberately; keep RBAC re-check.
+2. **Mixed self+other query** ("what are my goals? and also show me Aarav Rossi's") — an
+   employee currently gets a pure refusal with `data=[]` (SAFE, no leak) but their OWN
+   goals aren't shown. Improve to: answer the self part AND honestly refuse the out-of-
+   scope part in one reply. Never widen scope.
+3. Also open: refer-back across a thread >20 turns (RECENT_TURNS window roll-off) — the
+   `entities_discussed` list (§1) could persist references beyond the verbatim window.
+
+Grow the harness (quota auto-resets per role incl. the DAILY agent budget — Increment 23).
+Fix the weakest failure (root-cause → fix → regression test → commit → log); keep
+`docs/AGENT_INTEL/REPORT.md` current.
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
 specific other one; "the first person" (WITHOUT "go back") after a fresh disambiguation

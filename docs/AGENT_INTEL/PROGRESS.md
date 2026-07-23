@@ -656,23 +656,39 @@ tests** green; harness unchanged at **80/80** (no product code / no harness chan
 
 ---
 
-## RESUME HERE → Increment 29 (keep hardening + keep REPORT.md current)
+## Increment 29 — pronoun refer-back is window-bound BY DESIGN (decision + test)  ✅ (committed)
 
-Remaining product refinements — the core spec (§0/§7/§8) has been satisfied since Inc 20;
-these are increasingly marginal polish. Pick ONE and land it fully:
-1. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
-   goal was last discussed (ground a goal ref) rather than listing all the non-focus ones.
-2. **Pronoun refer-back beyond the window** — `resolve_person_reference` /
-   `last_referenced_person_any_scope` still key off `recent_turns`; decide deliberately
-   whether a pronoun should bind to a person mentioned >20 turns ago (verbatim text gone —
-   likely INTENTIONALLY out of reach, since the model can't see that turn's text).
-3. **"the CEO's goals" (unresolvable title)** — a mixed query naming a ROLE not a person
-   ("my goals and the CEO's") silently answers only self; could add an honest "I can't
-   identify who you mean by 'the CEO'" note. Low value.
+Resolved the open "pronoun beyond the window?" backlog question with a deliberate design
+decision, locked by a test.
 
-Grow the harness (daily budget resets once at start; per-window ceiling per role — Inc 27).
-Fix the weakest failure (root-cause → fix → regression test → commit → log); keep
-`docs/AGENT_INTEL/REPORT.md` current.
+**Decision:** a bare deictic pronoun ("does *she* need help?") binds only within the ~20-turn
+verbatim window. Rationale: resolving a pronoun meaningfully needs that turn's TEXT (which the
+model no longer sees once it rolls off), so silently re-binding "she" to a person from 30 turns
+ago would be surprising and error-prone. A rolled-off pronoun instead falls through to the
+honest *"I'm not sure who you mean — tell me the person's name"* — never a wrong bind, never a
+leak. This is the CORRECT asymmetry against conversation-ORDER ("the first person we discussed"),
+which is a structural fact and legitimately persists (Inc 26).
+
+**Tests:** 1 new pytest (`test_bare_pronoun_is_window_bound_by_design` — after 25 filler turns a
+bare pronoun returns None while `people_in_order` still has the person). Test-only; no product
+code change. **306 AI tests** green; harness unchanged at **80/80**.
+
+---
+
+## RESUME HERE → Increment 30 (optional polish — core + hardening complete)
+
+The core spec (§0/§7/§8) was satisfied by Inc 20; increments 21–29 hardened and polished
+BEYOND spec, and the open design questions are now resolved. What remains is genuinely
+marginal — attempt only if there's clear value, else this is a natural completion point:
+1. **Goal-level coref for >2 goals** — "his other goal" with 3+ goals lists the non-focus
+   goals; a goal-ref-grounding layer could isolate to one. Niche (most people have ≤2 active
+   goals); the current behaviour is correct and honest, just not maximally terse.
+2. **"the CEO's goals" (unresolvable ROLE)** — a mixed query naming a role not a person
+   answers only self silently; an "I can't identify who you mean by 'the CEO'" note would be
+   tidier. Low value.
+
+Everything is green (306 AI tests, harness 80/80, 135 frontend), fully documented, and nothing
+is merged to `hari/agent-ui-v2` or `main`. Grow the harness only if a NEW behaviour lands.
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
 specific other one; "the first person" (WITHOUT "go back") after a fresh disambiguation

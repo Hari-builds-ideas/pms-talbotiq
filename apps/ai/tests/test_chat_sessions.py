@@ -137,6 +137,29 @@ def test_people_in_order_persists_beyond_recent_window(org):
 
 
 @override_settings(**FAKE)
+def test_bare_pronoun_is_window_bound_by_design(org):
+    """DELIBERATE asymmetry: a bare deictic pronoun ("she") binds only within the
+    ~20-turn verbatim window — the model needs that turn's TEXT to resolve a pronoun
+    meaningfully, so a person who has rolled off the window does NOT get silently
+    re-bound (the caller instead gets an honest "who do you mean?"). By contrast,
+    conversation-ORDER ("the first person we discussed") is a structural fact and
+    persists (see test_people_in_order_persists_beyond_recent_window). Never a wrong
+    bind, never a leak — just an honest fall-through."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Alpha First")
+        s = ChatSession.objects.create(tenant_id=org.tenant.id, owner=org.manager)
+        sessions.append_turn(
+            s, ChatTurn.Role.ASSISTANT, "About Alpha First.",
+            refs=[{"type": "user", "id": str(org.report.id), "label": "Alpha First"}])
+        for i in range(25):  # push Alpha's turn out of the recent verbatim window
+            sessions.append_turn(s, ChatTurn.Role.USER, f"filler {i}")
+        # a bare pronoun does NOT reach back past the window…
+        assert sessions.resolve_person_reference(org.manager, s, "does she need help?") is None
+        # …but the conversation-order resolver still has Alpha (persists by design).
+        assert any(u.id == org.report.id for u in sessions.people_in_order(org.manager, s))
+
+
+@override_settings(**FAKE)
 def test_reference_to_not_visible_person_resolves_to_nothing(org):
     """A stored ref never widens access: a peer (out of the manager's scope) can't be
     resolved even if a turn recorded them — resolution returns None (never why)."""

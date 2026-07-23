@@ -1,4 +1,4 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 28)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 29)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
@@ -75,18 +75,20 @@ and phrases answers naturally via Gemini — **without ever widening access**.
   allowed half, never leaking the other. Possessive-only ("my"/"mine"), so "show me X's
   goals" stays a pure refusal. Composes for both an employee and a manager (naming someone
   outside their team).
-- Self-test harness: **80/80** across employee/manager/HRBP/admin. Backend: **305 AI
+- **Pronoun vs order asymmetry (by design)**: a bare pronoun ("she") binds only within the
+  ~20-turn verbatim window (rolled-off → honest "who do you mean?", never a wrong bind);
+  conversation-ORDER ("the first person") persists across the whole thread (increments 26/29).
+- Self-test harness: **80/80** across employee/manager/HRBP/admin. Backend: **306 AI
   tests**; frontend: **135 tests**; all green.
 
 ## Remaining weaknesses / backlog
 
 - "his other goal" for a person with **3+ goals** lists the non-focus goals rather than
   isolating one — a goal-level coreference (track which goal was last discussed) would
-  sharpen it. (The 2-goal case is fully isolated — increment 24.)
-- **Pronoun** refer-back ("her") still keys off the ~20-turn verbatim window; a pronoun to
-  a person named >20 turns ago won't bind (the verbatim text is gone — possibly by design).
-  Conversation-ORDER refer-back ("the first person") DOES persist beyond the window
-  (increment 26).
+  sharpen it. Niche (most people have ≤2 active goals); the 2-goal case is fully isolated
+  (increment 24) and the 3+ case is correct + honest, just not maximally terse.
+- (Resolved, not a gap) Pronoun refer-back is intentionally window-bound; conversation-order
+  persists — see the asymmetry note above (increments 26/29).
 - Phrasing adds one LLM call per reasoned answer (latency/quota) — flag-gated
   (`AGENT_INTEL_LLM_PHRASING`); the harness is therefore quota-heavy, so it auto-resets the
   per-window ceiling before each role (fast `python -c`) and the DAILY agent budget once at

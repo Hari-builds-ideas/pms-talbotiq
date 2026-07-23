@@ -221,18 +221,27 @@ def last_offered_people(user, session: ChatSession):
     return []
 
 
+#: Cap for the all-turns entity scan (person ordering) — refs are lightweight
+#: (id + label), and a session is short-lived (TTL), so this bound is generous.
+_ENTITY_SCAN_TURNS = 500
+
+
 def people_in_order(user, session: ChatSession):
     """Distinct people referenced across the conversation, in FIRST-mention order
     (oldest first) — so "the first/second person we discussed" / "go back to the
     first one" can resolve by conversation position. Access re-checked on each (a
-    stored ref never grants access). Empty when the session has no people yet."""
+    stored ref never grants access). Empty when the session has no people yet.
+
+    Scans ALL turns' refs (not just the recent verbatim window): entity references
+    are lightweight and §1 keeps them beyond the ~20-turn window, so "the first person
+    we discussed" still resolves in a long thread. Capped for safety."""
     if session.is_expired:
         return []
     from apps.identity.models import User
 
     seen: set[str] = set()
     out = []
-    for turn in recent_turns(session):  # oldest turn first
+    for turn in session.turns.order_by("created_at", "id")[:_ENTITY_SCAN_TURNS]:  # oldest first
         for ref in (turn.refs or []):
             if not (isinstance(ref, dict) and ref.get("type") == "user"
                     and _valid_uuid(ref.get("id"))):

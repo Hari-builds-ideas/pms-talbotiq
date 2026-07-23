@@ -111,6 +111,32 @@ def test_cross_turn_person_reference_resolves_in_scope(org):
 
 
 @override_settings(**FAKE)
+def test_people_in_order_persists_beyond_recent_window(org):
+    """"the first person we discussed" must still resolve in a LONG thread: entity
+    references persist beyond the ~20-turn verbatim window (§1). Ground person A in
+    turn 1, bury it under 25 filler turns, ground person B late — A is still first."""
+    from apps.testsupport.factories import UserFactory
+
+    with tenant_context(org.tenant):
+        _name(org.report, "Alpha First")
+        second = UserFactory(tenant=org.tenant, role="EMPLOYEE", manager=org.manager,
+                             email="bravo@acme.test", display_name="Bravo Second")
+        s = ChatSession.objects.create(tenant_id=org.tenant.id, owner=org.manager)
+        sessions.append_turn(
+            s, ChatTurn.Role.ASSISTANT, "About Alpha First.",
+            refs=[{"type": "user", "id": str(org.report.id), "label": "Alpha First"}])
+        for i in range(25):  # push turn 1 out of the recent verbatim window
+            sessions.append_turn(s, ChatTurn.Role.USER, f"filler {i}")
+        sessions.append_turn(
+            s, ChatTurn.Role.ASSISTANT, "About Bravo Second.",
+            refs=[{"type": "user", "id": str(second.id), "label": "Bravo Second"}])
+        order = sessions.people_in_order(org.manager, s)
+    names = [u.display for u in order]
+    # Alpha (turn 1) is still FIRST despite rolling off the recent window; Bravo second.
+    assert names[:2] == ["Alpha First", "Bravo Second"]
+
+
+@override_settings(**FAKE)
 def test_reference_to_not_visible_person_resolves_to_nothing(org):
     """A stored ref never widens access: a peer (out of the manager's scope) can't be
     resolved even if a turn recorded them — resolution returns None (never why)."""

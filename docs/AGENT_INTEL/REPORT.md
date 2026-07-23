@@ -1,4 +1,4 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 25)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 26)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
@@ -79,12 +79,13 @@ and phrases answers naturally via Gemini — **without ever widening access**.
 
 ## Remaining weaknesses / backlog
 
-- Refer-back across a thread **>20 turns** (the `RECENT_TURNS` verbatim window) — the
-  `entities_discussed` list (§1) could persist references beyond the window so "the first
-  person" still resolves in a very long thread.
 - "his other goal" for a person with **3+ goals** lists the non-focus goals rather than
   isolating one — a goal-level coreference (track which goal was last discussed) would
   sharpen it. (The 2-goal case is fully isolated — increment 24.)
+- **Pronoun** refer-back ("her") still keys off the ~20-turn verbatim window; a pronoun to
+  a person named >20 turns ago won't bind (the verbatim text is gone — possibly by design).
+  Conversation-ORDER refer-back ("the first person") DOES persist beyond the window
+  (increment 26).
 - Phrasing adds one LLM call per reasoned answer (latency/quota) — flag-gated
   (`AGENT_INTEL_LLM_PHRASING`); the harness is therefore quota-heavy, so it now auto-resets
   the global window AND the per-agent DAILY budget before each role (best-effort

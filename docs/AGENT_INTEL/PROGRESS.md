@@ -598,16 +598,40 @@ don't have access to Aarav Rossi's data…"* (self delivered, other refused, no 
 
 ---
 
-## RESUME HERE → Increment 26 (keep hardening + keep REPORT.md current)
+## Increment 26 — "the first person" persists beyond the 20-turn window  ✅ (committed)
+
+**Gap:** `people_in_order` (the conversation-ORDER resolver for "the first/second person
+we discussed" / "go back to the first") iterated only `recent_turns` (the ~20-turn
+verbatim window). In a thread longer than that, the earliest-mentioned person rolled off,
+so "the first person we discussed" resolved to the first person *within the window*, not
+the actual first.
+
+**Fix (spec §1-aligned):** entity references are lightweight (id + label) and §1 keeps
+them beyond the verbatim window, so `people_in_order` now scans ALL the session's turns'
+refs (`session.turns.order_by("created_at", "id")[:500]`, capped for safety) instead of
+just the recent window. First-mention order across the whole thread; access still
+re-checked per person (a stored ref grants nothing); short threads are unaffected
+(all-turns == recent-turns when ≤20). Deterministic tie-break on `id` for equal timestamps.
+
+**Before → after:** ground person A in turn 1, bury under 25 filler turns, ground person B
+late — before: "the first person" = B (A rolled off); after: A (still first).
+
+**Tests:** 1 new pytest (`test_people_in_order_persists_beyond_recent_window` — 27-turn
+session, asserts the turn-1 person is still first). **304 AI tests** green; harness **80/80**.
+
+---
+
+## RESUME HERE → Increment 27 (keep hardening + keep REPORT.md current)
 
 Remaining, in priority order — pick ONE and land it fully:
-1. **Refer-back across a thread >20 turns** (RECENT_TURNS window roll-off) — the
-   `entities_discussed` list (§1) could persist references beyond the verbatim window so
-   "the first person" still resolves in a very long thread.
-2. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
+1. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
    goal was last discussed (ground a goal ref) rather than listing all the non-focus ones.
-3. **Mixed self+other for a MANAGER** naming an out-of-team person alongside "my team" —
+2. **Mixed self+other for a MANAGER** naming an out-of-team person alongside "my team" —
    same pattern as Increment 25 but for the manager/team-scan path (verify it composes).
+3. **Pronoun refer-back beyond the window** — `resolve_person_reference` /
+   `last_referenced_person_any_scope` still key off `recent_turns`; consider whether a
+   pronoun should bind to a person mentioned >20 turns ago (the verbatim text is gone, so
+   this may be intentionally out of reach — decide deliberately).
 
 Grow the harness (quota auto-resets per role incl. the DAILY agent budget — Increment 23).
 Fix the weakest failure (root-cause → fix → regression test → commit → log); keep

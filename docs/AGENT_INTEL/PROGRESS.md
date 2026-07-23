@@ -311,19 +311,46 @@ tests** green, 0 regressions.
 
 ---
 
-## RESUME HERE → Increment 16 (§6 frontend: auto-growing textarea + New chat)
+## Increment 16 — §6 frontend: auto-growing textarea + New chat  ✅ (committed)
 
-Backend §0 is done. Next: the §6 UX fixes in the React SPA —
-1. **Auto-growing chat textarea** (`react-textarea-autosize` or hand-rolled
-   `scrollHeight`, minRows 1 / maxRows ~6; Enter submits, Shift+Enter newline).
-2. **New chat / Clear** control that resets local state AND starts a fresh
-   `session_id` (so a pronoun follow-up after clicking has no prior memory).
-Then keep growing the §7 adversarial harness (reset the LLM quota before each run) and
-refresh `docs/AGENT_INTEL/REPORT.md`. Live-verify per §8.
+The chat input was a single-line `<Input>` — you couldn't see multi-line text and had
+to arrow around. §6 fixes, in `frontend/src/features/chat/ChatPanel.tsx`:
+- **Auto-growing textarea** (hand-rolled `scrollHeight`, per §6): grows 1→~6 rows then
+  scrolls; resets to `auto` first so it also SHRINKS on delete. **Enter submits,
+  Shift+Enter = newline** (refactored `send` → a reusable `submit()` so a keydown and
+  the form both use it). Dropped the now-unused `Input` import.
+- **"New chat" control** in the header: clears local turns/input AND drops
+  `sessionId.current` + the `pms.chat.session` localStorage key, so the NEXT message
+  starts a FRESH server session — a pronoun follow-up after clicking has no memory of
+  the prior thread (no lingering scoped data). No backend change needed (an absent
+  session id already makes the API mint a new session).
+
+**Tests:** new `ChatPanel.test.tsx` (3): Enter submits; Shift+Enter inserts a newline
+and does NOT submit; New chat clears the thread and the next message is sent with NO
+session id. **135 frontend tests** green, `tsc` clean. Rebuilding the SPA image so it's
+live at :8090.
+
+**How to see it:** open the AI Assistant, type 3–4 lines (Shift+Enter for newlines) —
+the box grows; press Enter to send; click **New chat** and a follow-up like "does he
+need help?" has no prior person in memory.
+
+---
+
+## RESUME HERE → Increment 17 (harden reference resolution across 3–8 turns + §7 harness)
+
+Backend §0 + §6 frontend are done. Next per the goal:
+1. **Multi-turn robustness (§8 sequences):** exercise 3–8 turn threads — "how is Aarav?"
+   → "does he need help?" → "his other goal?" → "and the other engineer who's behind
+   pace?"; topic-switch then refer back; ensure references hold and never leak.
+2. **Grow the §7 adversarial harness** (`scripts/agent_intel_suite.py`) with these
+   multi-turn + social-engineering sequences across all four roles; reset the LLM quota
+   before each run (`atomic.reset_window('llm:global:calls')`).
+3. Fix the weakest failures it surfaces (root-cause → fix → regression test → commit →
+   log before/after), then refresh `docs/AGENT_INTEL/REPORT.md`.
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
-specific other one; group-support currently keys off `last_offered_people` (most recent
-≥2-person set) — good for compare/disambiguation, could later track an explicit
+specific other one; group-support keys off `last_offered_people` (most recent ≥2-person
+set) — good for compare/disambiguation, could later track an explicit
 "entities_discussed" list per §1 for longer threads.
 
 The assistant now covers all the goal's named intents (memory/coref, status,

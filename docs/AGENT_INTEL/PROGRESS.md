@@ -540,26 +540,52 @@ checks (emoji-only, long single token, emoji+name). **300 AI tests** green; harn
 
 ---
 
-## RESUME HERE → Increment 24 (keep hardening + keep REPORT.md current)
+## Increment 24 — "his/her OTHER goal" isolates the specific goal  ✅ (committed)
 
-Two concrete gaps confirmed live (2026-07-23, manager ada / employee akhil), in priority
-order — pick ONE and land it fully (implement → test → commit → log → harness):
+Closed the longest-standing backlog item + spec §0 Example B.
 
-1. **"his/her OTHER goal" doesn't isolate the other goal** (spec §0 Example B, longest-
-   standing backlog). Repro: "how is Akhil Menon on his goals?" → "tell me about his first
-   goal" → **"what about his other goal?"** currently returns *"Akhil Menon has 2 goal(s):
-   Strengthen engineering craft, Ship the H1 platform roadmap. Latest cycle: On track."* —
-   it LISTS BOTH instead of focusing the OTHER one. Not a leak/bug (accurate, scoped), just
-   imprecise. Proper fix needs a **goal-level entity memory**: when a specific goal is
-   discussed, ground it as a ref ({type:"goal", id, label, turn}); then resolve "the other/
-   first/second goal" against the person's goals minus the just-discussed one. This is a
-   new coref layer (bigger than a regex) — scope it deliberately; keep RBAC re-check.
-2. **Mixed self+other query** ("what are my goals? and also show me Aarav Rossi's") — an
+**Gap (live, manager ada):** "how is Akhil Menon on his goals?" → **"what about his other
+goal?"** returned *"Akhil Menon has 2 goal(s): Strengthen engineering craft, Ship the H1
+platform roadmap. Latest cycle: On track."* — it LISTED BOTH instead of isolating the
+OTHER one. Accurate + scoped (no leak), but not what the user asked; the goal-list path
+(`_LIST_GOALS_RE`) swallowed the ordinal reference.
+
+**Fix (bounded, no new session state):**
+- `insight.diagnose_goal(caller, target, which)` — answers about ONE goal. `which="other"`
+  = the person's goals other than the one the status diagnosis highlights (the weakest-KPI
+  "goal to focus on"); an ordinal ("first"/"second"/"last") picks by (title) order.
+  Read-only, RBAC-scoped via `person_facts` (None out of scope → honest refusal). For >2
+  goals "other" lists the remaining ones (still better than dumping all).
+- `chat.run`: `_GOAL_ORDINAL_RE` ("his/her/their/the/my/your <ordinal|other> goal") →
+  intercept AFTER the person is resolved (so "his" coref still binds the person), route to
+  `diagnose_goal`, phrase via `llm_phrase`, ground the person for further follow-ups.
+
+**Before → after (live, manager):** "what about his other goal?" — before: *"Akhil Menon
+has 2 goal(s): …"*; after: *"Akhil Menon's other goal is “Strengthen engineering craft” —
+its weakest KPI “Code-review turnaround” is at 97% of target."* "and his first goal?" →
+isolates "Ship the H1 platform roadmap".
+
+**Tests:** 1 new pytest (`test_his_other_goal_isolates_the_other_goal` — asserts the OTHER
+goal only, the focus goal absent, and ordinal picks by order). Harness "his other goal"
+check strengthened to require isolation (`contains("Strengthen")`, `not_contains("goal(s):")`).
+**301 AI tests** green; harness **76/76**.
+
+---
+
+## RESUME HERE → Increment 25 (keep hardening + keep REPORT.md current)
+
+Remaining, in priority order — pick ONE and land it fully:
+1. **Mixed self+other query** ("what are my goals? and also show me Aarav Rossi's") — an
    employee currently gets a pure refusal with `data=[]` (SAFE, no leak) but their OWN
-   goals aren't shown. Improve to: answer the self part AND honestly refuse the out-of-
-   scope part in one reply. Never widen scope.
-3. Also open: refer-back across a thread >20 turns (RECENT_TURNS window roll-off) — the
-   `entities_discussed` list (§1) could persist references beyond the verbatim window.
+   goals aren't shown. Improve to answer the self part AND honestly refuse the out-of-scope
+   part in one reply. Never widen scope. (The self+other detection: query has `_SELF_REF_RE`
+   AND a named out-of-scope person — today the out-of-scope person wins and the self part
+   is dropped.)
+2. **Refer-back across a thread >20 turns** (RECENT_TURNS window roll-off) — the
+   `entities_discussed` list (§1) could persist references beyond the verbatim window so
+   "the first person" still resolves in a very long thread.
+3. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
+   goal was last discussed (ground a goal ref) rather than listing all the non-focus ones.
 
 Grow the harness (quota auto-resets per role incl. the DAILY agent budget — Increment 23).
 Fix the weakest failure (root-cause → fix → regression test → commit → log); keep

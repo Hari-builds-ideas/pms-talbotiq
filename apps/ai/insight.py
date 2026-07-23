@@ -165,6 +165,65 @@ def diagnose_person(caller, target) -> dict | None:
     return {"answer": lead + detail + verdict, "facts": facts, "needs_help": needs_help}
 
 
+_ORDINAL_WORD_INDEX = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2,
+                       "3rd": 2, "fourth": 3, "4th": 3}
+
+
+def _goal_detail(g) -> str:
+    """A one-clause read on a single goal's weakest measured KPI (or an honest
+    'nothing measured' note). ``g`` is a person_facts goal dict."""
+    measured = [k for k in g["kpis"] if k["attainment_pct"] is not None]
+    if measured:
+        worst = min(measured, key=lambda k: k["attainment_pct"])
+        return (f"“{g['title']}” — its weakest KPI “{worst['name']}” is at "
+                f"{worst['attainment_pct']:.0f}% of target.")
+    if g["kpis"]:
+        return f"“{g['title']}” — KPIs are set but nothing is measured yet."
+    return f"“{g['title']}” — no KPIs are recorded yet."
+
+
+def diagnose_goal(caller, target, *, which):
+    """Answer about ONE specific goal of ``target`` — ``which`` is "other", "last",
+    or an ordinal word ("first"/"second"/…). "other" = the goals other than the one
+    the status diagnosis highlights (the weakest-KPI "goal to focus on"), so "his
+    other goal" isolates it instead of listing all. Read-only, RBAC-scoped via
+    ``person_facts`` (returns None out of scope → caller shows the honest refusal)."""
+    facts = person_facts(caller, target)
+    if facts is None:
+        return None
+    goals = facts["goals"]
+    who = facts["name"]
+    is_self = facts["is_self"]
+    have = "have" if is_self else "has"
+    poss = "Your" if is_self else f"{who}'s"
+
+    if not goals:
+        return {"answer": f"{who} {have} no active goals this cycle, so there's "
+                          "nothing to focus on.", "facts": facts, "goal_title": None}
+
+    if which == "other":
+        weak = _weakest_kpi(facts)
+        focus_title = weak[0] if weak else goals[0]["title"]
+        others = [g for g in goals if g["title"] != focus_title]
+        if len(goals) == 1:
+            return {"answer": f"{who} only {have} one active goal — {_goal_detail(goals[0])}",
+                    "facts": facts, "goal_title": goals[0]["title"]}
+        if len(others) == 1:
+            return {"answer": f"{poss} other goal is {_goal_detail(others[0])}",
+                    "facts": facts, "goal_title": others[0]["title"]}
+        listed = ", ".join(f"“{g['title']}”" for g in others)
+        return {"answer": f"Aside from “{focus_title}”, {poss.lower() if is_self else poss} "
+                          f"other goals are: {listed}.", "facts": facts, "goal_title": None}
+
+    idx = len(goals) - 1 if which == "last" else _ORDINAL_WORD_INDEX.get(which, 0)
+    if idx < 0 or idx >= len(goals):
+        return {"answer": f"{who} {have} only {len(goals)} goal(s), so there isn't "
+                          f"a {which} one.", "facts": facts, "goal_title": None}
+    label = "last" if which == "last" else which
+    return {"answer": f"{poss} {label} goal is {_goal_detail(goals[idx])}",
+            "facts": facts, "goal_title": goals[idx]["title"]}
+
+
 def _subtree_latest_scores(caller):
     """(user, latest CycleScore|None) for each person in the caller's reporting
     subtree (excluding self). Scoped: never the whole tenant. Read-only."""

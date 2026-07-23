@@ -600,6 +600,35 @@ def test_injection_in_goal_title_is_inert_data(org):
 
 
 @override_settings(**FAKE)
+def test_his_other_goal_isolates_the_other_goal(org):
+    """"his other goal" isolates the goal OTHER than the one the diagnosis highlights
+    (the weakest-KPI focus goal) — it must not list all goals (spec §0 Example B).
+    An explicit ordinal ("his first goal") picks that goal by (title) order."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Akhil Menon"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=False)
+        # focus goal = the weak one (60%); the "other" goal is the strong one (95%).
+        _goal_with_kpi(org.tenant, org.report, "Ship the H1 platform roadmap",
+                       target=100, actual=60, created_by=org.manager)
+        _goal_with_kpi(org.tenant, org.report, "Strengthen engineering craft",
+                       target=100, actual=95, created_by=org.manager)
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "how is Akhil Menon doing on his goals?"},
+                 format="json").json()["session_id"]
+    r = c.post(CHAT, {"query": "what about his other goal?", "session_id": sid},
+               format="json").json()
+    ans = r["answer"]
+    assert "Strengthen engineering craft" in ans          # the OTHER goal, isolated
+    assert "Ship the H1 platform roadmap" not in ans       # not the focus goal, not a list
+    assert "2 goal(s)" not in ans                          # not the old dump
+    # an explicit ordinal picks by order: "Ship..." sorts before "Strengthen..."
+    r2 = c.post(CHAT, {"query": "and his first goal?", "session_id": sid},
+                format="json").json()
+    assert "Ship the H1 platform roadmap" in r2["answer"]
+
+
+@override_settings(**FAKE)
 def test_llm_phrase_is_injection_hardened_and_falls_back_to_draft(org):
     """The phrasing prompt marks USER ASKED / FACTS as untrusted data, and phrasing can
     only ever improve WORDING — never correctness or safety. An injected instruction in

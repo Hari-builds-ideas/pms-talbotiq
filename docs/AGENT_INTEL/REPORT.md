@@ -1,9 +1,10 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 23)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 24)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
-> multi-turn threads — including names buried behind rambling / prompt-injection prefixes.
-> **300 backend AI tests + 135 frontend tests** pass; the live self-test harness
+> multi-turn threads — including names buried behind rambling / prompt-injection prefixes
+> and "his/her other goal" isolating the specific goal (§0 Example B).
+> **301 backend AI tests + 135 frontend tests** pass; the live self-test harness
 > (`scripts/agent_intel_suite.py`, now self-resetting its LLM quota per role) is **76/76**.
 > Every path stays read-only and strictly RBAC-scoped — no intelligence path reaches past
 > permissions.
@@ -65,7 +66,10 @@ and phrases answers naturally via Gemini — **without ever widening access**.
   everyone's data") is inert: the reasoned draft is built only from the subject's own
   scoped facts, and the phrasing prompt explicitly marks USER ASKED / FACTS as untrusted
   data — so a poisoned title is described, never obeyed, and no colleague can surface.
-- Self-test harness: **76/76** across employee/manager/HRBP/admin. Backend: **300 AI
+- **"his/her other goal"** isolates the specific other goal (the one the diagnosis
+  didn't highlight) instead of listing all — an explicit ordinal ("his first goal")
+  picks by order. Read-only, RBAC-scoped via `person_facts`.
+- Self-test harness: **76/76** across employee/manager/HRBP/admin. Backend: **301 AI
   tests**; frontend: **135 tests**; all green.
 
 ## Remaining weaknesses / backlog

@@ -272,6 +272,16 @@ _ORDINAL_PERSON_RE = re.compile(
     re.I,
 )
 
+#: "his/her/their OTHER goal", "the first/second/last goal" — a GOAL-level ordinal
+#: reference. Isolates ONE of the resolved person's goals (spec §0 Example B) instead
+#: of listing them all. Possessive/article + ordinal-or-"other" + "goal".
+_GOAL_ORDINAL_RE = re.compile(
+    r"\b(?:his|her|their|its|the|my|your)\s+"
+    r"(other|first|second|third|fourth|last|1st|2nd|3rd|4th)\s+goal\b",
+    re.I,
+)
+_GOAL_ORDINAL_NORM = {"1st": "first", "2nd": "second", "3rd": "third", "4th": "fourth"}
+
 #: An "open/show the <thing we just made>" imperative — DEFINITE reference only
 #: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
 _OPEN_REF_RE = re.compile(
@@ -1202,6 +1212,27 @@ def chat_answer(caller, query: str, session=None) -> dict:
 
     if target is None:
         return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
+
+    # "his/her/their OTHER goal" / "the first/second/last goal" — isolate ONE goal of
+    # the resolved person (spec §0 Example B), never a list of all. "other" = the goals
+    # other than the one the status diagnosis highlights (the weakest-KPI focus goal).
+    # Scope re-checked inside diagnose_goal (person_facts); the person is grounded so a
+    # further follow-up still holds.
+    _goalord = _GOAL_ORDINAL_RE.search(query or "")
+    if _goalord:
+        from apps.ai.insight import diagnose_goal, llm_phrase
+
+        which = _goalord.group(1).lower()
+        which = _GOAL_ORDINAL_NORM.get(which, which)
+        dg = diagnose_goal(caller, target, which=which)
+        if dg is None:
+            return _scope_denied_answer(caller, intent, target.display)
+        answer = llm_phrase(caller.tenant_id, query, dg["facts"], dg["answer"])
+        return {
+            "status": "ok", "intent": intent, "answer": answer,
+            "data": [g["title"] for g in dg["facts"]["goals"]],
+            "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+        }
 
     # Count-questions get REAL counts (reviews/goals/feedback), not a goals dump.
     if _COUNT_Q_RE.search(query or ""):

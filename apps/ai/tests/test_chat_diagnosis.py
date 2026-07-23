@@ -513,6 +513,39 @@ def test_first_person_we_discussed_resolves_by_order(org):
 
 
 @override_settings(**FAKE)
+def test_go_back_to_first_person_beats_fresh_disambiguation(org):
+    """"go back to the first person" is a CONVERSATION-ORDER refer-back — it must
+    return the person discussed first, even when a disambiguation list was just
+    shown. Regression: the offered-set ordinal ("the first one") was greedily
+    claiming "the first person"/"go back to the first" and picking the first of the
+    just-offered list instead of the earlier person. A bare "the first one" must
+    still pick from the offered set (that path is unchanged)."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Akhil Menon"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=False)
+        _goal_with_kpi(org.tenant, org.report, "Ship roadmap",
+                       target=100, actual=92, created_by=org.manager)
+        for nm in ("Sam Lee", "Sam Lee"):  # a genuine full-name clash → disambiguation
+            s = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                            display_name=nm)
+            _score(org.tenant, s, risk="AT_RISK", pace_behind=True)
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "how is Akhil Menon?"}, format="json").json()["session_id"]
+    dis = c.post(CHAT, {"query": "how is Sam doing?", "session_id": sid}, format="json").json()
+    assert "Several people match" in dis["answer"]  # a fresh offered set now exists
+    # "go back to the first person" → the FIRST person discussed (Akhil), not a Sam.
+    r = c.post(CHAT, {"query": "go back to the first person", "session_id": sid}, format="json")
+    ans = r.json()["answer"]
+    assert "Akhil Menon" in ans
+    assert "Sam Lee" not in ans
+    assert "couldn't find anyone" not in ans.lower()
+    # a bare "the first one" still picks from the just-offered Sam set (unchanged).
+    r2 = c.post(CHAT, {"query": "the first one", "session_id": sid}, format="json")
+    assert "Sam Lee" in r2.json()["answer"]
+
+
+@override_settings(**FAKE)
 def test_order_refer_back_stays_scope_safe(org):
     """An employee can't smuggle a peer in via "the first person" — with no prior
     in-scope people the phrasing degrades safely (no leak, no crash)."""

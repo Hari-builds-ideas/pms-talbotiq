@@ -950,8 +950,15 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # Checked pre-branch so the short follow-up works however it classifies; only
     # fires when an offered set actually exists (access re-checked in the session
     # helper), so a stray "the first goal" without a prior disambiguation is untouched.
+    #
+    # An EXPLICIT person / "go back to" reference ("the first PERSON", "go back to the
+    # first") is a CONVERSATION-ORDER refer-back, not a pick from the just-shown list —
+    # so yield to the order resolver below when `_operson` matches. (`_ORDINAL_PERSON_RE`
+    # matches only "…first/second/last person" and "go back to the first/…", never bare
+    # "the first one" / "the other one", so the offered-set path is otherwise untouched.)
+    _operson = _ORDINAL_PERSON_RE.search(query or "")
     _ord = _ORDINAL_ONE_RE.search(query or "")
-    if _ord and session is not None:
+    if _ord and not _operson and session is not None:
         from apps.ai.sessions import last_offered_people
 
         offered = last_offered_people(caller, session)
@@ -975,7 +982,6 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # Mei?" … "and the first person again?"). Distinct people in first-mention order;
     # access re-checked in the session helper. Checked AFTER the offered-set ordinal
     # above, so a disambiguation "the first one" still wins when a set was just shown.
-    _operson = _ORDINAL_PERSON_RE.search(query or "")
     if _operson and session is not None:
         from apps.ai.sessions import people_in_order
 

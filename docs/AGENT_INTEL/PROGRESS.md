@@ -477,7 +477,38 @@ harness **72/72**.
 
 ---
 
-## RESUME HERE → Increment 22 (keep hardening + keep REPORT.md current)
+## Increment 22 — "go back to the first person" beats a fresh disambiguation  ✅ (committed)
+
+The Increment-21 harness run surfaced a subtle ordering bug in its own output:
+admin thread "how is priya nair?" → "how is yuki?" (disambiguation) → *"the first
+one"* (Yuki Chen) → … → *"go back to the first person"* returned **Yuki Chen** (first
+of the just-offered Yuki list) instead of **Priya Nair** (the first person discussed).
+
+**Root cause:** `_ORDINAL_ONE_RE` (the offered-set ordinal, "the first one") greedily
+matched "the first" inside "the first **person**" / "**go back to** the first" and, being
+checked first, pre-empted the conversation-order resolver (`_ORDINAL_PERSON_RE` →
+`people_in_order`). The explicit words "person" / "go back to" signal *return to someone
+earlier*, so they must win over a fresh disambiguation set.
+
+**Fix:** hoist `_operson = _ORDINAL_PERSON_RE.search(query)` above the offered-set branch
+and guard it with `not _operson`. `_ORDINAL_PERSON_RE` matches only "…first/second/last
+person" and "go back to the first/…" — never bare "the first one" / "the other one" — so
+the offered-set path is otherwise untouched (no regression) and the explicit refer-back
+now routes to conversation order. Access is still re-checked per person in the helper.
+
+**Before → after (live, admin, after priya → yuki-disambiguation → "the first one"):**
+"go back to the first person" — before: *"Yuki Chen is rated on track…"*; after: *"Priya
+Nair is currently on track, though a bit behind pace…"* (the first person discussed). A
+bare "the first one" still picks the first offered Yuki (unchanged).
+
+**Tests:** 1 new pytest (`test_go_back_to_first_person_beats_fresh_disambiguation` —
+asserts Akhil, not the offered "Sam Lee" clash, and that bare "the first one" still hits
+the offered set). Harness admin check strengthened to `contains("Priya")`. **298 AI
+tests** green; harness **72/72**.
+
+---
+
+## RESUME HERE → Increment 23 (keep hardening + keep REPORT.md current)
 
 Next per the goal (keep hardening reference resolution across 3–8 turns):
 1. **More breadth** — injection hidden inside an actual DATA field (seed a goal/review whose
@@ -487,6 +518,10 @@ Next per the goal (keep hardening reference resolution across 3–8 turns):
 2. **Grow the harness**; the quota now auto-resets per role (Increment 21).
 3. Fix the weakest failures (root-cause → fix → regression test → commit → log); keep
    `docs/AGENT_INTEL/REPORT.md` current.
+
+Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
+specific other one; "the first person" (WITHOUT "go back") after a fresh disambiguation
+now resolves by conversation order (arguably correct; revisit if a case wants offered-set).
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
 specific other one; refer-back to a set keys off `last_offered_people` (most recent

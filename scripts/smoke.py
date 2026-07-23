@@ -8,8 +8,8 @@ product is genuinely wired end-to-end (no 500s, RBAC boundaries hold, AI alive).
 Usage:
     docker compose up -d --build
     docker compose run --rm web python manage.py seed_demo
-    python3 scripts/smoke.py                 # defaults to http://localhost:8080
-    BASE=http://localhost:8080 python3 scripts/smoke.py
+    python3 scripts/smoke.py                 # defaults to http://localhost:8090
+    BASE=http://localhost:8090 python3 scripts/smoke.py
 
 It is READ-MOSTLY (a couple of safe writes: a score recompute, a chat query) so
 it can be run repeatedly without corrupting the demo data. Exit code is non-zero
@@ -20,7 +20,7 @@ import os
 import sys
 import urllib.request as u
 
-BASE = os.environ.get("BASE", "http://localhost:8080")
+BASE = os.environ.get("BASE", "http://localhost:8090")
 TENANT = os.environ.get("TENANT", "acme")
 PASSWORD = os.environ.get("DEMO_PASSWORD", "Passw0rd!demo")
 

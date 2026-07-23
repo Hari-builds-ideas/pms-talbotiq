@@ -75,18 +75,20 @@ class OpenAIProvider(LLMProvider):
     def _reserve_global(self) -> None:
         if self.global_ceiling <= 0:
             return
+        window_s = int(getattr(settings, "LLM_CALL_WINDOW_SECONDS", 3600))
         try:
             # ATOMIC fixed-window INCR: concurrent callers across replicas can't
-            # overshoot the global ceiling at the edge.
-            count = atomic.incr_window(_GLOBAL_CALL_KEY, ttl_ms=24 * 3600 * 1000)
+            # overshoot the global ceiling at the edge. Rolling window → self-heals.
+            count = atomic.incr_window(_GLOBAL_CALL_KEY, ttl_ms=window_s * 1000)
         except Exception:  # noqa: BLE001 — a cache miss must not wedge the call
             return
         if count > self.global_ceiling:
             # A cost backstop, not a provider failure → the gateway maps this to a
             # graceful BUDGET_EXCEEDED (DEGRADED / 429), never PROVIDER_ERROR.
+            mins = max(1, window_s // 60)
             raise LLMGlobalCeilingError(
-                f"Global LLM call ceiling ({self.global_ceiling}) reached for this "
-                "run — refusing further calls to protect the quota."
+                f"Global LLM call ceiling ({self.global_ceiling}) reached — pausing "
+                f"further calls to protect the quota. It resets within {mins} minute(s)."
             )
 
     # ── provider contract ─────────────────────────────────────────────────────

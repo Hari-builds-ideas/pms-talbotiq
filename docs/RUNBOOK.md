@@ -10,8 +10,8 @@ docker compose up -d --build          # mysql, redis, web (gunicorn+auto-migrate
 docker compose run --rm web python manage.py seed_demo   # idempotent — safe to re-run
 ```
 
-- **Public entry:** http://localhost:8080 (the frontend nginx serves the SPA and proxies `/api`, `/admin`, `/accounts`, `/static`, `/healthz`, `/readyz` → `web:8000`).
-- **Health:** `curl http://localhost:8080/readyz` → `200`.
+- **Public entry:** http://localhost:8090 (the frontend nginx serves the SPA and proxies `/api`, `/admin`, `/accounts`, `/static`, `/healthz`, `/readyz` → `web:8000`).
+- **Health:** `curl http://localhost:8090/readyz` → `200`.
 - **Flower (Celery):** the `flower` service (task monitoring).
 - `web` has the repo bind-mounted (`.:/app`); after a backend code change run `docker compose restart web` to reload gunicorn.
 

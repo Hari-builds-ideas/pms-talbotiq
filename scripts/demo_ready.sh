@@ -7,7 +7,7 @@
 # agent V2 plan→approve flow + the refusal beat). Prints a green/red summary and
 # exits non-zero if anything a demo relies on is broken.
 #
-#   ./scripts/demo_ready.sh              # against http://localhost:8080
+#   ./scripts/demo_ready.sh              # against http://localhost:8090
 #   BASE=http://host:port ./scripts/demo_ready.sh
 #
 # The smoke uses the stack's configured LLM provider. The running stack uses live
@@ -17,7 +17,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BASE="${BASE:-http://localhost:8080}"
+BASE="${BASE:-http://localhost:8090}"
 BOLD=$'\033[1m'; GREEN=$'\033[32m'; RED=$'\033[31m'; DIM=$'\033[2m'; RESET=$'\033[0m'
 
 echo "${BOLD}▶ 1/4  Recreating web + celery-worker (fresh code + key)…${RESET}"

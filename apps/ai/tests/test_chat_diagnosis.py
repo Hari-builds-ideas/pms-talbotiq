@@ -622,6 +622,27 @@ def test_mixed_self_and_other_answers_self_and_refuses_other(org):
 
 
 @override_settings(**FAKE)
+def test_mixed_self_and_other_composes_for_a_manager(org):
+    """The mixed self+other reply also composes for a MANAGER naming someone OUTSIDE
+    their team: answer the manager's own part AND refuse the out-of-scope person in one
+    reply, never leaking the other's data. (org.peer reports to the HRBP, not to
+    org.manager, so they are out of the manager's scope.)"""
+    with tenant_context(org.tenant):
+        org.peer.display_name = "Priya Nair"
+        org.peer.save(update_fields=["display_name"])
+        _goal_with_kpi(org.tenant, org.manager, "My manager objective",
+                       target=100, actual=80, created_by=org.hrbp)
+        _goal_with_kpi(org.tenant, org.peer, "Priya private goal",
+                       target=100, actual=40, created_by=org.hrbp)
+    c = _client(org.manager)
+    ans = c.post(CHAT, {"query": "show me my goals and also Priya Nair's goals"},
+                 format="json").json()["answer"]
+    assert "My manager objective" in ans          # the manager's own part is delivered
+    assert "Priya Nair" in ans and "don't have access" in ans.lower()  # honest refusal
+    assert "Priya private goal" not in ans         # never leaked
+
+
+@override_settings(**FAKE)
 def test_show_me_x_is_not_mistaken_for_self_reference(org):
     """"show me X's goals" ("me" is the indirect object, not a claim on the caller's own
     data) must NOT trigger the mixed self+other path — an employee asking about an

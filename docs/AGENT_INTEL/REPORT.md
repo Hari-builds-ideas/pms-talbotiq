@@ -1,4 +1,4 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 27)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 28)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
@@ -73,8 +73,9 @@ and phrases answers naturally via Gemini — **without ever widening access**.
 - **Mixed self+other** ("what are my goals? and also show me X's") answers the caller's
   OWN part and appends an honest refusal for the out-of-scope person — never dropping the
   allowed half, never leaking the other. Possessive-only ("my"/"mine"), so "show me X's
-  goals" stays a pure refusal.
-- Self-test harness: **80/80** across employee/manager/HRBP/admin. Backend: **303 AI
+  goals" stays a pure refusal. Composes for both an employee and a manager (naming someone
+  outside their team).
+- Self-test harness: **80/80** across employee/manager/HRBP/admin. Backend: **305 AI
   tests**; frontend: **135 tests**; all green.
 
 ## Remaining weaknesses / backlog

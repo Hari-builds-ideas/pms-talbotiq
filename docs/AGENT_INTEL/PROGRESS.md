@@ -639,16 +639,36 @@ No product-behaviour change; harness stays **80/80**, meaningfully faster per ru
 
 ---
 
-## RESUME HERE → Increment 28 (keep hardening + keep REPORT.md current)
+## Increment 28 — manager mixed self+other verified + locked in (test-only)  ✅ (committed)
 
-Remaining product refinements, in priority order — pick ONE and land it fully:
+Probed Increment-25's mixed self+other for a MANAGER naming an out-of-TEAM person
+("show me my goals and also Priya Nair's", Priya reports to the HRBP). It ALREADY composes
+correctly — the earlier probe only *looked* wrong because the CLI display truncated the
+reply; the full answer is the manager's own diagnosis + *"As for Priya Nair: You don't have
+access… You can ask about the people on your team: …"*. No leak. ("my team …" is a separate
+path — the team-scan intercept fires before name resolution — so the self-part handler
+never mis-fires on it.)
+
+No code change needed; added a regression test so the composition can't silently break.
+
+**Tests:** 1 new pytest (`test_mixed_self_and_other_composes_for_a_manager`). **305 AI
+tests** green; harness unchanged at **80/80** (no product code / no harness change).
+
+---
+
+## RESUME HERE → Increment 29 (keep hardening + keep REPORT.md current)
+
+Remaining product refinements — the core spec (§0/§7/§8) has been satisfied since Inc 20;
+these are increasingly marginal polish. Pick ONE and land it fully:
 1. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
    goal was last discussed (ground a goal ref) rather than listing all the non-focus ones.
-2. **Mixed self+other for a MANAGER** naming an out-of-team person alongside "my team" —
-   same pattern as Increment 25 but for the manager/team-scan path (verify it composes).
-3. **Pronoun refer-back beyond the window** — `resolve_person_reference` /
+2. **Pronoun refer-back beyond the window** — `resolve_person_reference` /
    `last_referenced_person_any_scope` still key off `recent_turns`; decide deliberately
-   whether a pronoun should bind to a person mentioned >20 turns ago (verbatim text gone).
+   whether a pronoun should bind to a person mentioned >20 turns ago (verbatim text gone —
+   likely INTENTIONALLY out of reach, since the model can't see that turn's text).
+3. **"the CEO's goals" (unresolvable title)** — a mixed query naming a ROLE not a person
+   ("my goals and the CEO's") silently answers only self; could add an honest "I can't
+   identify who you mean by 'the CEO'" note. Low value.
 
 Grow the harness (daily budget resets once at start; per-window ceiling per role — Inc 27).
 Fix the weakest failure (root-cause → fix → regression test → commit → log); keep

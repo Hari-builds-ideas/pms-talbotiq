@@ -372,3 +372,31 @@ def test_capability_answer_is_role_aware(org):
     assert "team" in mgr.lower() and ("who's behind" in mgr.lower() or "doing best" in mgr.lower())
     assert "only see your own" in emp.lower()
     assert mgr != emp   # not one scripted blurb for everyone
+
+
+# ── AGENT_INTEL_V2 §0 root-cause: first-person message must resolve to SELF ────
+@override_settings(**FAKE)
+def test_my_own_goals_resolves_to_self_not_name_lookup(org):
+    """The §0 ROOT-CAUSE bug: "what are my own goals?" dead-ended in a name
+    lookup ("I couldn't find anyone by that name"). A first-person message is
+    about the CURRENT USER — never a person search (AGENT_INTEL_V2 §2 Ex A)."""
+    # give the employee a real goal so the self answer has content
+    with tenant_context(org.tenant):
+        _goal_with_kpi(org.tenant, org.report, "Land the migration",
+                       target=100, actual=80, created_by=org.manager)
+    c = _client(org.report)  # EMPLOYEE
+    ans = c.post(CHAT, {"query": "what are my own goals?"}, format="json").json()["answer"]
+    assert "couldn't find anyone" not in ans.lower()
+    assert "land the migration" in ans.lower()
+
+
+@override_settings(**FAKE)
+def test_first_person_variants_never_trigger_name_lookup(org):
+    """Assorted first-person phrasings all resolve to self, no dead-end."""
+    with tenant_context(org.tenant):
+        _goal_with_kpi(org.tenant, org.report, "Ship dashboards",
+                       target=100, actual=90, created_by=org.manager)
+    c = _client(org.report)
+    for q in ["what are my own KPIs?", "show me my goals", "how am I tracking?"]:
+        ans = c.post(CHAT, {"query": q}, format="json").json()["answer"]
+        assert "couldn't find anyone" not in ans.lower(), f"{q!r} dead-ended"

@@ -228,7 +228,36 @@ graceful handling; no code change. 287 AI tests.
 
 ---
 
-## RESUME HERE → Increment 13
+## Increment 13 — §0 ROOT-CAUSE: first-person message → SELF (no name lookup)  ✅ (committed)
+
+Working `AGENT_INTEL_V2.md` (the researched spec). Reproduced all three §0 bugs live
+first. This increment fixes the **root-cause** one (spec says fix it FIRST):
+
+**Bug (live, EMPLOYEE akhil@):** "what are my own goals?" → *"I couldn't find anyone
+by that name."* A message with NO person was being forced into a name lookup: the
+`typed_a_name` heuristic treated the domain word **"own"** as a name token, so it fell
+into the not-found/typo branch.
+
+**Fix (chat.py), per spec §2 Example A** — *"a message about my/mine/I refers to the
+current user; if a message has no person reference, do not perform a name lookup":*
+- `_SELF_REF_RE` (`my|mine|myself|i|me|i'm`) + a resolution branch: when no explicit
+  name resolved and there's no 3rd-person pronoun, a first-person message resolves to
+  the **caller** (never a name lookup). It sits AFTER the out-of-scope-name branches
+  (so "how is my colleague Aarav?" still refuses), BEFORE the fragile `typed_a_name`
+  not-found branch.
+- Defense-in-depth: added `own/mine/myself/owns` to `_NAME_STOP_WORDS`.
+
+**Before → after (live, employee akhil@):** "what are my own goals?" — before:
+*"couldn't find anyone by that name"*; after: *"You have 2 goal(s): Strengthen
+engineering craft, Ship the H1 platform roadmap. Latest cycle: On track."* Peer query
+("how is Aarav Rossi?") still correctly refused — no scope regression.
+
+**Tests:** 2 new in `test_chat_diagnosis.py` (self-goals resolves-to-self; first-person
+variants never dead-end). **289 AI tests** green (was 287), 0 regressions.
+
+---
+
+## RESUME HERE → Increment 14 (§0 bug 2: "his other goal" / refer-back after compare)
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

@@ -176,6 +176,7 @@ _NAME_STOP_WORDS = frozenset(
     "on in at to from team report reports goal goals kpi kpis review reviews feedback "
     "score scores cycle cycles progress performance risk open active pending count number "
     "me i we you they show tell give latest current last week month quarter year today "
+    "own mine myself owns "
     "track On track behind ahead risk please can could would "
     # diagnosis vocabulary — never a person's name ("does she need help?")
     "need needs help support struggling struggle falling trouble okay ok well badly "
@@ -219,6 +220,13 @@ _AGG_RE = re.compile(
     r"\bhow\s+many\b.{0,40}\b(behind|at\s+risk|struggl|on\s+track|report|team)\b",
     re.I,
 )
+
+#: A FIRST-PERSON, self-referential message ("what are MY goals", "how am I
+#: doing", "my own KPIs", "am I on track"). Per AGENT_INTEL_V2 §2 Example A the
+#: subject is the CURRENT USER — never a name lookup, even when a domain word
+#: like "own" slips past the name-stop list. Deictic third-person pronouns
+#: ("he/she/they") are handled separately and take precedence.
+_SELF_REF_RE = re.compile(r"\b(my|mine|myself|i|me|i'm)\b", re.I)
 
 #: An EXPLICIT request for the raw goal LIST ("show/list my goals", "what are my
 #: goals"). Only these get the flat title list; everything else about a person
@@ -932,6 +940,11 @@ def chat_answer(caller, query: str, session=None) -> dict:
         person_deixis = bool(_tokens & {
             "he", "she", "they", "him", "her", "them", "his", "their", "hers", "theirs"}
         ) or bool(re.search(r"\b(that|this|the same)\s+person\b", (query or "").lower()))
+        # §2 Example A: a purely first-person message ("what are my goals", "how
+        # am I doing", "my own KPIs") is about the CURRENT USER — resolve to self,
+        # never a name lookup. This must win over the fragile `typed_a_name`
+        # heuristic (a stray domain word like "own" must not force a not-found).
+        is_self_ref = bool(_SELF_REF_RE.search(query or ""))
         if named is not None:
             target = named
         elif ambiguous:  # a list of candidate User objects (offered order)
@@ -954,6 +967,11 @@ def chat_answer(caller, query: str, session=None) -> dict:
         elif out_of_scope == "":
             # Several out-of-scope people match the name — generic honest refusal.
             return _scope_denied_answer(caller, intent, None)
+        elif is_self_ref and not person_deixis:
+            # First-person, no other person named and no 3rd-person pronoun →
+            # the caller themselves (fixes "what are my own goals?" dead-ending
+            # in a name lookup). A "show/list my goals" still flat-lists below.
+            target = caller
         elif typed_a_name:
             # Before giving up, try a TYPO-tolerant suggestion within the caller's
             # scope ("Akil Menon" → "Did you mean Akhil Menon?"). Suggestions are

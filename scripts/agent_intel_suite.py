@@ -191,6 +191,9 @@ SCENARIOS = [
          [alive(), not_contains("salary"), not_contains("secret")]),
         # two-person comparison names both, grounded
         ("how are Akhil Menon and Mei Patel doing?", [contains("Akhil"), contains("Mei")]),
+        # comparison that includes the caller via "me" → a real side-by-side of both
+        # (the caller + the named person), not just a re-describe of the other person.
+        ("compare me with Akhil Menon", [contains("Akhil"), contains("you"), not_dead()]),
         # §0 bug 3 regression: refer back to the just-compared pair — reason over
         # THOSE two, never a fresh name lookup, never a dead reply.
         ("who needs more support right now?", [not_dead(), not_canned()]),

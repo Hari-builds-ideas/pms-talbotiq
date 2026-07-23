@@ -312,6 +312,77 @@ def test_two_person_comparison_diagnoses_both(org):
 
 
 @override_settings(**FAKE)
+def test_compare_me_with_named_person_composes_both(org):
+    """"compare me with X" / "compare X with me" must produce a real side-by-side of the
+    CURRENT USER and X — reusing the two-person path. Regression: "me" was ignored and
+    only X was described."""
+    with tenant_context(org.tenant):
+        org.manager.display_name = "Mia Manager"
+        org.manager.save(update_fields=["display_name"])
+        _score(org.tenant, org.manager, risk="ON_TRACK")
+        _goal_with_kpi(org.tenant, org.manager, "Lead the platform team",
+                       target=100, actual=88, created_by=org.hrbp)
+        org.report.display_name = "Aarav Rossi"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=True)
+        _goal_with_kpi(org.tenant, org.report, "Ship the roadmap",
+                       target=100, actual=60, created_by=org.manager)
+    c = _client(org.manager)
+    for q in ("compare me with Aarav Rossi", "compare Aarav Rossi with me",
+              "how do I compare to Aarav Rossi?"):
+        d = c.post(CHAT, {"query": q}, format="json").json()
+        ans, data = d["answer"], d.get("data", [])
+        assert "Aarav Rossi" in ans                       # the other person is diagnosed
+        assert "you" in ans.lower()                        # and so is the caller (self)
+        assert "Mia Manager" in data and "Aarav Rossi" in data  # both are subjects
+
+
+@override_settings(**FAKE)
+def test_compare_him_with_me_after_discussing_a_person(org):
+    """"compare him with me" after discussing Aarav = Aarav vs the caller: the pronoun
+    corefers to the last-discussed person, "me" is the caller."""
+    with tenant_context(org.tenant):
+        org.manager.display_name = "Mia Manager"
+        org.manager.save(update_fields=["display_name"])
+        _score(org.tenant, org.manager, risk="ON_TRACK")
+        _goal_with_kpi(org.tenant, org.manager, "Lead the team", target=100, actual=90,
+                       created_by=org.hrbp)
+        org.report.display_name = "Aarav Rossi"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="AT_RISK", pace_behind=True)
+        _goal_with_kpi(org.tenant, org.report, "Ship the roadmap", target=100, actual=55,
+                       created_by=org.manager)
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "how is Aarav Rossi?"}, format="json").json()["session_id"]
+    d = c.post(CHAT, {"query": "compare him with me", "session_id": sid}, format="json").json()
+    ans, data = d["answer"], d.get("data", [])
+    assert "Aarav Rossi" in ans and "you" in ans.lower()
+    assert "Mia Manager" in data and "Aarav Rossi" in data
+
+
+@override_settings(**FAKE)
+def test_compare_me_with_out_of_scope_person_refuses_them(org):
+    """"compare me with <out-of-scope person>" answers the caller's own side and refuses
+    the out-of-scope person cleanly — never their data (org.peer reports to the HRBP)."""
+    with tenant_context(org.tenant):
+        org.manager.display_name = "Mia Manager"
+        org.manager.save(update_fields=["display_name"])
+        _score(org.tenant, org.manager, risk="ON_TRACK")
+        _goal_with_kpi(org.tenant, org.manager, "Lead the team", target=100, actual=90,
+                       created_by=org.hrbp)
+        org.peer.display_name = "Nadia Outsider"
+        org.peer.save(update_fields=["display_name"])
+        _goal_with_kpi(org.tenant, org.peer, "Peer secret goal", target=100, actual=40,
+                       created_by=org.hrbp)
+    c = _client(org.manager)
+    ans = c.post(CHAT, {"query": "compare me with Nadia Outsider"},
+                 format="json").json()["answer"]
+    assert "you" in ans.lower()                       # the caller's own side is shown
+    assert "outside your access" in ans.lower()        # the peer is refused honestly
+    assert "Peer secret goal" not in ans               # never leaked
+
+
+@override_settings(**FAKE)
 def test_two_named_aggregation_gives_counts_not_diagnosis(org):
     """"how many goals do X and Y have?" → precise per-person counts, both named."""
     with tenant_context(org.tenant):

@@ -1,12 +1,13 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 29)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 30)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
 > multi-turn threads — including names buried behind rambling / prompt-injection prefixes,
-> "his/her other goal" isolating the specific goal (§0 Example B), and mixed self+other
-> queries answering the self part while refusing the out-of-scope part.
-> **303 backend AI tests + 135 frontend tests** pass; the live self-test harness
-> (`scripts/agent_intel_suite.py`, now self-resetting its LLM quota per role) is **80/80**.
+> "his/her other goal" isolating the specific goal (§0 Example B), mixed self+other queries
+> answering the self part while refusing the out-of-scope part, and comparisons that include
+> the caller ("compare me with X", "compare him with me").
+> **309 backend AI tests + 135 frontend tests** pass; the live self-test harness
+> (`scripts/agent_intel_suite.py`, now self-resetting its LLM quota per role) is **83/83**.
 > Every path stays read-only and strictly RBAC-scoped — no intelligence path reaches past
 > permissions.
 > Nothing is merged into `hari/agent-ui-v2` or `main`.
@@ -78,7 +79,11 @@ and phrases answers naturally via Gemini — **without ever widening access**.
 - **Pronoun vs order asymmetry (by design)**: a bare pronoun ("she") binds only within the
   ~20-turn verbatim window (rolled-off → honest "who do you mean?", never a wrong bind);
   conversation-ORDER ("the first person") persists across the whole thread (increments 26/29).
-- Self-test harness: **80/80** across employee/manager/HRBP/admin. Backend: **306 AI
+- **Comparison including the caller** ("compare me with X", "compare him with me", "how do I
+  compare to X") produces a real side-by-side of the caller and the other person, reusing the
+  two-person path; "me/my/I" → the caller, "him/her" → the last-discussed person (access
+  re-checked). An out-of-scope person is refused cleanly, never compared (increment 30).
+- Self-test harness: **83/83** across employee/manager/HRBP/admin. Backend: **309 AI
   tests**; frontend: **135 tests**; all green.
 
 ## Remaining weaknesses / backlog

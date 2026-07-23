@@ -714,27 +714,64 @@ def _answer_team_counts(caller, intent="performance"):
     }
 
 
-_COMPARE_SPLIT_RE = re.compile(r"\b(?:and|vs\.?|versus|compared\s+to)\b|,", re.I)
+_COMPARE_SPLIT_RE = re.compile(r"\b(?:and|vs\.?|versus|compared\s+to|with|to)\b|,", re.I)
+
+#: A comparison SUBJECT that is the current user ("compare me with X", "how do I
+#: compare to X", "compare my goals with X"). Possessive/pronoun first person.
+_SELF_SUBJECT_RE = re.compile(r"\b(me|myself|my|mine|i)\b", re.I)
+
+#: A comparison SUBJECT given as a 3rd-person pronoun ("compare him with me") — it
+#: corefers to the last-discussed person (resolved via the session, access re-checked).
+_DEIXIS_SUBJECT_RE = re.compile(
+    r"\b(he|him|his|she|her|hers|they|them|their|theirs)\b|"
+    r"\b(?:that|this|the\s+same)\s+person\b", re.I)
 
 
-def _resolve_multiple(caller, query):
-    """People named in a comparison ("how are Akhil and Mei doing?", "compare X and
-    Y"). Splits on and/vs/comma, resolves each segment IN SCOPE independently.
-    Returns ``(in_scope_targets, out_of_scope_names)`` — the second list lets the
-    caller answer the in-scope people AND honestly name the ones it can't see
-    (never their data). Empty unless a comparison connector is present."""
+def _resolve_multiple(caller, query, session=None):
+    """People in a comparison ("how are Akhil and Mei doing?", "compare X and Y",
+    "compare him with me"). Splits on and/vs/with/to/comma, resolves each segment IN
+    SCOPE independently. A first-person segment ("me"/"my"/"I") resolves to the CURRENT
+    USER (always in their own scope); a 3rd-person pronoun ("him"/"her") corefers to the
+    last-discussed person via the session (access re-checked). Returns
+    ``(in_scope_targets, out_of_scope_names)`` — the second list lets the caller answer
+    the in-scope people AND honestly name the ones it can't see (never their data). Empty
+    unless a comparison connector is present."""
     if not re.search(r"\band\b|\bvs\b|\bversus\b|\bcompare|,", (query or ""), re.I):
         return [], []
+    # Resolving "me"/"my"/"him" as a comparison SUBJECT only makes sense for a genuine
+    # COMPARISON ("compare me with X", "how do I compare to X"). A plain "and" conjunction
+    # ("what are my goals? and show me X's") is a mixed self+other request handled by the
+    # single-person path (answer self + refuse the other) — leave it untouched here.
+    is_comparison = bool(re.search(r"\bcompare|\bcompared\b|\bvs\.?\b|\bversus\b", query or "", re.I))
     targets, seen, oos_names = [], set(), []
+
+    def _add_target(u):
+        if u is not None and u.id not in seen:
+            seen.add(u.id)
+            targets.append(u)
+
+    def _add_oos(name):
+        if name and name not in oos_names:
+            oos_names.append(name)
+
     for part in _COMPARE_SPLIT_RE.split(query or ""):
         if not part.strip():
             continue
         named, _amb, oos = _resolve_in_scope(caller, part)
-        if named is not None and named.id not in seen:
-            seen.add(named.id)
-            targets.append(named)
-        elif hasattr(oos, "display") and oos.display not in oos_names:
-            oos_names.append(oos.display)  # a real person, outside the caller's scope
+        if named is not None:
+            _add_target(named)
+        elif hasattr(oos, "display"):
+            _add_oos(oos.display)  # a real person, outside the caller's scope
+        elif is_comparison and _SELF_SUBJECT_RE.search(part):
+            _add_target(caller)  # "me"/"my"/"I" → the caller (always in own scope)
+        elif is_comparison and session is not None and _DEIXIS_SUBJECT_RE.search(part):
+            # "him"/"her"/"that person" → the last-discussed person, access RE-checked:
+            # in scope → a subject; out of scope → named honestly, never their data.
+            from apps.ai.sessions import last_referenced_person_any_scope
+
+            prior = last_referenced_person_any_scope(caller, session)
+            if prior is not None:
+                _add_target(prior) if actor_can_access(caller, prior) else _add_oos(prior.display)
     return targets, oos_names
 
 
@@ -1093,7 +1130,7 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # a per-person reasoned reply, each resolved + scope-checked INDEPENDENTLY. Only
     # fires when ≥2 DISTINCT in-scope people resolve, so "goals and KPIs" is untouched
     # and an out-of-scope name simply isn't included (never a leak).
-    _multi, _oos_names = _resolve_multiple(caller, query)
+    _multi, _oos_names = _resolve_multiple(caller, query, session)
     if len(_multi) >= 2 or (_multi and _oos_names):
         return _answer_two_people(caller, query, _multi, intent, oos_names=_oos_names)
 

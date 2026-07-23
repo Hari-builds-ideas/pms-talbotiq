@@ -675,35 +675,56 @@ code change. **306 AI tests** green; harness unchanged at **80/80**.
 
 ---
 
-## RESUME HERE → Increment 30 (optional polish — core + hardening complete)
+## Increment 30 — comparison including the caller ("compare X with me")  ✅ (committed)
 
-The core spec (§0/§7/§8) was satisfied by Inc 20; increments 21–29 hardened and polished
-BEYOND spec, and the open design questions are now resolved. What remains is genuinely
-marginal — attempt only if there's clear value, else this is a natural completion point:
+**Bug (live, manager ada):** "compare me with Aarav Rossi", "compare him with me", "how do
+I compare to Aarav?" re-described ONLY the other person and ignored "me". Root cause in
+`_resolve_multiple`: (a) it split subjects only on `and/vs/versus/compared to/,` — never
+"with"/"to", so "compare X with me" wasn't split into two subjects; (b) it resolved only
+NAMED people — "me/my/I" and a bare "him/her" were never mapped to a subject.
+
+**Fix (reuses the existing two-person path — no new comparison logic):** in
+`_resolve_multiple`, split on "with"/"to" as well, and — ONLY for a genuine comparison
+(query contains "compare"/"vs"/"versus", so a plain "and" mixed self+other request is left
+to the Increment-25 path) — resolve a first-person segment ("me"/"my"/"I") to the CURRENT
+USER and a 3rd-person pronoun ("him"/"her") to the last-discussed person via the session
+(access RE-checked: in scope → a subject; out of scope → named honestly, never their data).
+Both subjects then flow through the unchanged `_answer_two_people` side-by-side reasoner.
+
+**Before → after (live, manager ada):**
+- "how is Aarav Rossi?" → "compare him with me" — before: only Aarav re-described; after:
+  *"Aarav Rossi is on track but behind pace… In contrast, you are on track and keeping
+  pace…"* (data: ["Aarav Rossi", "Ada Lovelace"]).
+- "compare me with Aarav Rossi" → self + Aarav side by side. "compare me with <out-of-team
+  person>" → own side + honest "outside your access", no leak. "compare Aarav Rossi and Mei
+  Patel" (two named) → still both.
+
+**Tests:** 3 new pytest (`test_compare_me_with_named_person_composes_both`,
+`test_compare_him_with_me_after_discussing_a_person`,
+`test_compare_me_with_out_of_scope_person_refuses_them`); the existing two-named comparison
+and mixed self+other tests still pass. Harness +1 ("compare me with Akhil Menon"). **309 AI
+tests** green; harness **83/83**.
+
+---
+
+## Assistant complete (core + hardening + all reported bugs fixed)
+
+The core spec (§0/§7/§8) was satisfied by Inc 20; increments 21–30 hardened it BEYOND spec,
+resolved the open design questions, and fixed every reported bug (the latest being
+comparison-including-the-caller, Inc 30). Everything is green — **309 AI tests, harness
+83/83, 135 frontend tests** — fully documented, and nothing is merged to `hari/agent-ui-v2`
+or `main`.
+
+Genuinely-marginal, optional-only leftovers (current behaviour is already correct + honest):
 1. **Goal-level coref for >2 goals** — "his other goal" with 3+ goals lists the non-focus
-   goals; a goal-ref-grounding layer could isolate to one. Niche (most people have ≤2 active
-   goals); the current behaviour is correct and honest, just not maximally terse.
+   goals (there is no single "other" among 3+); a goal-ref-grounding layer could track which
+   was last discussed. Niche — most people have ≤2 active goals (the 2-goal case is isolated,
+   Inc 24).
 2. **"the CEO's goals" (unresolvable ROLE)** — a mixed query naming a role not a person
    answers only self silently; an "I can't identify who you mean by 'the CEO'" note would be
    tidier. Low value.
 
-Everything is green (306 AI tests, harness 80/80, 135 frontend), fully documented, and nothing
-is merged to `hari/agent-ui-v2` or `main`. Grow the harness only if a NEW behaviour lands.
-
-Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
-specific other one; "the first person" (WITHOUT "go back") after a fresh disambiguation
-now resolves by conversation order (arguably correct; revisit if a case wants offered-set);
-an employee mixed self+other query currently fully refuses (safe) rather than answering
-the self part.
-
-Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
-specific other one; refer-back to a set keys off `last_offered_people` (most recent
-≥2-person set); the harness is LLM-quota + time heavy (phrasing = 2 calls/turn).
-
-Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
-specific other one; refer-back to a set keys off `last_offered_people` (most recent
-≥2-person set) — good for compare/disambiguation, a longer "entities_discussed" list
-(§1) could track more history.
+Grow the harness only if a NEW behaviour lands.
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

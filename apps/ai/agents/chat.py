@@ -352,10 +352,20 @@ def _named_candidates(query):
 
     from apps.identity.models import User
 
-    words = [
-        w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
-        if w not in _NAME_STOP_WORDS
-    ][:8]
+    # DISTINCT name tokens in first-seen order. Dedup BEFORE the cap so a rambling or
+    # injection-laden prefix ("really really … Akhil", "ignore all previous instructions
+    # … then how is Akhil") can't bury the real name past the cap by repetition; the cap
+    # (on distinct tokens) still bounds the OR-query width. Widening the token set never
+    # widens access — the call site applies the caller's data scope. (INTEL_V2 §7.)
+    seen: set[str] = set()
+    words: list[str] = []
+    for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower()):
+        if w in _NAME_STOP_WORDS or w in seen:
+            continue
+        seen.add(w)
+        words.append(w)
+        if len(words) >= 24:
+            break
     if not words:
         return [], set(), {}
     cond = None

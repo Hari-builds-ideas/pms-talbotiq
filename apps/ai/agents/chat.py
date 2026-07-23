@@ -258,6 +258,15 @@ _ORDINAL_ONE_RE = re.compile(
 _ORDINAL_INDEX = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2,
                   "other": 1}  # "last" handled specially
 
+#: "the first/second person (we discussed)", "go back to the first one" — a pick by
+#: CONVERSATION ORDER (distinct people in first-mention order), for topic-switch
+#: refer-back ("how is Akhil?" … "how is Mei?" … "and the first person again?").
+_ORDINAL_PERSON_RE = re.compile(
+    r"\bthe\s+(first|1st|second|2nd|third|3rd|last)\s+person\b|"
+    r"\bgo\s+back\s+to\s+the\s+(first|1st|second|2nd|third|3rd|last)\b",
+    re.I,
+)
+
 #: An "open/show the <thing we just made>" imperative — DEFINITE reference only
 #: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
 _OPEN_REF_RE = re.compile(
@@ -935,6 +944,31 @@ def chat_answer(caller, query: str, session=None) -> dict:
             word = next((g for g in _ord.groups() if g), "first").lower()
             idx = len(offered) - 1 if word == "last" else _ORDINAL_INDEX.get(word, 0)
             picked = offered[min(max(idx, 0), len(offered) - 1)]
+            from apps.ai.insight import diagnose_person, llm_phrase
+
+            diag = diagnose_person(caller, picked)
+            if diag is not None:
+                answer = llm_phrase(caller.tenant_id, query, diag["facts"], diag["answer"])
+                return {
+                    "status": "ok", "intent": "performance", "answer": answer,
+                    "data": [g["title"] for g in diag["facts"]["goals"]],
+                    "refs": [{"type": "user", "id": str(picked.id), "label": picked.display}],
+                }
+
+    # "the first/second person (we discussed)" / "go back to the first one" — a pick
+    # by CONVERSATION ORDER, for topic-switch refer-back ("how is Akhil?" … "how is
+    # Mei?" … "and the first person again?"). Distinct people in first-mention order;
+    # access re-checked in the session helper. Checked AFTER the offered-set ordinal
+    # above, so a disambiguation "the first one" still wins when a set was just shown.
+    _operson = _ORDINAL_PERSON_RE.search(query or "")
+    if _operson and session is not None:
+        from apps.ai.sessions import people_in_order
+
+        ordered = people_in_order(caller, session)
+        if ordered:
+            word = next((g for g in _operson.groups() if g), "first").lower()
+            idx = len(ordered) - 1 if word == "last" else _ORDINAL_INDEX.get(word, 0)
+            picked = ordered[min(max(idx, 0), len(ordered) - 1)]
             from apps.ai.insight import diagnose_person, llm_phrase
 
             diag = diagnose_person(caller, picked)

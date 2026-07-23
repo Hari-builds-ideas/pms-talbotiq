@@ -483,3 +483,41 @@ def test_who_else_behind_excludes_just_discussed_person(org):
     assert "Aside from Aarav Rossi" in ans          # the discussed person set aside
     # data list no longer repeats the just-discussed person
     assert "Aarav Rossi" not in (r.json().get("data") or [])
+
+
+# ── AGENT_INTEL_V2 §7: topic-switch then refer back BY CONVERSATION ORDER ──────
+@override_settings(**FAKE)
+def test_first_person_we_discussed_resolves_by_order(org):
+    with tenant_context(org.tenant):
+        org.report.display_name = "Akhil Menon"
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=False)
+        _goal_with_kpi(org.tenant, org.report, "Ship roadmap",
+                       target=100, actual=92, created_by=org.manager)
+        mei = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                          display_name="Mei Patel")
+        _score(org.tenant, mei, risk="ON_TRACK", pace_behind=False)
+        _goal_with_kpi(org.tenant, mei, "Grow craft", target=100, actual=88,
+                       created_by=org.manager)
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "how is Akhil Menon?"}, format="json").json()["session_id"]
+    c.post(CHAT, {"query": "actually how is Mei Patel?", "session_id": sid}, format="json")
+    # after switching to Mei, refer back to the FIRST person → Akhil, not a dead-end
+    r1 = c.post(CHAT, {"query": "what about the first person we discussed?", "session_id": sid},
+                format="json")
+    assert "Akhil Menon" in r1.json()["answer"]
+    assert "couldn't find anyone" not in r1.json()["answer"].lower()
+    # the second person → Mei
+    r2 = c.post(CHAT, {"query": "and the second person?", "session_id": sid}, format="json")
+    assert "Mei Patel" in r2.json()["answer"]
+
+
+@override_settings(**FAKE)
+def test_order_refer_back_stays_scope_safe(org):
+    """An employee can't smuggle a peer in via "the first person" — with no prior
+    in-scope people the phrasing degrades safely (no leak, no crash)."""
+    c = _client(org.report)  # EMPLOYEE, empty history
+    r = c.post(CHAT, {"query": "the first person we discussed?"}, format="json")
+    ans = r.json()["answer"]
+    assert ans.strip()
+    assert "at risk" not in ans.lower()  # no other person's status

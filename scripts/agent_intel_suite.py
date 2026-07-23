@@ -134,6 +134,9 @@ SCENARIOS = [
         ("and Akhil Menon again?", [contains("Akhil")]),
         # trailing punctuation / emoji must not break resolution
         ("how is Akhil Menon doing??? 🙂", [contains("Akhil")]),
+        # topic-switch then refer back BY CONVERSATION ORDER (not a name) → the first
+        # person mentioned this thread must resolve, never dead-end.
+        ("what about the first person we discussed?", [not_dead()]),
     ]),
     ("HRBP", "priya@acme.test", [
         ("how is Leon Petrova doing?", [contains("several") ]),  # two real people

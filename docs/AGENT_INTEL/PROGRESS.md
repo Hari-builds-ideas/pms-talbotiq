@@ -384,17 +384,41 @@ how-to-test. Counts current: 293 backend AI tests, 135 frontend tests, harness 5
 
 ---
 
-## RESUME HERE → Increment 19 (longer-thread robustness + topic-switch refer-back)
+## Increment 19 — topic-switch then refer back BY CONVERSATION ORDER  ✅ (committed)
+
+**Gap (live, MANAGER ada):** "how is Akhil?" → "actually how is Mei?" → "and the first
+person again?" / "what about the first person we discussed?" → *"couldn't find anyone."*
+A bare pronoun bound to the MOST RECENT person, and "the first one" only resolved a
+disambiguation/compare set from a SINGLE turn — there was no resolver for conversation
+ORDER across turns.
+
+**Fix:**
+- `sessions.people_in_order(user, session)` — distinct people in FIRST-mention order
+  (oldest→newest) across the thread, access re-checked on each.
+- `_ORDINAL_PERSON_RE` ("the first/second/last person", "go back to the first one") +
+  an intercept that resolves the pick by conversation position and diagnoses it. Placed
+  AFTER the offered-set ordinal, so a just-shown disambiguation's "the first one" still
+  wins; this only fires for cross-turn order references.
+
+**Before → after (live):** after Akhil→Mei, "what about the first person we discussed?"
+— before: *"couldn't find anyone"*; after: *"Akhil Menon is on track this cycle and
+keeping pace — no red flags. The weakest signal is 'Roadmap features delivered'…"*.
+"and the second person?" → Mei. Scope re-checked (an employee can't smuggle in a peer).
+
+**Tests:** 2 new (`test_first_person_we_discussed_resolves_by_order`,
+`test_order_refer_back_stays_scope_safe`). Harness +1 (manager topic-switch refer-back).
+**295 AI tests** green; harness **58/58**.
+
+---
+
+## RESUME HERE → Increment 20 (keep hardening + keep REPORT.md current)
 
 Next per the goal (keep hardening reference resolution across 3–8 turns):
-1. **Topic-switch then refer back** — "how is Akhil?" … "actually how is Mei?" … "and
-   the first person again?" / "go back to Akhil" should re-resolve the earlier person.
-   Today a bare pronoun binds to the MOST RECENT person; an explicit "the first person" /
-   "go back to X" after a switch is the gap. Consider using the session ref history.
-2. **Grow the harness** with 5–8 turn threads mixing status → diagnosis → compare →
-   refer-back → topic-switch → refer-back; HRBP deep probes; reset quota before each run.
-3. Fix the weakest failures (root-cause → fix → regression test → commit → log), keep
-   `docs/AGENT_INTEL/REPORT.md` current.
+1. **More longer-thread breadth** — HRBP deep probes; mixed status→diagnosis→compare→
+   refer-back→topic-switch→order-refer-back in one thread; "go back to <name>" variants.
+2. **Grow the harness**; reset the LLM quota before each run.
+3. Fix the weakest failures (root-cause → fix → regression test → commit → log); refresh
+   `docs/AGENT_INTEL/REPORT.md` (bump counts: 295 AI tests, harness 58/58, +people_in_order).
 
 Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
 specific other one; refer-back to a set keys off `last_offered_people` (most recent

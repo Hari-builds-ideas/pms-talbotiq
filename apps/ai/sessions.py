@@ -221,6 +221,32 @@ def last_offered_people(user, session: ChatSession):
     return []
 
 
+def people_in_order(user, session: ChatSession):
+    """Distinct people referenced across the conversation, in FIRST-mention order
+    (oldest first) — so "the first/second person we discussed" / "go back to the
+    first one" can resolve by conversation position. Access re-checked on each (a
+    stored ref never grants access). Empty when the session has no people yet."""
+    if session.is_expired:
+        return []
+    from apps.identity.models import User
+
+    seen: set[str] = set()
+    out = []
+    for turn in recent_turns(session):  # oldest turn first
+        for ref in (turn.refs or []):
+            if not (isinstance(ref, dict) and ref.get("type") == "user"
+                    and _valid_uuid(ref.get("id"))):
+                continue
+            rid = ref["id"]
+            if rid in seen:
+                continue
+            seen.add(rid)
+            u = User.objects.filter(id=rid).first()
+            if u is not None and actor_can_access(user, u):
+                out.append(u)
+    return out
+
+
 def last_referenced_person_any_scope(user, session: ChatSession):
     """The most recent PERSON the caller referred to this session, WITHOUT the
     access gate — so a pronoun follow-up can be told "you still can't see X"

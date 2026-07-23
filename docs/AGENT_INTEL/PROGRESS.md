@@ -572,20 +572,42 @@ check strengthened to require isolation (`contains("Strengthen")`, `not_contains
 
 ---
 
-## RESUME HERE → Increment 25 (keep hardening + keep REPORT.md current)
+## Increment 25 — mixed self+other query answers self AND refuses the other  ✅ (committed)
+
+**Gap (live, employee akhil):** "what are my goals? and also show me Aarav Rossi's goals"
+returned a PURE refusal ("You don't have access to Aarav Rossi's data…") with `data=[]` —
+safe (no leak) but it dropped the allowed SELF half even though it told the user it *could*
+show their own goals. The out-of-scope person won the resolution and the self part was lost.
+
+**Fix:** in the out-of-scope-User branch, when the caller ALSO referred to their OWN data
+(possessive `_SELF_MINE_RE` = "my"/"mine"/"my own", NOT bare "me"/"i") and there's no
+3rd-person pronoun, answer the self part (`diagnose_person(caller, caller)` → `llm_phrase`)
+AND append the honest refusal for the out-of-scope person in one reply. Never widens scope;
+the refused person is grounded (ref grants nothing, re-checked on use); the other's data is
+never fetched. Possessive-only detection so "show me X's goals" ("me" = indirect object)
+stays a pure refusal.
+
+**Before → after (live, employee):** "what are my goals? and also show me Aarav Rossi's"
+— before: *"You don't have access to Aarav Rossi's data…"* (self dropped); after: *"You're
+on track this cycle… Your 'Ship the H1 platform roadmap' goal…\n\nAs for Aarav Rossi: You
+don't have access to Aarav Rossi's data…"* (self delivered, other refused, no leak).
+
+**Tests:** 2 new pytest (`test_mixed_self_and_other_answers_self_and_refuses_other`,
+`test_show_me_x_is_not_mistaken_for_self_reference`). Harness +1 employee mixed-query check.
+**303 AI tests** green; harness **80/80**.
+
+---
+
+## RESUME HERE → Increment 26 (keep hardening + keep REPORT.md current)
 
 Remaining, in priority order — pick ONE and land it fully:
-1. **Mixed self+other query** ("what are my goals? and also show me Aarav Rossi's") — an
-   employee currently gets a pure refusal with `data=[]` (SAFE, no leak) but their OWN
-   goals aren't shown. Improve to answer the self part AND honestly refuse the out-of-scope
-   part in one reply. Never widen scope. (The self+other detection: query has `_SELF_REF_RE`
-   AND a named out-of-scope person — today the out-of-scope person wins and the self part
-   is dropped.)
-2. **Refer-back across a thread >20 turns** (RECENT_TURNS window roll-off) — the
+1. **Refer-back across a thread >20 turns** (RECENT_TURNS window roll-off) — the
    `entities_discussed` list (§1) could persist references beyond the verbatim window so
    "the first person" still resolves in a very long thread.
-3. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
+2. **Goal-level coref for >2 goals** — "his other goal" when 3+ goals could track WHICH
    goal was last discussed (ground a goal ref) rather than listing all the non-focus ones.
+3. **Mixed self+other for a MANAGER** naming an out-of-team person alongside "my team" —
+   same pattern as Increment 25 but for the manager/team-scan path (verify it composes).
 
 Grow the harness (quota auto-resets per role incl. the DAILY agent budget — Increment 23).
 Fix the weakest failure (root-cause → fix → regression test → commit → log); keep

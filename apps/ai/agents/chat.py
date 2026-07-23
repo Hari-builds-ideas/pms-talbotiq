@@ -233,6 +233,12 @@ _AGG_RE = re.compile(
 #: ("he/she/they") are handled separately and take precedence.
 _SELF_REF_RE = re.compile(r"\b(my|mine|myself|i|me|i'm)\b", re.I)
 
+#: POSSESSIVE self-reference only ("my"/"mine"/"my own") — for detecting a genuine
+#: "my goals AND X's" mixed query. Excludes bare "me"/"i" so "show me X's goals"
+#: (where "me" is the indirect object, not a claim on the caller's own data) is NOT
+#: mistaken for a self-reference.
+_SELF_MINE_RE = re.compile(r"\b(my|mine|my\s+own)\b", re.I)
+
 #: An EXPLICIT request for the raw goal LIST ("show/list my goals", "what are my
 #: goals"). Only these get the flat title list; everything else about a person
 #: ("how is X?", bare status) gets the reasoned, phrased answer.
@@ -1149,6 +1155,30 @@ def chat_answer(caller, query: str, session=None) -> dict:
                          for u in _dedup_sorted_users(ambiguous)],
             }
         elif isinstance(out_of_scope, User):
+            # MIXED self+other ("what are my goals? and also show me X's"): when the
+            # caller ALSO referred to their OWN data (possessive "my/mine"), answer the
+            # self part AND refuse the out-of-scope person in one reply — never drop the
+            # allowed half, never leak the other. (INTEL_V2 §7 mixed-scope.) Possessive-
+            # only so "show me X's goals" ("me" as object) isn't taken as self-reference.
+            if _SELF_MINE_RE.search(query or "") and not person_deixis:
+                from apps.ai.insight import diagnose_person, llm_phrase
+
+                self_diag = diagnose_person(caller, caller)
+                if self_diag is not None:
+                    self_ans = llm_phrase(caller.tenant_id, query,
+                                          self_diag["facts"], self_diag["answer"])
+                    refusal = _scope_denied_answer(
+                        caller, intent, out_of_scope.display,
+                        ground_user=out_of_scope)["answer"]
+                    return {
+                        "status": "ok", "intent": intent,
+                        "answer": f"{self_ans}\n\nAs for {out_of_scope.display}: {refusal}",
+                        "data": [g["title"] for g in self_diag["facts"]["goals"]],
+                        # Ground the REFUSED person so a pronoun follow-up stays on them
+                        # (and is refused again) — the ref grants nothing.
+                        "refs": [{"type": "user", "id": str(out_of_scope.id),
+                                  "label": out_of_scope.display}],
+                    }
             # Named a real person OUTSIDE scope this turn — refuse honestly AND
             # ground them so a pronoun follow-up stays on them (never self).
             return _scope_denied_answer(caller, intent, out_of_scope.display,

@@ -1,11 +1,12 @@
-# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 24)
+# AI Assistant — Intelligence Report (AGENT_INTEL_V2, through increment 25)
 
 > **Status (branch `hari/agent-intelligence-v2`, NOT merged):** the three §0 root-cause
 > bugs are fixed, the §6 frontend UX is done, and reference resolution is hardened across
-> multi-turn threads — including names buried behind rambling / prompt-injection prefixes
-> and "his/her other goal" isolating the specific goal (§0 Example B).
-> **301 backend AI tests + 135 frontend tests** pass; the live self-test harness
-> (`scripts/agent_intel_suite.py`, now self-resetting its LLM quota per role) is **76/76**.
+> multi-turn threads — including names buried behind rambling / prompt-injection prefixes,
+> "his/her other goal" isolating the specific goal (§0 Example B), and mixed self+other
+> queries answering the self part while refusing the out-of-scope part.
+> **303 backend AI tests + 135 frontend tests** pass; the live self-test harness
+> (`scripts/agent_intel_suite.py`, now self-resetting its LLM quota per role) is **80/80**.
 > Every path stays read-only and strictly RBAC-scoped — no intelligence path reaches past
 > permissions.
 > Nothing is merged into `hari/agent-ui-v2` or `main`.
@@ -69,19 +70,25 @@ and phrases answers naturally via Gemini — **without ever widening access**.
 - **"his/her other goal"** isolates the specific other goal (the one the diagnosis
   didn't highlight) instead of listing all — an explicit ordinal ("his first goal")
   picks by order. Read-only, RBAC-scoped via `person_facts`.
-- Self-test harness: **76/76** across employee/manager/HRBP/admin. Backend: **301 AI
+- **Mixed self+other** ("what are my goals? and also show me X's") answers the caller's
+  OWN part and appends an honest refusal for the out-of-scope person — never dropping the
+  allowed half, never leaking the other. Possessive-only ("my"/"mine"), so "show me X's
+  goals" stays a pure refusal.
+- Self-test harness: **80/80** across employee/manager/HRBP/admin. Backend: **303 AI
   tests**; frontend: **135 tests**; all green.
 
 ## Remaining weaknesses / backlog
 
-- "his OTHER goal" answers about the person (both goals) rather than isolating the
-  single *other* goal — a precise goal-selection refinement.
-- Refer-back to a discussed **set** keys off `last_offered_people` (the most recent
-  ≥2-person ref set) — solid for compare/disambiguation; a longer-thread "entities
-  discussed" list (§1) could track more history.
+- Refer-back across a thread **>20 turns** (the `RECENT_TURNS` verbatim window) — the
+  `entities_discussed` list (§1) could persist references beyond the window so "the first
+  person" still resolves in a very long thread.
+- "his other goal" for a person with **3+ goals** lists the non-focus goals rather than
+  isolating one — a goal-level coreference (track which goal was last discussed) would
+  sharpen it. (The 2-goal case is fully isolated — increment 24.)
 - Phrasing adds one LLM call per reasoned answer (latency/quota) — flag-gated
-  (`AGENT_INTEL_LLM_PHRASING`); the harness is therefore quota-heavy, so it now
-  auto-resets `llm:global:calls` before each role (best-effort `docker compose exec`).
+  (`AGENT_INTEL_LLM_PHRASING`); the harness is therefore quota-heavy, so it now auto-resets
+  the global window AND the per-agent DAILY budget before each role (best-effort
+  `docker compose exec … manage.py shell`).
 
 ## How to test it yourself
 

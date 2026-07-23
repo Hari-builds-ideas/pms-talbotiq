@@ -600,6 +600,44 @@ def test_injection_in_goal_title_is_inert_data(org):
 
 
 @override_settings(**FAKE)
+def test_mixed_self_and_other_answers_self_and_refuses_other(org):
+    """"what are my goals? and also show me Aarav Rossi's" — answer the SELF part and
+    honestly refuse the out-of-scope person in one reply. Never drop the allowed half,
+    never leak the other's data (INTEL_V2 §7 mixed-scope)."""
+    with tenant_context(org.tenant):
+        _goal_with_kpi(org.tenant, org.report, "My cycle objective",
+                       target=100, actual=70, created_by=org.manager)
+        # a peer OUTSIDE the employee's scope, with a goal that must never surface
+        aarav = UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE",
+                            display_name="Aarav Rossi")
+        _goal_with_kpi(org.tenant, aarav, "Aarav private goal",
+                       target=100, actual=50, created_by=org.hrbp)
+    c = _client(org.report)  # EMPLOYEE
+    ans = c.post(CHAT, {"query": "what are my goals? and also show me Aarav Rossi's goals"},
+                 format="json").json()["answer"]
+    assert "My cycle objective" in ans            # the self part is delivered
+    assert "Aarav Rossi" in ans                   # the other person is named in the refusal
+    assert "don't have access" in ans.lower()     # and honestly refused
+    assert "Aarav private goal" not in ans        # never leaked
+
+
+@override_settings(**FAKE)
+def test_show_me_x_is_not_mistaken_for_self_reference(org):
+    """"show me X's goals" ("me" is the indirect object, not a claim on the caller's own
+    data) must NOT trigger the mixed self+other path — an employee asking about an
+    out-of-scope person still gets a pure refusal, no self data appended."""
+    with tenant_context(org.tenant):
+        _goal_with_kpi(org.tenant, org.report, "My cycle objective",
+                       target=100, actual=70, created_by=org.manager)
+        aarav = UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE",
+                            display_name="Aarav Rossi")
+    c = _client(org.report)
+    ans = c.post(CHAT, {"query": "show me Aarav Rossi's goals"}, format="json").json()["answer"]
+    assert "don't have access" in ans.lower()
+    assert "My cycle objective" not in ans        # no self data leaked into a pure refusal
+
+
+@override_settings(**FAKE)
 def test_his_other_goal_isolates_the_other_goal(org):
     """"his other goal" isolates the goal OTHER than the one the diagnosis highlights
     (the weakest-KPI focus goal) — it must not list all goals (spec §0 Example B).

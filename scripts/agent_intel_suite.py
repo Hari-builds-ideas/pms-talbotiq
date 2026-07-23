@@ -20,16 +20,32 @@ PW = "Passw0rd!" + "demo"
 GENERIC_BLURB = "read-only performance assistant, so that's outside"
 
 
+#: In-container reset: clears BOTH the per-window global LLM ceiling AND the chat /
+#: chat_phrase DAILY agent-call budgets for the acme tenant — so the growing suite,
+#: re-run many times a day, never dead-ends on an HTTP 429 instead of the real answer.
+_RESET_SNIPPET = (
+    "from apps.billing import atomic, services;"
+    "from apps.billing.models import AgentBudget;"
+    "from apps.tenancy.models import Tenant;"
+    "atomic.reset_window('llm:global:calls');"
+    "t=Tenant.objects.get(slug='acme');"
+    "p=services._budget_period(AgentBudget.Window.DAILY);"
+    "[atomic.reset_window(services.tenant_cache_key("
+    "t.id, services._BUDGET_COUNTER_PART, a, AgentBudget.Window.DAILY, p)) "
+    "for a in ('chat','chat_phrase')]"
+)
+
+
 def reset_quota():
-    """Reset the global LLM call window so the GROWING suite doesn't trip the
-    per-window ceiling (60 calls; phrasing is up to 2 calls/turn). Called before
-    each role so a long thread never dead-ends on an HTTP 429 instead of the real
-    answer. Best-effort — a bare stack without docker just skips it."""
+    """Reset the LLM budgets so the GROWING suite doesn't trip a rate ceiling
+    (per-window global calls, or the per-agent DAILY budget after many runs) and
+    dead-end on an HTTP 429. Called before each role. Best-effort — a bare stack
+    without docker just skips it (uses `manage.py shell` so the app registry loads)."""
     try:
         subprocess.run(
-            ["docker", "compose", "exec", "-T", "web", "python", "-c",
-             "from apps.billing import atomic; atomic.reset_window('llm:global:calls')"],
-            check=False, capture_output=True, timeout=30,
+            ["docker", "compose", "exec", "-T", "web",
+             "python", "manage.py", "shell", "-c", _RESET_SNIPPET],
+            check=False, capture_output=True, timeout=45,
         )
     except Exception:  # noqa: BLE001 — reset is a convenience, never fatal
         pass
@@ -169,6 +185,10 @@ SCENARIOS = [
         ("what about the first person we discussed?", [not_dead()]),
         # "go back to <name>" — the imperative is noise; the named person resolves.
         ("go back to Akhil Menon", [not_dead(), contains("Akhil")]),
+        # edge inputs must degrade gracefully, never crash / leak:
+        ("🙂🙂🙂", [alive()]),                              # emoji-only → graceful
+        ("a" * 5000, [alive()]),                          # very long single token
+        ("how is Akhil Menon doing 🎯🔥?", [contains("Akhil")]),  # emoji + name resolves
     ]),
     ("HRBP", "priya@acme.test", [
         ("how is Leon Petrova doing?", [contains("several") ]),  # two real people

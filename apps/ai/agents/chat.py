@@ -236,6 +236,19 @@ _LIST_GOALS_RE = re.compile(
     re.I,
 )
 
+#: A "which of them" follow-up after ≥2 people were just discussed/compared
+#: ("who needs more support?", "who's worse?", "which one should I focus on?").
+#: Resolved against the entities just referenced (AGENT_INTEL_V2 §2 Example C).
+#: Team-wide phrasings ("…on my team", "…of my reports") are excluded so the
+#: team-scan path still owns those.
+_GROUP_SUPPORT_RE = re.compile(
+    r"\bwho\b.{0,30}\b(needs?|more\s+support|more\s+help|attention|worse|weaker|"
+    r"struggl|behind|at\s+risk|focus|concern|prioriti)\w*|"
+    r"\bwhich\s+(one|of\s+them|of\s+the\s+two)\b",
+    re.I,
+)
+_GROUP_TEAMWORD_RE = re.compile(r"\b(team|reports?|everyone|all\s+of)\b", re.I)
+
 #: "the first / second / other one" — a pick from the most recent disambiguation.
 _ORDINAL_ONE_RE = re.compile(
     r"\bthe\s+(first|1st|second|2nd|third|3rd|other|last)\b(?:\s+one)?|"
@@ -676,6 +689,88 @@ def _resolve_multiple(caller, query):
     return targets, oos_names
 
 
+def _weakest_pct(facts) -> float | None:
+    """Lowest measurable KPI attainment across a person's goals (None if none)."""
+    worst = None
+    for g in facts.get("goals", []):
+        for k in g.get("kpis", []):
+            pct = k.get("attainment_pct")
+            if pct is None:
+                continue
+            if worst is None or pct < worst:
+                worst = pct
+    return worst
+
+
+def _concern_score(facts) -> float:
+    """A grounded 'needs attention' magnitude — higher = more concern. Built ONLY
+    from real, in-scope facts (risk rating, pace, weakest KPI shortfall)."""
+    s = 0.0
+    if facts.get("risk_code") and facts["risk_code"] != "ON_TRACK":
+        s += 100.0
+    if facts.get("pace_behind"):
+        s += 50.0
+    weak = _weakest_pct(facts)
+    if weak is not None:
+        s += max(0.0, 100.0 - weak)
+    return s
+
+
+def _concern_reason(facts) -> str:
+    bits = []
+    if facts.get("risk_code") and facts["risk_code"] != "ON_TRACK":
+        bits.append(f"rated {(facts.get('risk_status') or facts['risk_code']).lower()}")
+    if facts.get("pace_behind"):
+        bits.append("behind pace")
+    weak = _weakest_pct(facts)
+    if weak is not None and weak < 80:
+        bits.append(f"weakest KPI at {weak:.0f}% of target")
+    return (" — " + ", ".join(bits)) if bits else ""
+
+
+def _and_join(names) -> str:
+    names = list(names)
+    if len(names) <= 1:
+        return names[0] if names else ""
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _answer_group_support(caller, people, query, intent="performance"):
+    """"who needs more support / which one is worse?" over the people JUST discussed
+    (§2 Example C). Each is diagnosed through the scoped path (access re-checked),
+    then ranked by a grounded concern score — never a fresh name lookup, never the
+    whole team. Read-only; no fabrication."""
+    from apps.ai.insight import diagnose_person, llm_phrase
+
+    scored = []
+    for p in people[:4]:
+        diag = diagnose_person(caller, p)  # scope re-checked inside person_facts
+        if diag is not None:
+            scored.append((_concern_score(diag["facts"]), p, diag))
+    if not scored:
+        return {"status": "ok", "intent": intent, "data": [],
+                "answer": "I couldn't pull those people up in your scope."}
+    scored.sort(key=lambda t: t[0], reverse=True)
+    names = [p.display for _, p, _ in scored]
+    top_score, top_p, top_diag = scored[0]
+    others = [p.display for _, p, _ in scored[1:]]
+    if top_score <= 0:
+        draft = (f"Between {_and_join(names)}, none stands out as needing extra support "
+                 "right now — they're on track and keeping pace.")
+    else:
+        tail = (f" {_and_join(others)} {'looks' if len(others) == 1 else 'look'} steadier "
+                "by comparison." if others else "")
+        draft = (f"{top_p.display} needs the most attention right now"
+                 f"{_concern_reason(top_diag['facts'])}.{tail}")
+    facts = {"people": [d["facts"] for _, _, d in scored]}
+    answer = llm_phrase(caller.tenant_id, query, facts, draft)
+    return {
+        "status": "ok", "intent": intent, "answer": answer, "data": names,
+        "refs": [{"type": "user", "id": str(p.id), "label": p.display}
+                 for _, p, _ in scored],
+    }
+
+
 def _answer_two_people(caller, query, targets, intent="performance", oos_names=()):
     """A per-person reasoned reply for a comparison. Each in-scope person is diagnosed
     independently (already scoped via ``_resolve_multiple``); read-only, grounded, no
@@ -841,6 +936,19 @@ def chat_answer(caller, query: str, session=None) -> dict:
                     "data": [g["title"] for g in diag["facts"]["goals"]],
                     "refs": [{"type": "user", "id": str(picked.id), "label": picked.display}],
                 }
+
+    # "who needs more support / which one is worse?" after ≥2 people were just
+    # discussed or compared → reason over THAT set (§2 Example C), not a fresh name
+    # lookup and not the whole team. Only fires when a recent multi-person set
+    # exists (access re-checked in the session helper) and the phrasing isn't
+    # team-wide ("…on my team" stays with the team-scan path below).
+    if (session is not None and _GROUP_SUPPORT_RE.search(query or "")
+            and not _GROUP_TEAMWORD_RE.search(query or "")):
+        from apps.ai.sessions import last_offered_people
+
+        discussed = last_offered_people(caller, session)
+        if len(discussed) >= 2:
+            return _answer_group_support(caller, discussed, query)
 
     # TEAM insight ("who's behind / at risk / doing best on my team?", "how many
     # of my reports are behind?") — reasoned over the caller's OWN reporting

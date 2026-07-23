@@ -420,3 +420,44 @@ def test_his_other_goal_resolves_pronoun_not_dead(org):
     ans = r.json()["answer"]
     assert "couldn't find anyone" not in ans.lower()
     assert "Aarav" in ans                  # stayed on the referenced person
+
+
+# ── AGENT_INTEL_V2 §0 bug 3 / §2 Ex C: refer back to the just-compared people ──
+@override_settings(**FAKE)
+def test_who_needs_support_refers_to_compared_pair(org):
+    """After "compare A and B", "who needs more support right now?" must reason
+    over THOSE two (not a fresh name lookup, not the whole team) and name the one
+    who is actually behind — never dead-end."""
+    with tenant_context(org.tenant):
+        org.report.display_name = "Aarav Rossi"          # behind pace + weak KPI
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=True)
+        _goal_with_kpi(org.tenant, org.report, "Ship the roadmap",
+                       target=100, actual=55, created_by=org.manager)
+        mei = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                          display_name="Mei Patel")       # healthy
+        _score(org.tenant, mei, risk="ON_TRACK", pace_behind=False)
+        _goal_with_kpi(org.tenant, mei, "Grow craft",
+                       target=100, actual=98, created_by=org.manager)
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "compare Aarav Rossi and Mei Patel"},
+                 format="json").json()["session_id"]
+    r = c.post(CHAT, {"query": "who needs more support right now?", "session_id": sid},
+               format="json")
+    ans = r.json()["answer"]
+    assert "couldn't find anyone" not in ans.lower()
+    assert "Aarav" in ans                       # the behind-pace person is surfaced
+    assert "Mei" in ans                          # both compared people considered
+
+
+@override_settings(**FAKE)
+def test_group_support_followup_stays_scope_safe(org):
+    """The refer-back never surfaces someone the caller can't see: an employee has
+    no prior 2-person set, so "who needs more support?" doesn't dead-end into a
+    name lookup that leaks — it degrades to a normal (scoped) answer."""
+    c = _client(org.report)  # EMPLOYEE, no comparison context
+    r = c.post(CHAT, {"query": "who needs more support?"}, format="json")
+    ans = r.json()["answer"]
+    # No leak, no crash; a non-empty scoped reply.
+    assert ans.strip()
+    assert "at risk" not in ans.lower()   # no other person's status leaked

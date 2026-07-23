@@ -282,12 +282,49 @@ OTHER" one specifically — precise goal selection is a later polish.)
 
 ---
 
-## RESUME HERE → Increment 15 (§0 bug 3: refer-back to compared entities)
+## Increment 15 — §0 bug 3: refer back to the just-compared people (§2 Ex C)  ✅ (committed)
 
-"who needs more support right now?" after "compare Aarav and Mei" still dead-ends —
-it needs recent-entity-**set** memory (§2 Example C): reason over the two people just
-compared, not a fresh name lookup and not the caller's full team. That's the next
-increment. Then §6 frontend (auto-growing textarea + New chat).
+**Bug (live, MANAGER ada@):** "compare Aarav and Mei" (OK) → "who needs more support
+right now?" → *"I couldn't find anyone by that name."* The follow-up needs recent-entity
+**set** memory — reason over the two just compared, not a fresh name lookup, not the
+whole team.
+
+**Fix (chat.py):** the comparison turn already grounds both people as `user` refs, and
+`sessions.last_offered_people` already returns any recent ≥2-person ref set (access
+re-checked). Added:
+- `_GROUP_SUPPORT_RE` intercept ("who needs more support / who's worse / which one
+  should I focus on") — fires only when a recent ≥2-person set exists AND the phrasing
+  isn't team-wide (`_GROUP_TEAMWORD_RE` keeps "…on my team" on the team-scan path).
+- `_answer_group_support` — diagnoses each discussed person through the SCOPED path,
+  ranks by a grounded `_concern_score` (risk rating + pace + weakest-KPI shortfall),
+  names who needs the most attention and why, then Gemini-phrases over both people's
+  real facts (deterministic fallback preserved). No fabrication, fully re-scoped.
+
+**Before → after (live):** "who needs more support right now?" — before: *"couldn't
+find anyone"*; after: *"Aarav Rossi appears to need more support… behind pace, his
+'Roadmap features delivered' KPI at 49% attainment. In comparison, Mei Patel…"*
+
+**Tests:** 2 new (refers-to-compared-pair; scope-safe with no prior set). **292 AI
+tests** green, 0 regressions.
+
+**All three §0 bugs are now fixed** (self-goals · his-other-goal · who-needs-support).
+
+---
+
+## RESUME HERE → Increment 16 (§6 frontend: auto-growing textarea + New chat)
+
+Backend §0 is done. Next: the §6 UX fixes in the React SPA —
+1. **Auto-growing chat textarea** (`react-textarea-autosize` or hand-rolled
+   `scrollHeight`, minRows 1 / maxRows ~6; Enter submits, Shift+Enter newline).
+2. **New chat / Clear** control that resets local state AND starts a fresh
+   `session_id` (so a pronoun follow-up after clicking has no prior memory).
+Then keep growing the §7 adversarial harness (reset the LLM quota before each run) and
+refresh `docs/AGENT_INTEL/REPORT.md`. Live-verify per §8.
+
+Known refinement backlog: "his OTHER goal" lists both goals rather than isolating the
+specific other one; group-support currently keys off `last_offered_people` (most recent
+≥2-person set) — good for compare/disambiguation, could later track an explicit
+"entities_discussed" list per §1 for longer threads.
 
 The assistant now covers all the goal's named intents (memory/coref, status,
 diagnosis, comparison, aggregation, capability, disambiguation + "the other one",

@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from apps.identity.tokens import issue_tokens_for_user
 from apps.tenancy.context import tenant_context
-from apps.testsupport.factories import CycleFactory, ReviewFactory
+from apps.testsupport.factories import CycleFactory, ReviewFactory, UserFactory
 
 pytestmark = pytest.mark.django_db
 FAKE = {"LLM_PROVIDER": "apps.ai.providers.FakeLLMProvider"}
@@ -34,6 +34,29 @@ def _client(user):
 def _name(user, name):
     user.display_name = name
     user.save(update_fields=["display_name"])
+
+
+@override_settings(**FAKE)
+def test_new_named_person_overrides_remembered_context(org):
+    # Regression: after grounding person A, naming a DIFFERENT person by full name
+    # must resolve to B — not stay on A via the earlier context (tester bug).
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        # a SECOND report of the same manager (both in scope) with a distinct name
+        bob = UserFactory(tenant=org.tenant, manager=org.manager,
+                          role="EMPLOYEE", display_name="Bob Builder")
+    c = _client(org.manager)
+    r1 = c.post(CHAT, {"query": "how is Rhea Report doing on her goals?"}, format="json")
+    sid = r1.json()["session_id"]
+    assert "Rhea Report" in r1.json()["answer"]
+    # Turn 2 — a NEW full name (with a pronoun too) must switch to Bob, not Rhea.
+    r2 = c.post(CHAT, {"query": "Bob Builder how are his goals?", "session_id": sid}, format="json")
+    body2 = r2.json()
+    assert "Bob Builder" in body2["answer"]
+    assert "Rhea Report" not in body2["answer"]
+    # Turn 3 — a PURE pronoun (no name) still follows the last person (Bob).
+    r3 = c.post(CHAT, {"query": "how are his goals?", "session_id": sid}, format="json")
+    assert "Bob Builder" in r3.json()["answer"]
 
 
 @override_settings(**FAKE)
@@ -82,9 +105,149 @@ def test_memory_never_widens_access(org):
     r = peer.post(CHAT, {"query": "how is Rhea doing on her goals?"}, format="json")
     body = r.json()
     assert body["status"] == "ok"
-    # Named resolution finds Rhea, but the scoped fetch refuses: no data leaked.
-    assert "No data in your scope" in body["answer"]
+    # Named resolution matches Rhea tenant-wide, but she is outside the peer's
+    # scope: an honest guardrail reply (no access, only admin/HR sees everyone) —
+    # and, crucially, NO performance data leaked.
+    ans = body["answer"].lower()
+    assert "don't have access" in ans and "admin" in ans
     assert "goal(s):" not in body["answer"]
+
+
+@override_settings(**FAKE)
+def test_pronoun_after_out_of_scope_person_never_falls_back_to_self(org):
+    """THE tester bug: an employee asks about someone out of scope (correct refusal),
+    then a pronoun follow-up ("what about his reviews?") must STAY refused — it must
+    never silently switch to the caller's OWN data. That looked like a data leak."""
+    with tenant_context(org.tenant):
+        _name(org.peer, "Pax Peer")  # out of the employee's scope
+    c = _client(org.report)  # an EMPLOYEE (OWN scope)
+    # Turn 1 grounds the CALLER as a person ref (the trap: a later pronoun must NOT
+    # skip an out-of-scope person to land back on this self reference).
+    r0 = c.post(CHAT, {"query": "how am I doing on my goals?"}, format="json")
+    sid = r0.json()["session_id"]
+    r1 = c.post(CHAT, {"query": "how is Pax Peer doing on his goals?", "session_id": sid}, format="json")
+    assert "don't have access" in r1.json()["answer"].lower()
+    r2 = c.post(CHAT, {"query": "what about his reviews?", "session_id": sid}, format="json")
+    ans = r2.json()["answer"]
+    # Did NOT answer about the caller: no self goals/counts dump.
+    assert "goal(s)" not in ans and "no goals on record" not in ans and "review(s)" not in ans
+    assert "don't have access" in ans.lower()  # still an honest refusal
+    # And a further pronoun stays refused too — never a self goals dump.
+    r3 = c.post(CHAT, {"query": "and how are his goals?", "session_id": sid}, format="json")
+    assert "don't have access" in r3.json()["answer"].lower()
+    assert "goal(s):" not in r3.json()["answer"]
+
+
+@override_settings(**FAKE)
+def test_bare_third_person_pronoun_with_no_referent_asks_who(org):
+    """A 3rd-person pronoun with nothing grounded must ask who is meant — NOT dump
+    the caller's own performance as if 'he' were the caller."""
+    c = _client(org.report)
+    r = c.post(CHAT, {"query": "how are his goals doing?"}, format="json")
+    ans = r.json()["answer"]
+    assert not ans.startswith("You ")
+    assert "not sure who you mean" in ans.lower()
+
+
+@override_settings(**FAKE)
+def test_identical_full_names_disambiguate_by_email(org):
+    """Two real people share a full name → the 'several match' reply must show their
+    emails, not collapse to one useless entry that says 'several' but lists one."""
+    with tenant_context(org.tenant):
+        UserFactory(tenant=org.tenant, email="leon1@acme.test", role="EMPLOYEE",
+                    display_name="Leon Petrova")
+        UserFactory(tenant=org.tenant, email="leon2@acme.test", role="EMPLOYEE",
+                    display_name="Leon Petrova")
+    c = _client(org.admin)  # ADMIN sees everyone → both are in scope
+    r = c.post(CHAT, {"query": "how is Leon Petrova doing on their goals?"}, format="json")
+    ans = r.json()["answer"]
+    assert "Several people match" in ans
+    assert "leon1@acme.test" in ans and "leon2@acme.test" in ans
+
+
+@override_settings(**FAKE)
+def test_review_followup_answers_reviews_not_a_goals_dump(org):
+    """"what about her reviews?" after grounding a person answers REVIEWS, not the
+    default goals summary."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        cycle = CycleFactory(tenant=org.tenant)
+        ReviewFactory(tenant=org.tenant, employee=org.report, reviewer=org.manager, cycle=cycle)
+    c = _client(org.manager)
+    r1 = c.post(CHAT, {"query": "how is Rhea Report doing on her goals?"}, format="json")
+    sid = r1.json()["session_id"]
+    r2 = c.post(CHAT, {"query": "what about her reviews?", "session_id": sid}, format="json")
+    ans = r2.json()["answer"]
+    assert "review(s)" in ans
+    assert "goal(s):" not in ans
+
+
+@override_settings(**FAKE)
+def test_manager_asking_outside_team_gets_guardrail_naming_who_they_can_see(org):
+    """A manager who asks about someone NOT on their team is told plainly they
+    don't have access (only admin/HR sees everyone) AND is shown who they CAN ask
+    about — never a bare "no data" that reads like a bug, never a leak."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")   # the manager's direct report
+        _name(org.peer, "Pax Peer")        # reports to hrbp, NOT the manager
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is Pax Peer doing on their goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"]
+    assert "don't have access" in ans.lower() and "admin" in ans.lower()
+    assert "Rhea Report" in ans            # names who the manager CAN ask about
+    assert "goal(s):" not in ans           # no performance data leaked
+
+
+@override_settings(**FAKE)
+def test_employee_asking_about_another_person_gets_self_only_guardrail(org):
+    with tenant_context(org.tenant):
+        _name(org.manager, "Meg Manager")
+    c = _client(org.report)  # EMPLOYEE — OWN scope
+    r = c.post(CHAT, {"query": "how is Meg Manager doing on her goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"].lower()
+    assert "don't have access" in ans and "your own" in ans
+    assert "goal(s):" not in body["answer"]
+
+
+@override_settings(**FAKE)
+def test_full_name_never_resolves_to_a_same_surname_teammate(org):
+    """Live-found bug: a manager asking about "Hugo O'Brien" (out of scope) must NOT
+    silently resolve to a same-surname "Hana O'Brien" on their own team. A full name
+    must FULLY match an in-scope person — otherwise it's an honest scope refusal."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Hana O'Brien")  # the manager's report (in scope)
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE",
+                    display_name="Hugo O'Brien")  # out of the manager's scope
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is Hugo O'Brien doing on his goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    ans = body["answer"]
+    assert "Hana O'Brien has" not in ans             # did NOT answer about the teammate
+    assert "Hugo O'Brien" in ans                      # names the person actually asked for
+    assert "don't have access" in ans.lower()         # honest scope refusal
+    assert "goal(s):" not in ans
+
+
+@override_settings(**FAKE)
+def test_bare_first_name_resolves_to_the_one_on_your_team(org):
+    """Scope-aware resolution: many people share a first name tenant-wide, but a
+    manager asking "how is yuki doing?" gets the ONE Yuki on their team — not a
+    disambiguation list of strangers they can't open."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Yuki Onteam")  # the manager's report
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE", display_name="Yuki Stranger")
+        UserFactory(tenant=org.tenant, manager=org.hrbp, role="EMPLOYEE", display_name="Yuki Faraway")
+    c = _client(org.manager)
+    r = c.post(CHAT, {"query": "how is yuki doing on her goals?"}, format="json")
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "Yuki Onteam" in body["answer"]
+    assert "Several people match" not in body["answer"]
 
 
 @override_settings(**FAKE)

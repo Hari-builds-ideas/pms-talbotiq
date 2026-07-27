@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpRight, Bot, Send, Sparkles, User as UserIcon } from "lucide-react";
+import { ArrowUpRight, Bot, Plus, Send, Sparkles, User as UserIcon } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -10,7 +10,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { aiApi } from "@/lib/api/endpoints";
@@ -127,6 +126,7 @@ function ChatSheet() {
   const [unavailable, setUnavailable] = React.useState(false);
   const sessionId = React.useRef<string | undefined>(undefined);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
 
   const rememberSession = React.useCallback((id: string) => {
     sessionId.current = id;
@@ -210,14 +210,49 @@ function ChatSheet() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [turns, mutation.isPending]);
 
-  function send(e: React.FormEvent) {
-    e.preventDefault();
+  // §6: auto-grow the textarea from 1 row up to ~6, then scroll. Reset to auto so
+  // it can SHRINK when text is deleted, then clamp to the max height.
+  const MAX_ROWS = 6;
+  React.useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const cs = window.getComputedStyle(el);
+    const line = parseFloat(cs.lineHeight) || 20;
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const maxH = line * MAX_ROWS + pad;
+    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+    el.style.overflowY = el.scrollHeight > maxH ? "auto" : "hidden";
+  }, [input]);
+
+  const submit = React.useCallback(() => {
     const q = input.trim();
-    if (!q) return;
+    if (!q || unavailable) return;
     setTurns((t) => [...t, { role: "user", text: q }]);
     setInput("");
     mutation.mutate(q);
+  }, [input, unavailable, mutation]);
+
+  function send(e: React.FormEvent) {
+    e.preventDefault();
+    submit();
   }
+
+  // §6: "New chat" — clear local turns AND drop the session id so the NEXT message
+  // starts a fresh server session (no prior messages / entities carried over). A
+  // pronoun follow-up after this has no memory of the previous thread.
+  const newChat = React.useCallback(() => {
+    setTurns([]);
+    setInput("");
+    setUnavailable(false);
+    sessionId.current = undefined;
+    try {
+      localStorage.removeItem(CHAT_SESSION_KEY);
+    } catch {
+      /* storage unavailable → nothing to clear */
+    }
+    inputRef.current?.focus();
+  }, []);
 
   return (
     <Sheet open={open} onOpenChange={setOpen} modal={false}>
@@ -235,10 +270,23 @@ function ChatSheet() {
       >
         <ResizeHandle onResize={setWidth} />
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-ai" />
-            AI Assistant
-          </SheetTitle>
+          <div className="flex items-center justify-between gap-2 pr-8">
+            <SheetTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-ai" />
+              AI Assistant
+            </SheetTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={newChat}
+              disabled={turns.length === 0 && !input}
+              className="h-7 gap-1 text-xs text-muted-foreground"
+              aria-label="Start a new chat"
+            >
+              <Plus className="h-3.5 w-3.5" /> New chat
+            </Button>
+          </div>
           <SheetDescription>
             Ask questions or plan multi-step tasks — I propose, you approve each step.
             Nothing runs without your OK.
@@ -306,13 +354,29 @@ function ChatSheet() {
               )}
             </div>
 
-            <form onSubmit={send} className="flex items-center gap-2 border-t border-border p-4">
-              <Input
+            <form onSubmit={send} className="flex items-end gap-2 border-t border-border p-4">
+              {/* §6: auto-growing textarea. Enter submits, Shift+Enter = newline; it
+                  grows from 1 row up to ~6 then scrolls (height managed in an effect). */}
+              <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submit();
+                  }
+                }}
+                rows={1}
                 placeholder="Ask, or describe a multi-step task…"
                 disabled={unavailable}
                 aria-label="Chat message"
+                className={cn(
+                  "flex-1 resize-none rounded-md border border-input bg-input-background px-3 py-2 text-sm leading-5 transition-colors",
+                  "placeholder:text-muted-foreground",
+                  "focus-visible:outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:bg-card",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
               />
               <Button type="submit" size="icon" disabled={unavailable || !input.trim()}>
                 <Send className="h-4 w-4" />

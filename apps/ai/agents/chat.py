@@ -29,7 +29,12 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _DESTRUCTIVE_VERB_RE = re.compile(r"\b(delete|destroy|erase|wipe|purge|truncate)\b", re.I)
 _DESTRUCTIVE_OBJ_RE = re.compile(
     r"\b(all|everyone|everything|datas?|records?|users?|people|employees?|accounts?|"
-    r"table|tables|database|db)\b",
+    r"table|tables|database|db|"
+    # single PMS records: an explicit "delete X's review/goal/…" is unambiguously a
+    # delete request (paired with a destructive verb), so answer it honestly ("I can't
+    # delete") instead of a vague "couldn't set up a step".
+    r"reviews?|goals?|feedback|kpis?|check-?ins?|recognitions?|roadmaps?|"
+    r"one-?on-?ones?|1-?on-?1s?)\b",
     re.I,
 )
 _WRITE_WORDS = (
@@ -49,6 +54,11 @@ _CAPABILITY_PHRASES = (
 _PERF_WORDS = (
     "goal", "kpi", "score", "rating", "review", "performance", "risk", "progress",
     "feedback", "cycle", "objective", "assessment", "appraisal", "how am i doing",
+    # diagnosis phrasings — "does she need help?", "is X on track / at risk / behind?"
+    "need help", "needs help", "on track", "at risk", "behind", "struggling",
+    "falling behind", "in trouble", "doing well", "doing okay", "how is", "how are",
+    # comparison phrasings — "compare X and Y", "X vs Y"
+    "compare", "compared", " vs ", "versus",
 )
 #: Cues for a TEAM "find people" query (RW_BUILD_5 NL search). Checked BEFORE the
 #: performance words (a search mentions 'goal'/'check-in' too) so a manager's
@@ -69,6 +79,30 @@ _CAPABILITY_ANSWER = (
     "within what you're allowed to see. I can't make changes or approvals. "
     "Try: “what are my goals?” or “how am I doing this cycle?”"
 )
+
+
+def _capability_answer(caller):
+    """A capability reply tailored to the CALLER's role/scope — not one scripted
+    blurb for everyone. It names what they can actually ask about, so a manager
+    hears about team insight and an employee hears about their own data."""
+    role = getattr(caller, "role", "") or ""
+    self_part = ("For you, I can summarise your goals and KPIs, your cycle score and "
+                 "pace, and your review and feedback status — and reason about how "
+                 "you're tracking (e.g. “do I need help this cycle?”).")
+    if role in ("MANAGER", "HRBP", "ADMIN"):
+        scope = {"MANAGER": "your team (everyone who reports to you)",
+                 "HRBP": "your business unit",
+                 "ADMIN": "everyone in the organisation"}[role]
+        team_part = (
+            f" For {scope}, I can tell you how any individual is doing, diagnose who "
+            "needs help, list who's at risk or behind pace, rank who's doing best or "
+            "worst, and count how many are off track — try “who's behind on my team?”, "
+            "“who's doing best?”, or “does <name> need help?”.")
+    else:
+        team_part = (" I can only see your own data — not other people's — so I can't "
+                     "report on colleagues.")
+    return ("I'm your read-only performance assistant (I can't make changes or "
+            f"approvals). {self_part}{team_part}")
 _GENERAL_ANSWER = (
     "I'm a read-only performance assistant, so that's outside what I can help with — "
     "but I can tell you about your goals, KPIs, cycle scores, or reviews (within your "
@@ -124,7 +158,18 @@ def _scoped_goal_titles(caller, target):
 
     if not actor_can_access(caller, target):
         return None
-    return list(Goal.objects.filter(employee_id=target.id).values_list("title", flat=True))
+    # ACTIVE goals only = the CURRENT cycle. Listing every cycle repeated titles
+    # ("Cycle objectives" ×3) and read like filler; dedupe (preserve order) so the
+    # answer is the person's real current objectives.
+    titles = Goal.objects.filter(
+        employee_id=target.id, status="ACTIVE"
+    ).values_list("title", flat=True)
+    seen, out = set(), []
+    for t in titles:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
 
 
 # ── conversation memory (C2) ─────────────────────────────────────────────────
@@ -136,10 +181,112 @@ _NAME_STOP_WORDS = frozenset(
     "on in at to from team report reports goal goals kpi kpis review reviews feedback "
     "score scores cycle cycles progress performance risk open active pending count number "
     "me i we you they show tell give latest current last week month quarter year today "
-    "track On track behind ahead risk please can could would".lower().split()
+    "own mine myself owns other another else one ones "
+    "track On track behind ahead risk please can could would "
+    # diagnosis vocabulary — never a person's name ("does she need help?")
+    "need needs help support struggling struggle falling trouble okay ok well badly "
+    "poorly attention flag flagged pace doing".lower().split()
 )
 
 _COUNT_Q_RE = re.compile(r"\bhow many\b|\bcount of\b|\bnumber of\b", re.I)
+
+#: A DIAGNOSIS question about a specific person ("does X need help", "is X on
+#: track / at risk / behind / struggling"). Routed to a reasoned, data-grounded
+#: answer instead of the plain goal list. ("how is X" status stays on the summary
+#: for now — migrated to the reasoned answer in a later increment.)
+_DIAGNOSE_RE = re.compile(
+    r"\bneeds?\s+help\b|\bneed\s+help\b|\bon\s+track\b|\bat\s+risk\b|\bbehind\b|"
+    r"\bstruggl|\bfalling\b|\bin\s+trouble\b|\bhelp\s+(?:them|him|her)\b|\bhow\s+are\s+they\s+doing\b",
+    re.I,
+)
+
+#: A TEAM-SCAN question ("who's behind / at risk / struggling / needs help",
+#: "anyone at risk", "how many of my reports are behind"). Answered from the
+#: caller's OWN reporting subtree only (managers/HRBP) — never the whole tenant.
+_TEAM_SCAN_RE = re.compile(
+    r"\bwho(?:'s| is| are|se)?\b.{0,40}\b(behind|at\s+risk|struggl|need|falling|trouble)\b|"
+    r"\banyone\b.{0,30}\b(behind|at\s+risk|struggl|need|trouble)\b|"
+    r"\bhow\s+many\b.{0,40}\b(behind|at\s+risk|struggl)\b",
+    re.I,
+)
+
+#: A COMPARISON question ("who's doing best/worst on my team", "top/lowest
+#: performer", "who's strongest/weakest"). Ranked over the caller's OWN reports.
+_COMPARE_RE = re.compile(
+    r"\bwho(?:'s| is| are)?\b.{0,40}\b(doing\s+best|doing\s+worst|best|worst|top|"
+    r"strongest|weakest|highest|lowest|ahead)\b|\btop\s+performer|\bbest\s+performer|"
+    r"\bworst\s+performer|\brank\b",
+    re.I,
+)
+
+#: An AGGREGATION question — a COUNT over the team ("how many of my reports are
+#: behind / at risk / on track"), answered as a number + summary, not a full list.
+_AGG_RE = re.compile(
+    r"\bhow\s+many\b.{0,40}\b(behind|at\s+risk|struggl|on\s+track|report|team)\b",
+    re.I,
+)
+
+#: A FIRST-PERSON, self-referential message ("what are MY goals", "how am I
+#: doing", "my own KPIs", "am I on track"). Per AGENT_INTEL_V2 §2 Example A the
+#: subject is the CURRENT USER — never a name lookup, even when a domain word
+#: like "own" slips past the name-stop list. Deictic third-person pronouns
+#: ("he/she/they") are handled separately and take precedence.
+_SELF_REF_RE = re.compile(r"\b(my|mine|myself|i|me|i'm)\b", re.I)
+
+#: POSSESSIVE self-reference only ("my"/"mine"/"my own") — for detecting a genuine
+#: "my goals AND X's" mixed query. Excludes bare "me"/"i" so "show me X's goals"
+#: (where "me" is the indirect object, not a claim on the caller's own data) is NOT
+#: mistaken for a self-reference.
+_SELF_MINE_RE = re.compile(r"\b(my|mine|my\s+own)\b", re.I)
+
+#: An EXPLICIT request for the raw goal LIST ("show/list my goals", "what are my
+#: goals"). Only these get the flat title list; everything else about a person
+#: ("how is X?", bare status) gets the reasoned, phrased answer.
+_LIST_GOALS_RE = re.compile(
+    r"\b(show|list|see|what(?:'s| is| are)?|which)\b[\w\s'’]{0,24}\bgoals?\b",
+    re.I,
+)
+
+#: A "which of them" follow-up after ≥2 people were just discussed/compared
+#: ("who needs more support?", "who's worse?", "which one should I focus on?").
+#: Resolved against the entities just referenced (AGENT_INTEL_V2 §2 Example C).
+#: Team-wide phrasings ("…on my team", "…of my reports") are excluded so the
+#: team-scan path still owns those.
+_GROUP_SUPPORT_RE = re.compile(
+    r"\bwho\b.{0,30}\b(needs?|more\s+support|more\s+help|attention|worse|weaker|"
+    r"struggl|behind|at\s+risk|focus|concern|prioriti)\w*|"
+    r"\bwhich\s+(one|of\s+them|of\s+the\s+two)\b",
+    re.I,
+)
+_GROUP_TEAMWORD_RE = re.compile(r"\b(team|reports?|everyone|all\s+of)\b", re.I)
+
+#: "the first / second / other one" — a pick from the most recent disambiguation.
+_ORDINAL_ONE_RE = re.compile(
+    r"\bthe\s+(first|1st|second|2nd|third|3rd|other|last)\b(?:\s+one)?|"
+    r"\b(first|second|third)\s+one\b",
+    re.I,
+)
+_ORDINAL_INDEX = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2,
+                  "other": 1}  # "last" handled specially
+
+#: "the first/second person (we discussed)", "go back to the first one" — a pick by
+#: CONVERSATION ORDER (distinct people in first-mention order), for topic-switch
+#: refer-back ("how is Akhil?" … "how is Mei?" … "and the first person again?").
+_ORDINAL_PERSON_RE = re.compile(
+    r"\bthe\s+(first|1st|second|2nd|third|3rd|last)\s+person\b|"
+    r"\bgo\s+back\s+to\s+the\s+(first|1st|second|2nd|third|3rd|last)\b",
+    re.I,
+)
+
+#: "his/her/their OTHER goal", "the first/second/last goal" — a GOAL-level ordinal
+#: reference. Isolates ONE of the resolved person's goals (spec §0 Example B) instead
+#: of listing them all. Possessive/article + ordinal-or-"other" + "goal".
+_GOAL_ORDINAL_RE = re.compile(
+    r"\b(?:his|her|their|its|the|my|your)\s+"
+    r"(other|first|second|third|fourth|last|1st|2nd|3rd|4th)\s+goal\b",
+    re.I,
+)
+_GOAL_ORDINAL_NORM = {"1st": "first", "2nd": "second", "3rd": "third", "4th": "fourth"}
 
 #: An "open/show the <thing we just made>" imperative — DEFINITE reference only
 #: ("the/that/this/it"), so "open a check-in" (a new-thing WRITE) is untouched.
@@ -211,44 +358,226 @@ def _classification_prompt(query: str, session) -> str:
     )
 
 
-def _resolve_named_person(caller, query):
-    """A person NAMED in the query — a unique, whole-token match on a tenant user's
-    display name (or email local-part). Returns ``(user|None, ambiguous_names)``.
-    Access is NOT granted here — the caller's scope is re-checked downstream
-    exactly like an email mention (out-of-scope → the same empty answer)."""
+def _named_candidates(query):
+    """Every TENANT user whose display name (or email local-part) matches a name
+    token in ``query``. Tenant-scoped (never cross-tenant) but NOT data-scope
+    filtered — the caller's scope is applied by the call site, so we can tell
+    "no such person" apart from "exists but outside your scope" and answer
+    honestly. Returns ``(matches, wordset, tokens_of)``."""
     from django.db.models import Q
 
     from apps.identity.models import User
 
-    words = [
-        w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
-        if w not in _NAME_STOP_WORDS
-    ][:8]
+    # DISTINCT name tokens in first-seen order. Dedup BEFORE the cap so a rambling or
+    # injection-laden prefix ("really really … Akhil", "ignore all previous instructions
+    # … then how is Akhil") can't bury the real name past the cap by repetition; the cap
+    # (on distinct tokens) still bounds the OR-query width. Widening the token set never
+    # widens access — the call site applies the caller's data scope. (INTEL_V2 §7.)
+    seen: set[str] = set()
+    words: list[str] = []
+    for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower()):
+        if w in _NAME_STOP_WORDS or w in seen:
+            continue
+        seen.add(w)
+        words.append(w)
+        if len(words) >= 24:
+            break
     if not words:
-        return None, []
+        return [], set(), {}
     cond = None
     for w in words:
         c = Q(display_name__icontains=w) | Q(email__istartswith=w)
         cond = c if cond is None else (cond | c)
     matches = []
     wordset = set(words)
+    tokens_of = {}  # user.id -> set of name tokens (computed once, reused below)
     for u in User.objects.filter(cond)[:20]:  # tenant-scoped manager
         name_tokens = set(re.findall(r"[a-z]{3,}", (u.display_name or "").lower()))
+        tokens_of[u.id] = name_tokens
         email_local = u.email.split("@")[0].lower()
         if (name_tokens & wordset) or (email_local in wordset):
             matches.append(u)
+    return matches, wordset, tokens_of
+
+
+def _pick_named(matches, wordset, tokens_of):
+    """From a candidate set, pick the ONE person named, or a disambiguation list.
+    Returns ``(user|None, ambiguous_names)``. Works on whatever set it is given —
+    the call site passes only the IN-SCOPE candidates so a manager who names a
+    colleague on their team resolves cleanly instead of being offered tenant-wide
+    strangers they can't see."""
     if len(matches) == 1:
         return matches[0], []
     if len(matches) > 1:
-        return None, sorted({u.display for u in matches})
+        # A multi-word query may name ONE specific person ("leon petrova") whose
+        # full name is among the loose token-OR matches. Prefer the unique candidate
+        # whose name contains EVERY name-token the caller typed — so "Leon Petrova"
+        # wins over the "Leon *" / "* Petrova" family instead of being buried in a
+        # disambiguation list. Only the tokens that actually appear in some name
+        # count (so trailing words like "doing"/"cycle" don't disqualify anyone).
+        name_query_tokens = {
+            t for t in wordset if any(t in toks for toks in tokens_of.values())
+        }
+        if len(name_query_tokens) >= 2:
+            full = [u for u in matches if name_query_tokens <= tokens_of[u.id]]
+            if len(full) == 1:
+                return full[0], []
+        return None, _disambiguation_labels(matches)
     return None, []
+
+
+def _dedup_sorted_users(users):
+    """Candidate users deduped by id, in a stable (display, email) order — the
+    canonical offered order shared by the labels AND the grounded refs, so "the
+    first one" later means the first label."""
+    seen, out = set(), []
+    for u in sorted(users, key=lambda x: (x.display or "", x.email or "")):
+        if u.id not in seen:
+            seen.add(u.id)
+            out.append(u)
+    return out
+
+
+def _disambiguation_labels(users):
+    """Readable choices for a "several people match" reply. When two people share
+    the SAME display name (e.g. two "Leon Petrova"), a bare name list collapses to
+    one useless entry — so we append the email to disambiguate ONLY the colliding
+    names. Deduped, in the canonical offered order."""
+    from collections import Counter
+
+    us = _dedup_sorted_users(users)
+    counts = Counter(u.display for u in us)
+    return [f"{u.display} ({u.email})" if counts[u.display] > 1 else u.display for u in us]
+
+
+def _resolve_named_person(caller, query):
+    """Scope-agnostic name resolution (unit-test entry point): resolve a NAMED
+    person from the whole tenant. Production goes through the scope-aware path in
+    ``run`` — but the raw name-matching rules are identical and proven here."""
+    matches, wordset, tokens_of = _named_candidates(query)
+    return _pick_named(matches, wordset, tokens_of)
+
+
+def _resolve_in_scope(caller, query):
+    """Scope-aware person resolution for a performance question.
+
+    Returns ``(target, ambiguous, out_of_scope)``:
+      * ``target``          — the resolved IN-SCOPE user, or None.
+      * ``ambiguous``       — >1 in-scope match → the candidate **User** list to
+        disambiguate (labels + refs built by the caller), else ``[]``.
+      * ``out_of_scope``    — a **User** matching the TYPED NAME but OUTSIDE the
+        caller's scope (so the caller can ground it and name it), or ``""`` when
+        several out-of-scope people match, or ``None`` when the name simply isn't
+        found. This lets the caller say "you don't have access to X" — and REMEMBER
+        that attempt — instead of a misleading "not found" or a self-fallback.
+
+    A multi-token name must FULLY match an in-scope person — so a manager asking
+    about "Hugo O'Brien" never silently resolves to a same-surname "Hana O'Brien"
+    on their own team. A single first-name token ("yuki") resolves to the one
+    person on the caller's team when unique."""
+    matches, wordset, tokens_of = _named_candidates(query)
+    if not matches:
+        return None, [], None
+    in_scope = [u for u in matches if actor_can_access(caller, u)]
+    # Tokens that are genuinely NAMES — they appear in some tenant user's name,
+    # counted tenant-wide so "hugo" still counts even when Hugo is out of scope.
+    real_tokens = {t for t in wordset if any(t in toks for toks in tokens_of.values())}
+
+    def _full(cands):
+        return [u for u in cands if real_tokens and real_tokens <= tokens_of[u.id]]
+
+    def _oos(cands):
+        """Out-of-scope signal: the single matching User (to ground+name), or ""
+        when several match (name them generically), never leaking data either way."""
+        return cands[0] if len(cands) == 1 else ""
+
+    if len(real_tokens) >= 2:
+        picks = _full(in_scope)
+        if len(picks) == 1:
+            return picks[0], [], None
+        if len(picks) > 1:
+            return None, _dedup_sorted_users(picks), None
+        # Nobody in scope matches the FULL name. Out of scope iff the tenant has one.
+        tenant_full = _full(matches)
+        return None, [], (_oos(tenant_full) if tenant_full else None)
+
+    # A single (or zero) real name-token — loose, first-name style ("yuki").
+    if len(in_scope) == 1:
+        return in_scope[0], [], None
+    if len(in_scope) > 1:
+        return None, _dedup_sorted_users(in_scope), None
+    # None in scope, but the name matched tenant users → it's a scope boundary.
+    return None, [], _oos(matches)
+
+
+def _accessible_report_names(caller, limit=12):
+    """Display names of the people ``caller`` may ask about (their reporting
+    subtree, excluding themselves) — used to tell a manager who they CAN see when
+    they hit a scope boundary. Capped so the reply stays readable."""
+    from apps.identity.models import User
+    from apps.rbac.scope import reporting_subtree_ids
+
+    ids = reporting_subtree_ids(caller) - {caller.id}
+    if not ids:
+        return [], 0
+    qs = User.objects.filter(id__in=ids).order_by("display_name")
+    names = [u.display for u in qs[: limit + 1]]
+    total = len(ids)
+    return names[:limit], total
+
+
+def _scope_denied_answer(caller, intent, name=None, ground_user=None):
+    """Honest, role-aware refusal when a caller asks about someone OUTSIDE their
+    data scope. It is a guardrail, not a bug: an EMPLOYEE sees only themselves; a
+    MANAGER sees their own reports; only ADMIN/HR see the whole company. We say so
+    plainly, list who the caller CAN ask about, and never leak the out-of-scope
+    person's data.
+
+    When ``ground_user`` is given, the refused person is GROUNDED on the session
+    (a "user" ref) so a pronoun follow-up ("what about his reviews?") stays on them
+    and gets refused again — instead of silently falling back to the caller's own
+    data. The ref grants nothing: every read re-checks access."""
+    role = getattr(caller, "role", "") or ""
+    if role == "EMPLOYEE":
+        subject = f"{name}'s" if name else "another person's"
+        answer = (
+            f"You don't have access to {subject} data — only an admin or HR can "
+            "see everyone across the company. I can show your own goals, reviews, "
+            "feedback and recognition."
+        )
+    elif role == "MANAGER":
+        subject = f"{name}'s" if name else "that person's"
+        names, total = _accessible_report_names(caller)
+        if names:
+            shown = ", ".join(names)
+            more = f", and {total - len(names)} more" if total > len(names) else ""
+            can = f" You can ask about the people on your team: {shown}{more}."
+        else:
+            can = " You can ask about your own goals, reviews and feedback."
+        answer = (
+            f"You don't have access to {subject} data — only an admin or HR can "
+            f"see everyone across the company.{can}"
+        )
+    else:  # HRBP / ADMIN normally have tenant scope and never reach this branch.
+        subject = f"{name}" if name else "That person"
+        answer = (
+            f"{subject} is outside the part of the organisation you can see, so I "
+            "can't share their performance details."
+        )
+    out = {"status": "ok", "intent": intent, "answer": answer, "data": []}
+    if ground_user is not None:
+        out["refs"] = [{"type": "user", "id": str(ground_user.id),
+                        "label": ground_user.display}]
+    return out
 
 
 def _answer_counts(caller, target, query, intent):
     """Deterministic counts for 'how many reviews/goals/feedback …' — real scoped
     querysets, never a goals-only misroute. Scope-checked like every read."""
-    if target is None or not actor_can_access(caller, target):
-        return {"status": "ok", "intent": intent, "answer": "No data in your scope.", "data": []}
+    if target is None:
+        return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
+    if not actor_can_access(caller, target):
+        return _scope_denied_answer(caller, intent, target.display)
     from apps.feedback.models import FeedbackRequest
     from apps.goals.models import Goal
     from apps.reviews.models import Review
@@ -279,6 +608,293 @@ def _answer_counts(caller, target, query, intent):
         "answer": f"{who} {verb} {'; '.join(parts)}.",
         "data": parts,
         "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+    }
+
+
+_TEAM_LIST_CAP = 8  # keep a scan reply readable; summarise the rest as "and N more"
+
+
+def _answer_team_risk(caller, intent="performance", mode="all", exclude=None):
+    """Reasoned scan of the caller's reporting subtree for at-risk / behind people.
+    Scoped to the caller's OWN reports (never the tenant). Read-only. ``mode`` is
+    'at_risk' (rating), 'behind' (pace) or 'all'. ``exclude`` is an optional User to
+    drop from the list — used for "the OTHER engineer who's behind / who ELSE?" so
+    the person just discussed isn't repeated."""
+    from apps.ai.insight import team_scan
+
+    scan = team_scan(caller, mode=mode)
+    if not scan["manages"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "You don't have any reports, so there's no team to scan. "
+                      "I can tell you how you're doing this cycle instead.",
+        }
+    label = {"at_risk": "at risk", "behind": "behind pace", "all": "at risk or behind pace"}[mode]
+    flagged = scan["flagged"]
+    excluded_here = bool(exclude) and any(f.get("id") == exclude.id for f in flagged)
+    if excluded_here:
+        flagged = [f for f in flagged if f.get("id") != exclude.id]
+    if not flagged:
+        base = (f"Good news — none of your {scan['total']} team member(s) are "
+                f"{label} this cycle.")
+        if excluded_here:
+            base = (f"Aside from {exclude.display}, none of your other team member(s) "
+                    f"are {label} this cycle.")
+        return {"status": "ok", "intent": intent, "data": [], "answer": base}
+    shown = flagged[:_TEAM_LIST_CAP]
+    lines = [
+        f"{f['name']} ({f['risk']}{', behind pace' if f['pace_behind'] else ''})"
+        for f in shown
+    ]
+    more = len(flagged) - len(shown)
+    tail = f", and {more} more" if more > 0 else ""
+    n = len(flagged)
+    lead = (f"Aside from {exclude.display}, {n} other of your {scan['total']} team "
+            f"member(s) {'is' if n == 1 else 'are'} {label}: "
+            if excluded_here else
+            f"{n} of your {scan['total']} team member(s) are {label}: ")
+    return {
+        "status": "ok", "intent": intent,
+        "answer": f"{lead}{'; '.join(lines)}{tail}. Ask me about any of them for detail.",
+        "data": [f["name"] for f in flagged],
+    }
+
+
+def _answer_team_ranking(caller, intent="performance", best=True):
+    """Rank the caller's reports by cycle score (best/worst first). Scoped, read-only."""
+    from apps.ai.insight import team_ranking
+
+    rk = team_ranking(caller, best=best, limit=5)
+    if not rk["manages"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "You don't have any reports to compare. I can tell you how "
+                      "you're doing this cycle instead.",
+        }
+    if not rk["ranked"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "None of your reports have a scored cycle yet, so I can't rank "
+                      "them. Ask me once this cycle is scored.",
+        }
+    which = "top" if best else "lowest"
+    lines = [
+        f"{i}. {r['name']} ({r['risk']}{', behind pace' if r['pace_behind'] else ''})"
+        for i, r in enumerate(rk["ranked"], 1)
+    ]
+    note = (f" ({rk['unscored']} report(s) aren't scored yet.)"
+            if rk["unscored"] else "")
+    return {
+        "status": "ok", "intent": intent,
+        "answer": f"Your {which} performers this cycle: {'; '.join(lines)}.{note}",
+        "data": [r["name"] for r in rk["ranked"]],
+    }
+
+
+def _answer_team_counts(caller, intent="performance"):
+    """A COUNT summary over the caller's reports (for "how many are behind?").
+    Scoped, read-only."""
+    from apps.ai.insight import team_counts
+
+    c = team_counts(caller)
+    if not c["manages"]:
+        return {
+            "status": "ok", "intent": intent, "data": [],
+            "answer": "You don't have any reports. I can tell you how you're doing "
+                      "this cycle instead.",
+        }
+    unscored = c["total"] - c["scored"]
+    tail = f" ({unscored} not scored yet.)" if unscored else ""
+    return {
+        "status": "ok", "intent": intent,
+        "answer": (f"Of your {c['total']} report(s): {c['on_track']} on track, "
+                   f"{c['at_risk']} at risk, {c['behind']} behind pace.{tail} "
+                   "Ask 'who's behind?' for the names."),
+        "data": [f"on_track={c['on_track']}", f"at_risk={c['at_risk']}", f"behind={c['behind']}"],
+    }
+
+
+_COMPARE_SPLIT_RE = re.compile(r"\b(?:and|vs\.?|versus|compared\s+to|with|to)\b|,", re.I)
+
+#: A comparison SUBJECT that is the current user ("compare me with X", "how do I
+#: compare to X", "compare my goals with X"). Possessive/pronoun first person.
+_SELF_SUBJECT_RE = re.compile(r"\b(me|myself|my|mine|i)\b", re.I)
+
+#: A comparison SUBJECT given as a 3rd-person pronoun ("compare him with me") — it
+#: corefers to the last-discussed person (resolved via the session, access re-checked).
+_DEIXIS_SUBJECT_RE = re.compile(
+    r"\b(he|him|his|she|her|hers|they|them|their|theirs)\b|"
+    r"\b(?:that|this|the\s+same)\s+person\b", re.I)
+
+
+def _resolve_multiple(caller, query, session=None):
+    """People in a comparison ("how are Akhil and Mei doing?", "compare X and Y",
+    "compare him with me"). Splits on and/vs/with/to/comma, resolves each segment IN
+    SCOPE independently. A first-person segment ("me"/"my"/"I") resolves to the CURRENT
+    USER (always in their own scope); a 3rd-person pronoun ("him"/"her") corefers to the
+    last-discussed person via the session (access re-checked). Returns
+    ``(in_scope_targets, out_of_scope_names)`` — the second list lets the caller answer
+    the in-scope people AND honestly name the ones it can't see (never their data). Empty
+    unless a comparison connector is present."""
+    if not re.search(r"\band\b|\bvs\b|\bversus\b|\bcompare|,", (query or ""), re.I):
+        return [], []
+    # Resolving "me"/"my"/"him" as a comparison SUBJECT only makes sense for a genuine
+    # COMPARISON ("compare me with X", "how do I compare to X"). A plain "and" conjunction
+    # ("what are my goals? and show me X's") is a mixed self+other request handled by the
+    # single-person path (answer self + refuse the other) — leave it untouched here.
+    is_comparison = bool(re.search(r"\bcompare|\bcompared\b|\bvs\.?\b|\bversus\b", query or "", re.I))
+    targets, seen, oos_names = [], set(), []
+
+    def _add_target(u):
+        if u is not None and u.id not in seen:
+            seen.add(u.id)
+            targets.append(u)
+
+    def _add_oos(name):
+        if name and name not in oos_names:
+            oos_names.append(name)
+
+    for part in _COMPARE_SPLIT_RE.split(query or ""):
+        if not part.strip():
+            continue
+        named, _amb, oos = _resolve_in_scope(caller, part)
+        if named is not None:
+            _add_target(named)
+        elif hasattr(oos, "display"):
+            _add_oos(oos.display)  # a real person, outside the caller's scope
+        elif is_comparison and _SELF_SUBJECT_RE.search(part):
+            _add_target(caller)  # "me"/"my"/"I" → the caller (always in own scope)
+        elif is_comparison and session is not None and _DEIXIS_SUBJECT_RE.search(part):
+            # "him"/"her"/"that person" → the last-discussed person, access RE-checked:
+            # in scope → a subject; out of scope → named honestly, never their data.
+            from apps.ai.sessions import last_referenced_person_any_scope
+
+            prior = last_referenced_person_any_scope(caller, session)
+            if prior is not None:
+                _add_target(prior) if actor_can_access(caller, prior) else _add_oos(prior.display)
+    return targets, oos_names
+
+
+def _weakest_pct(facts) -> float | None:
+    """Lowest measurable KPI attainment across a person's goals (None if none)."""
+    worst = None
+    for g in facts.get("goals", []):
+        for k in g.get("kpis", []):
+            pct = k.get("attainment_pct")
+            if pct is None:
+                continue
+            if worst is None or pct < worst:
+                worst = pct
+    return worst
+
+
+def _concern_score(facts) -> float:
+    """A grounded 'needs attention' magnitude — higher = more concern. Built ONLY
+    from real, in-scope facts (risk rating, pace, weakest KPI shortfall)."""
+    s = 0.0
+    if facts.get("risk_code") and facts["risk_code"] != "ON_TRACK":
+        s += 100.0
+    if facts.get("pace_behind"):
+        s += 50.0
+    weak = _weakest_pct(facts)
+    if weak is not None:
+        s += max(0.0, 100.0 - weak)
+    return s
+
+
+def _concern_reason(facts) -> str:
+    bits = []
+    if facts.get("risk_code") and facts["risk_code"] != "ON_TRACK":
+        bits.append(f"rated {(facts.get('risk_status') or facts['risk_code']).lower()}")
+    if facts.get("pace_behind"):
+        bits.append("behind pace")
+    weak = _weakest_pct(facts)
+    if weak is not None and weak < 80:
+        bits.append(f"weakest KPI at {weak:.0f}% of target")
+    return (" — " + ", ".join(bits)) if bits else ""
+
+
+def _and_join(names) -> str:
+    names = list(names)
+    if len(names) <= 1:
+        return names[0] if names else ""
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _answer_group_support(caller, people, query, intent="performance"):
+    """"who needs more support / which one is worse?" over the people JUST discussed
+    (§2 Example C). Each is diagnosed through the scoped path (access re-checked),
+    then ranked by a grounded concern score — never a fresh name lookup, never the
+    whole team. Read-only; no fabrication."""
+    from apps.ai.insight import diagnose_person, llm_phrase
+
+    scored = []
+    for p in people[:4]:
+        diag = diagnose_person(caller, p)  # scope re-checked inside person_facts
+        if diag is not None:
+            scored.append((_concern_score(diag["facts"]), p, diag))
+    if not scored:
+        return {"status": "ok", "intent": intent, "data": [],
+                "answer": "I couldn't pull those people up in your scope."}
+    scored.sort(key=lambda t: t[0], reverse=True)
+    names = [p.display for _, p, _ in scored]
+    top_score, top_p, top_diag = scored[0]
+    others = [p.display for _, p, _ in scored[1:]]
+    if top_score <= 0:
+        draft = (f"Between {_and_join(names)}, none stands out as needing extra support "
+                 "right now — they're on track and keeping pace.")
+    else:
+        tail = (f" {_and_join(others)} {'looks' if len(others) == 1 else 'look'} steadier "
+                "by comparison." if others else "")
+        draft = (f"{top_p.display} needs the most attention right now"
+                 f"{_concern_reason(top_diag['facts'])}.{tail}")
+    facts = {"people": [d["facts"] for _, _, d in scored]}
+    answer = llm_phrase(caller.tenant_id, query, facts, draft)
+    return {
+        "status": "ok", "intent": intent, "answer": answer, "data": names,
+        "refs": [{"type": "user", "id": str(p.id), "label": p.display}
+                 for _, p, _ in scored],
+    }
+
+
+def _answer_two_people(caller, query, targets, intent="performance", oos_names=()):
+    """A per-person reasoned reply for a comparison. Each in-scope person is diagnosed
+    independently (already scoped via ``_resolve_multiple``); read-only, grounded, no
+    fabrication. Any ``oos_names`` are named honestly as out-of-access — never their
+    data. The optional LLM phrasing gets ONLY the in-scope people's facts."""
+    from apps.ai.insight import diagnose_person, llm_phrase
+
+    # A COUNT comparison ("how many goals/reviews do X and Y have?") gets precise
+    # per-person counts, not a diagnosis — and is NOT LLM-phrased (numbers stay exact).
+    is_count = bool(_COUNT_Q_RE.search(query or ""))
+    drafts, facts, names = [], [], []
+    for t in targets[:3]:
+        if is_count:
+            drafts.append(_answer_counts(caller, t, query, intent)["answer"])
+            names.append(t.display)
+            continue
+        diag = diagnose_person(caller, t)
+        if diag is None:  # defensive — resolver already scoped
+            continue
+        drafts.append(diag["answer"])
+        facts.append(diag["facts"])
+        names.append(t.display)
+    if not drafts and not oos_names:
+        return {"status": "ok", "intent": intent, "data": [],
+                "answer": "I couldn't pull those people up in your scope."}
+    if is_count:
+        answer = " ".join(drafts)
+    else:
+        answer = llm_phrase(caller.tenant_id, query, {"people": facts}, " ".join(drafts)) if drafts else ""
+    if oos_names:
+        who = " and ".join(oos_names[:3])
+        note = (f"I can't share {who}'s performance — they're outside your access."
+                if not answer else
+                f" I can't share {who}'s though — they're outside your access.")
+        answer = (answer + note).strip()
+    return {
+        "status": "ok", "intent": intent, "answer": answer, "data": names,
+        "refs": [{"type": "user", "id": str(t.id), "label": t.display} for t in targets[:3]],
     }
 
 
@@ -383,6 +999,109 @@ def chat_answer(caller, query: str, session=None) -> dict:
             "answer": write_refusal(caller, query)
             or "I'm a read-only assistant — I can't make changes or approvals.",
         }
+    # "the first / second / other one" — a pick from the most recent disambiguation.
+    # Checked pre-branch so the short follow-up works however it classifies; only
+    # fires when an offered set actually exists (access re-checked in the session
+    # helper), so a stray "the first goal" without a prior disambiguation is untouched.
+    #
+    # An EXPLICIT person / "go back to" reference ("the first PERSON", "go back to the
+    # first") is a CONVERSATION-ORDER refer-back, not a pick from the just-shown list —
+    # so yield to the order resolver below when `_operson` matches. (`_ORDINAL_PERSON_RE`
+    # matches only "…first/second/last person" and "go back to the first/…", never bare
+    # "the first one" / "the other one", so the offered-set path is otherwise untouched.)
+    _operson = _ORDINAL_PERSON_RE.search(query or "")
+    _ord = _ORDINAL_ONE_RE.search(query or "")
+    if _ord and not _operson and session is not None:
+        from apps.ai.sessions import last_offered_people
+
+        offered = last_offered_people(caller, session)
+        if offered:
+            word = next((g for g in _ord.groups() if g), "first").lower()
+            idx = len(offered) - 1 if word == "last" else _ORDINAL_INDEX.get(word, 0)
+            picked = offered[min(max(idx, 0), len(offered) - 1)]
+            from apps.ai.insight import diagnose_person, llm_phrase
+
+            diag = diagnose_person(caller, picked)
+            if diag is not None:
+                answer = llm_phrase(caller.tenant_id, query, diag["facts"], diag["answer"])
+                return {
+                    "status": "ok", "intent": "performance", "answer": answer,
+                    "data": [g["title"] for g in diag["facts"]["goals"]],
+                    "refs": [{"type": "user", "id": str(picked.id), "label": picked.display}],
+                }
+
+    # "the first/second person (we discussed)" / "go back to the first one" — a pick
+    # by CONVERSATION ORDER, for topic-switch refer-back ("how is Akhil?" … "how is
+    # Mei?" … "and the first person again?"). Distinct people in first-mention order;
+    # access re-checked in the session helper. Checked AFTER the offered-set ordinal
+    # above, so a disambiguation "the first one" still wins when a set was just shown.
+    if _operson and session is not None:
+        from apps.ai.sessions import people_in_order
+
+        ordered = people_in_order(caller, session)
+        if ordered:
+            word = next((g for g in _operson.groups() if g), "first").lower()
+            idx = len(ordered) - 1 if word == "last" else _ORDINAL_INDEX.get(word, 0)
+            picked = ordered[min(max(idx, 0), len(ordered) - 1)]
+            from apps.ai.insight import diagnose_person, llm_phrase
+
+            diag = diagnose_person(caller, picked)
+            if diag is not None:
+                answer = llm_phrase(caller.tenant_id, query, diag["facts"], diag["answer"])
+                return {
+                    "status": "ok", "intent": "performance", "answer": answer,
+                    "data": [g["title"] for g in diag["facts"]["goals"]],
+                    "refs": [{"type": "user", "id": str(picked.id), "label": picked.display}],
+                }
+
+    # "who needs more support / which one is worse?" after ≥2 people were just
+    # discussed or compared → reason over THAT set (§2 Example C), not a fresh name
+    # lookup and not the whole team. Only fires when a recent multi-person set
+    # exists (access re-checked in the session helper) and the phrasing isn't
+    # team-wide ("…on my team" stays with the team-scan path below).
+    if (session is not None and _GROUP_SUPPORT_RE.search(query or "")
+            and not _GROUP_TEAMWORD_RE.search(query or "")):
+        from apps.ai.sessions import last_offered_people
+
+        discussed = last_offered_people(caller, session)
+        if len(discussed) >= 2:
+            return _answer_group_support(caller, discussed, query)
+
+    # TEAM insight ("who's behind / at risk / doing best on my team?", "how many
+    # of my reports are behind?") — reasoned over the caller's OWN reporting
+    # subtree, gated by VIEW_TEAM_SCORES. Checked ahead of search/performance so
+    # it isn't mis-routed to the goal-name search or a single-person lookup.
+    _tq = query or ""
+    _is_compare = bool(_COMPARE_RE.search(_tq))
+    _is_agg = bool(_AGG_RE.search(_tq))
+    _is_scan = bool(_TEAM_SCAN_RE.search(_tq))
+    if _is_compare or _is_agg or _is_scan:
+        from apps.rbac.matrix import Capability, role_has_capability
+
+        if not role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
+            # An individual contributor manages no one — say so honestly, offer self.
+            return {
+                "status": "ok", "intent": "performance", "data": [],
+                "answer": "You don't have any reports, so there's no team to scan. "
+                          "I can tell you how you're doing this cycle instead.",
+            }
+        if _is_compare:
+            worst = bool(re.search(r"worst|weakest|lowest|struggl|behind", _tq, re.I))
+            return _answer_team_ranking(caller, best=not worst)
+        if _is_agg:
+            return _answer_team_counts(caller)
+        # A scan: pick the mode from the phrasing.
+        low = _tq.lower()
+        mode = "at_risk" if ("at risk" in low and "behind" not in low) else (
+            "behind" if "behind" in low else "all")
+        # "the OTHER engineer who's behind" / "who ELSE is behind?" → drop the person
+        # just discussed from the list so it reads as "aside from them, …".
+        exclude = None
+        if session is not None and re.search(r"\b(other|else|another)\b", low):
+            from apps.ai.sessions import last_referenced_person_any_scope
+
+            exclude = last_referenced_person_any_scope(caller, session)
+        return _answer_team_risk(caller, mode=mode, exclude=exclude)
     if intent == "search":
         # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An
         # employee's search-shaped query falls through to the general redirect — the
@@ -394,7 +1113,8 @@ def chat_answer(caller, query: str, session=None) -> dict:
             return _answer_search(caller, query)
         intent = "general"
     if intent == "capability":
-        return {"status": "ok", "intent": "capability", "answer": _CAPABILITY_ANSWER, "data": []}
+        return {"status": "ok", "intent": "capability",
+                "answer": _capability_answer(caller), "data": []}
     if intent not in ("performance", "read"):  # "read" = legacy alias for performance
         # General / conversational / out-of-domain ("what day is today?", "I feel
         # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.
@@ -406,41 +1126,217 @@ def chat_answer(caller, query: str, session=None) -> dict:
     # scope-checked, so memory/names can never surface out-of-scope data (C2).
     from apps.identity.models import User
 
+    # TWO-OR-MORE named people ("how are Akhil and Mei doing?", "compare X and Y") →
+    # a per-person reasoned reply, each resolved + scope-checked INDEPENDENTLY. Only
+    # fires when ≥2 DISTINCT in-scope people resolve, so "goals and KPIs" is untouched
+    # and an out-of-scope name simply isn't included (never a leak).
+    _multi, _oos_names = _resolve_multiple(caller, query, session)
+    if len(_multi) >= 2 or (_multi and _oos_names):
+        return _answer_two_people(caller, query, _multi, intent, oos_names=_oos_names)
+
     match = _EMAIL_RE.search(query or "")
     target = caller
     if match:
         found = User.objects.filter(email=match.group(0)).first()  # tenant-scoped
+        if found is not None and not actor_can_access(caller, found):
+            # Exists in the tenant but outside the caller's data scope — say so
+            # honestly (who they are, who the caller CAN ask about), never leak,
+            # and ground them so a pronoun follow-up stays on them.
+            return _scope_denied_answer(caller, intent, found.display, ground_user=found)
         target = found  # may be None (cross-tenant / unknown) → empty answer
     else:
-        remembered = None
-        if session is not None:
-            from apps.ai.sessions import resolve_person_reference
+        # An explicitly NAMED person ALWAYS wins over remembered context: after
+        # "how is Vera doing?", the follow-up "Ethan Nguyen, how is he doing?" must
+        # resolve to Ethan — not stay on Vera via the pronoun. Only a PURELY deictic
+        # follow-up ("how is she doing?", with no name typed) falls back to memory.
+        #
+        # Resolution is SCOPE-AWARE: match names tenant-wide, keep only the people
+        # the caller may actually see, and require a full-name match. So a manager
+        # asking "how is yuki doing?" resolves to the one Yuki ON THEIR TEAM (not a
+        # list of strangers), "Hugo O'Brien" never silently becomes a same-surname
+        # teammate, and a name that exists only outside their scope gets an honest
+        # "you don't have access" reply.
+        named, ambiguous, out_of_scope = _resolve_in_scope(caller, query)
+        # A deictic pronoun ("she", "he", "them", "that person") is NOT a name — it
+        # points at the remembered person. Only a real name token counts as "typed
+        # a name" (which is what should override memory / trigger a not-found).
+        _deictic = {"they", "them", "their", "her", "him", "his", "she", "he", "person"}
+        _tokens = {w for w in re.findall(r"[a-z]+", (query or "").lower())}
+        typed_a_name = bool([
+            w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
+            if w not in _NAME_STOP_WORDS and w not in _deictic
+        ])
+        # A deictic PERSON reference ("he/she/they/his/her…", "that person") points
+        # at someone OTHER than the caller — it must bind to the LAST person named
+        # this conversation, and never silently fall back to the caller's own data.
+        person_deixis = bool(_tokens & {
+            "he", "she", "they", "him", "her", "them", "his", "their", "hers", "theirs"}
+        ) or bool(re.search(r"\b(that|this|the same)\s+person\b", (query or "").lower()))
+        # §2 Example A: a purely first-person message ("what are my goals", "how
+        # am I doing", "my own KPIs") is about the CURRENT USER — resolve to self,
+        # never a name lookup. This must win over the fragile `typed_a_name`
+        # heuristic (a stray domain word like "own" must not force a not-found).
+        is_self_ref = bool(_SELF_REF_RE.search(query or ""))
+        if named is not None:
+            target = named
+        elif ambiguous:  # a list of candidate User objects (offered order)
+            labels = _disambiguation_labels(ambiguous)
+            return {
+                "status": "ok", "intent": intent, "data": labels,
+                "answer": f"Several people match that name: {', '.join(labels)}. "
+                          "Tell me which one — you can say “the first one” or use "
+                          "their email.",
+                # Ground the offered people so a follow-up ("the first/other one")
+                # can resolve them — access is STILL re-checked on use.
+                "refs": [{"type": "user", "id": str(u.id), "label": u.display}
+                         for u in _dedup_sorted_users(ambiguous)],
+            }
+        elif isinstance(out_of_scope, User):
+            # MIXED self+other ("what are my goals? and also show me X's"): when the
+            # caller ALSO referred to their OWN data (possessive "my/mine"), answer the
+            # self part AND refuse the out-of-scope person in one reply — never drop the
+            # allowed half, never leak the other. (INTEL_V2 §7 mixed-scope.) Possessive-
+            # only so "show me X's goals" ("me" as object) isn't taken as self-reference.
+            if _SELF_MINE_RE.search(query or "") and not person_deixis:
+                from apps.ai.insight import diagnose_person, llm_phrase
 
-            remembered = resolve_person_reference(caller, session, query)
-        if remembered is not None:
-            target = remembered
-        else:
-            named, ambiguous = _resolve_named_person(caller, query)
-            if named is not None:
-                target = named
-            elif ambiguous:
+                self_diag = diagnose_person(caller, caller)
+                if self_diag is not None:
+                    self_ans = llm_phrase(caller.tenant_id, query,
+                                          self_diag["facts"], self_diag["answer"])
+                    refusal = _scope_denied_answer(
+                        caller, intent, out_of_scope.display,
+                        ground_user=out_of_scope)["answer"]
+                    return {
+                        "status": "ok", "intent": intent,
+                        "answer": f"{self_ans}\n\nAs for {out_of_scope.display}: {refusal}",
+                        "data": [g["title"] for g in self_diag["facts"]["goals"]],
+                        # Ground the REFUSED person so a pronoun follow-up stays on them
+                        # (and is refused again) — the ref grants nothing.
+                        "refs": [{"type": "user", "id": str(out_of_scope.id),
+                                  "label": out_of_scope.display}],
+                    }
+            # Named a real person OUTSIDE scope this turn — refuse honestly AND
+            # ground them so a pronoun follow-up stays on them (never self).
+            return _scope_denied_answer(caller, intent, out_of_scope.display,
+                                        ground_user=out_of_scope)
+        elif out_of_scope == "":
+            # Several out-of-scope people match the name — generic honest refusal.
+            return _scope_denied_answer(caller, intent, None)
+        elif is_self_ref and not person_deixis:
+            # First-person, no other person named and no 3rd-person pronoun →
+            # the caller themselves (fixes "what are my own goals?" dead-ending
+            # in a name lookup). A "show/list my goals" still flat-lists below.
+            target = caller
+        elif typed_a_name and not person_deixis:
+            # A real 3rd-person pronoun ("his other goal") means COREFERENCE — it
+            # must win over a stray non-name token ("other"), so only treat this as
+            # a typed name when NO pronoun is present. Before giving up, try a
+            # TYPO-tolerant suggestion within the caller's scope ("Akil Menon" →
+            # "Did you mean Akhil Menon?"). Suggestions are
+            # scope-limited, so this never reveals a name they couldn't already see.
+            from apps.ai.insight import fuzzy_name_suggestions
+
+            name_text = " ".join(
+                w for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower())
+                if w not in _NAME_STOP_WORDS and w not in _deictic
+            )
+            suggestions = fuzzy_name_suggestions(caller, name_text)
+            if suggestions:
+                opts = " or ".join(suggestions) if len(suggestions) <= 2 else (
+                    ", ".join(suggestions[:-1]) + f", or {suggestions[-1]}")
+                return {
+                    "status": "ok", "intent": intent, "data": suggestions,
+                    "answer": f"I couldn't find that exact name — did you mean {opts}?",
+                }
+            return {
+                "status": "ok", "intent": intent, "data": [],
+                "answer": "I couldn't find anyone by that name — "
+                          "try their full name or their email address.",
+            }
+        elif person_deixis:
+            # A pronoun/"that person" — bind to the MOST RECENT person referenced
+            # (regardless of scope), then access-check THAT one. Crucially we do NOT
+            # skip an out-of-scope referent to land on an older accessible one (e.g.
+            # the caller themselves) — "his" after asking about someone you can't see
+            # must stay refused, not silently switch to your own data.
+            prior = None
+            if session is not None:
+                from apps.ai.sessions import last_referenced_person_any_scope
+
+                prior = last_referenced_person_any_scope(caller, session)
+            if prior is None:
                 return {
                     "status": "ok", "intent": intent, "data": [],
-                    "answer": f"Several people match that name: {', '.join(ambiguous)}. "
-                              "Try their email address.",
+                    "answer": "I'm not sure who you mean — tell me the person's "
+                              "name or their email address.",
                 }
+            if not actor_can_access(caller, prior):
+                return _scope_denied_answer(caller, intent, prior.display,
+                                            ground_user=prior)
+            target = prior
+        # else: no name, no pronoun → answer about the caller (self).
 
     if target is None:
         return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
+
+    # "his/her/their OTHER goal" / "the first/second/last goal" — isolate ONE goal of
+    # the resolved person (spec §0 Example B), never a list of all. "other" = the goals
+    # other than the one the status diagnosis highlights (the weakest-KPI focus goal).
+    # Scope re-checked inside diagnose_goal (person_facts); the person is grounded so a
+    # further follow-up still holds.
+    _goalord = _GOAL_ORDINAL_RE.search(query or "")
+    if _goalord:
+        from apps.ai.insight import diagnose_goal, llm_phrase
+
+        which = _goalord.group(1).lower()
+        which = _GOAL_ORDINAL_NORM.get(which, which)
+        dg = diagnose_goal(caller, target, which=which)
+        if dg is None:
+            return _scope_denied_answer(caller, intent, target.display)
+        answer = llm_phrase(caller.tenant_id, query, dg["facts"], dg["answer"])
+        return {
+            "status": "ok", "intent": intent, "answer": answer,
+            "data": [g["title"] for g in dg["facts"]["goals"]],
+            "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+        }
 
     # Count-questions get REAL counts (reviews/goals/feedback), not a goals dump.
     if _COUNT_Q_RE.search(query or ""):
         return _answer_counts(caller, target, query, intent)
 
+    # A follow-up specifically about reviews/feedback ("what about his reviews?")
+    # answers THAT, not the default goals summary.
+    _q = (query or "").lower()
+    if re.search(r"\b(reviews?|feedback)\b", _q) and not re.search(
+        r"\b(goals?|kpis?|objectives?)\b", _q
+    ):
+        return _answer_counts(caller, target, query, intent)
+
+    # STATUS + DIAGNOSIS — "how is X?", "does she need help?", "is X on track / at
+    # risk / behind?" — get a REASONED answer grounded in real cycle status + KPI
+    # attainment, phrased in natural language. Only an explicit "show/list my goals"
+    # falls through to the raw title list below. Scope re-checked inside.
+    if not _LIST_GOALS_RE.search(_q):
+        from apps.ai.insight import diagnose_person, llm_phrase
+
+        diag = diagnose_person(caller, target)
+        if diag is None:
+            return _scope_denied_answer(caller, intent, target.display)
+        # The LLM rephrases the already-correct, in-scope draft in natural language,
+        # grounded ONLY in these facts; falls back to the draft on any error/no-key.
+        answer = llm_phrase(caller.tenant_id, query, diag["facts"], diag["answer"])
+        return {
+            "status": "ok", "intent": intent, "answer": answer,
+            "data": [g["title"] for g in diag["facts"]["goals"]],
+            "refs": [{"type": "user", "id": str(target.id), "label": target.display}],
+        }
+
     titles = _scoped_goal_titles(caller, target)
     if titles is None:
-        # Out of the caller's scope — return nothing, exactly like a scoped API call.
-        return {"status": "ok", "intent": intent, "answer": "No data in your scope.", "data": []}
+        # Out of the caller's scope — an honest, role-aware guardrail reply (who
+        # they CAN ask about), never a bare "no data" that reads like a bug.
+        return _scope_denied_answer(caller, intent, target.display)
 
     # Grounded answer: name the goals and (if present + in scope) the latest cycle
     # score/risk — never vague. Still read-only; the data is exactly what a scoped

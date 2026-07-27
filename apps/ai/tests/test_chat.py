@@ -55,7 +55,8 @@ def test_employee_cannot_see_a_peers_goals_via_chat(org):
     body = resp.json()
     assert body["data"] == []  # NO peer data leaked
     assert "Peer goal" not in str(body)
-    assert "scope" in body["answer"].lower()
+    # Honest guardrail: no access + only admin/HR sees everyone (never a leak).
+    assert "don't have access" in body["answer"].lower()
 
 
 @override_settings(**FAKE)

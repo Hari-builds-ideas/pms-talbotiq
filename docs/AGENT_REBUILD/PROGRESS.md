@@ -143,3 +143,49 @@ candidate list.
 
 **RESUME HERE → Unit C** (real data + reasoned answers; the capability blurb must never
 answer an answerable question), then D (5,000-person seed + harness), then E (report).
+
+---
+
+## Unit C — real data, real reasoning, and never the leaflet
+
+### Root cause
+The answering code was never the problem — it already resolves people scope-aware,
+diagnoses risk/pace/weakest-KPI, compares two people, suggests typo corrections, and
+refuses out-of-scope data honestly. The problem was that **a misclassified question
+never reached it**. `chat_answer` returned the capability blurb the moment the LLM
+labelled a message `general`, so a specific, answerable question got a brochure. That
+is the "templated answers" complaint: not a bad template, a *premature* one.
+
+### What changed
+- **`_is_answerable_data_question`** runs before the general fallback. Two deterministic
+  signals: performance vocabulary, or a QUESTION that names somebody the directory
+  knows. If either fires, the message goes down the performance path instead of being
+  deflected. The question-form gate matters — a stray word that happens to prefix a
+  colleague's name must not turn "what day is today?" into a report on that person.
+- Salvaging changes only WHICH path runs. The performance path still resolves the
+  person itself and still applies the full scope gate, so this can widen no access —
+  asserted by a test where an out-of-scope person's data stays refused after salvage.
+- Employee "who on my team…" questions are excluded from salvage, so a demoted team
+  search can't be re-routed into a self-report dressed as a team answer.
+- **The not-found now names the name.** "I couldn't find anyone by that name" left the
+  user unsure whether we misread them; it now echoes what they typed.
+
+### One thing I got wrong first, and fixed
+The first version said "I can't find anyone named X **in your company**". Two existing
+tests caught it, and the second failure was the more interesting one: on a two-person
+comparison the echoed text became "Mona Manager Pax Peer", and the sentence asserted
+those people don't exist company-wide — a claim that branch has not checked (they may
+simply be out of scope). Now it echoes only 1–3 tokens and never claims non-existence.
+
+### Tests
+`apps/ai/tests/test_data_and_reasoning.py` — 9 tests. The key move: a `blind_classifier`
+fixture that labels EVERY message `general`, reproducing the live failure exactly, then
+asserting a real answer still comes back. Covers: misclassified person question, own-data
+question, unknown name answered specifically, genuine small talk still redirected,
+capability question still gets the capability answer, two people with different data get
+materially different answers (the template detector), comparison returns both, and two
+scope-safety tests.
+
+**Full suite: 1613 passed, 7 deselected.**
+
+**RESUME HERE → Unit D** (5,000-person seed command + behavioural scale harness), then E.

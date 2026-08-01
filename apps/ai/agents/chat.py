@@ -458,6 +458,40 @@ def _resolve_named_person(caller, query):
     return _pick_named(matches, wordset, tokens_of)
 
 
+def _is_answerable_data_question(caller, query: str) -> bool:
+    """True when ``query`` is a real performance question we could answer, regardless
+    of how the classifier labelled it (AGENT_REBUILD/C §3).
+
+    Two independent signals, both deterministic:
+      * it uses performance vocabulary ("goals", "at risk", "on track", "compare"…);
+      * it is a QUESTION that names somebody the tenant directory knows.
+
+    The second is deliberately gated on question form. A stray word that happens to
+    prefix a colleague's name shouldn't turn "what day is today?" into a report on
+    someone — asking about a person requires actually asking. Returning True only
+    routes the message to the performance path; that path still resolves the person
+    itself and still applies the full scope gate, so this can widen no access.
+    """
+    text = (query or "").strip()
+    if not text:
+        return False
+    low = text.lower()
+    if any(w in low for w in _PERF_WORDS):
+        return True
+    if not (text.endswith("?") or _QUESTION_LEAD_RE.match(text)):
+        return False
+    named, ambiguous, out_of_scope = _resolve_in_scope(caller, text)
+    return named is not None or bool(ambiguous) or out_of_scope is not None
+
+
+#: Question-leading words — a message that opens with one is being ASKED, not stated.
+_QUESTION_LEAD_RE = re.compile(
+    r"^\s*(?:how|what|whats|what's|who|whose|which|when|why|where|is|are|was|were|"
+    r"does|do|did|can|could|should|would|will|has|have|any|tell\s+me|show\s+me)\b",
+    re.I,
+)
+
+
 def _resolve_in_scope(caller, query):
     """Scope-aware person resolution for a performance question.
 
@@ -1125,13 +1159,26 @@ def chat_answer(caller, query: str, session=None) -> dict:
         if role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
             return _answer_search(caller, query)
         intent = "general"
+        demoted_search = True
+    else:
+        demoted_search = False
     if intent == "capability":
         return {"status": "ok", "intent": "capability",
                 "answer": _capability_answer(caller), "data": []}
     if intent not in ("performance", "read"):  # "read" = legacy alias for performance
-        # General / conversational / out-of-domain ("what day is today?", "I feel
-        # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.
-        return {"status": "ok", "intent": "general", "answer": _GENERAL_ANSWER, "data": []}
+        # AGENT_REBUILD/C §3 — the capability blurb is for "what can you do?" and for
+        # a genuinely unparseable message. It must NEVER be the answer to a real
+        # question. The classifier sometimes labels an answerable performance question
+        # `general`, and the user then gets a leaflet instead of their data. So before
+        # deflecting, check DETERMINISTICALLY whether this is answerable; if it is,
+        # send it down the performance path, which applies the same scope gate and
+        # gives the same honest refusal it always would.
+        if not demoted_search and _is_answerable_data_question(caller, query):
+            intent = "performance"
+        else:
+            # General / conversational / out-of-domain ("what day is today?", "I feel
+            # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.
+            return {"status": "ok", "intent": "general", "answer": _GENERAL_ANSWER, "data": []}
 
     # PERFORMANCE intent. Resolve a target person: an explicit email → a remembered
     # person from THIS conversation ("she", "her" — session refs, access re-checked)
@@ -1262,10 +1309,23 @@ def chat_answer(caller, query: str, session=None) -> dict:
                     "status": "ok", "intent": intent, "data": suggestions,
                     "answer": f"I couldn't find that exact name — did you mean {opts}?",
                 }
+            # Say WHICH name failed. "I couldn't find anyone by that name" leaves the
+            # user guessing whether we misread them or they misremembered the person;
+            # echoing their own words back settles it, and echoing the CALLER'S input
+            # reveals nothing they didn't already type.
+            #
+            # Two deliberate limits. Only echo 1–3 tokens: more than that isn't one
+            # name (a two-person comparison leaves four tokens), and reciting the
+            # whole query back reads as nonsense. And never say "…in your company" —
+            # this branch only knows the name didn't resolve *here*, so asserting the
+            # person doesn't exist would be a claim we haven't checked.
+            typed_words = name_text.split()
+            typed = " ".join(w.capitalize() for w in typed_words) if 1 <= len(typed_words) <= 3 else ""
             return {
                 "status": "ok", "intent": intent, "data": [],
-                "answer": "I couldn't find anyone by that name — "
-                          "try their full name or their email address.",
+                "answer": (f"I couldn't find anyone named {typed} — " if typed
+                           else "I couldn't find anyone by that name — ")
+                          + "try their full name or their email address.",
             }
         elif person_deixis:
             # A pronoun/"that person" — bind to the MOST RECENT person referenced

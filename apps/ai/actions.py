@@ -87,13 +87,19 @@ def _resolve_critical_role(user, message: str):
     return hits[0]
 
 
-def _clarify(question: str, candidates=None) -> dict:
+def _clarify(question: str, candidates=None, *, slot: str | None = "person") -> dict:
     """A non-executable proposal that just asks the user to disambiguate. ``candidates``
     (name + email) let the UI list who was meant so the user can pick — and the planner
-    records which action to resume when the user answers (pending-slot follow-up)."""
+    records which action to resume when the user answers (pending-slot follow-up).
+
+    ``slot`` names WHICH detail is being waited on, so the conversation state machine
+    can parse the user's next message with the right parser: a bare "5" is a valid
+    answer to a ``mood`` slot but not to a ``person`` one. ``slot=None`` marks a
+    dead-end message (nothing the user can type will resolve it), which must never arm
+    a pending slot — otherwise the next message is swallowed forever."""
     return {
         "action": "clarify", "feel": "clarify", "summary": question, "preview": [],
-        "params": {}, "candidates": candidates or [],
+        "params": {"clarify_slot": slot} if slot else {}, "candidates": candidates or [],
     }
 
 
@@ -372,14 +378,14 @@ def _propose_succession_enrich(user, message):
         return None  # employees never see succession
     role = _resolve_critical_role(user, message)
     if role is AMBIGUOUS:
-        return _clarify("Which critical role's plan should I enrich? Please name the role.")
+        return _clarify("Which critical role's plan should I enrich? Please name the role.", slot="role")
     if role is None:
         return None
     from apps.succession.models import SuccessionPlan
 
     plan = SuccessionPlan.objects.filter(critical_role=role).order_by("-generated_at").first()
     if plan is None:
-        return _clarify(f"There's no plan for {role.name} yet — generate one on the Succession screen, then ask me to enrich it.")
+        return _clarify(f"There's no plan for {role.name} yet — generate one on the Succession screen, then ask me to enrich it.", slot=None)
     return {
         "action": "succession_enrich",
         "feel": "confirm",
@@ -530,7 +536,7 @@ def _propose_record_actual(user, message):
     value = _extract_number(message)
     if len(matched) != 1 or value is None:
         # never guess WHICH KPI or WHAT number — ask (deterministic-params rule).
-        return _clarify("Which KPI, and what value? e.g. “record 85 for <KPI name>”.")
+        return _clarify("Which KPI, and what value? e.g. “record 85 for <KPI name>”.", slot="kpi_value")
     k = matched[0]
     unit = f" {k.unit}" if k.unit else ""
     return {
@@ -707,7 +713,8 @@ def _propose_open_checkin(user, message):
         }
     mood = _extract_mood(message)
     if mood is None:
-        return _clarify("How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.")
+        return _clarify("How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.",
+                        slot="mood")
     return {
         "action": "open_checkin", "feel": "confirm",
         "summary": f"Start this week's check-in with mood {mood}/5? You can add wins & blockers next.",
@@ -900,7 +907,7 @@ def _propose_update_kpi_actual(user, message):
     matched = [k for k in kpis if k.name and k.name.lower() in m]  # OWN KPIs only, by name
     value = _extract_number(message)
     if len(matched) != 1 or value is None:
-        return _clarify("Which KPI, and what value? e.g. “update my Uptime KPI to 99”.")
+        return _clarify("Which KPI, and what value? e.g. “update my Uptime KPI to 99”.", slot="kpi_value")
     k = matched[0]
     warns = _direction_warning(k, value)
     warn_txt = (" ⚠️ " + "; ".join(warns) + ".") if warns else ""
@@ -1039,7 +1046,14 @@ ACTIONS: dict[str, dict] = {
         "capability": Capability.GIVE_RECOGNITION,
         "label": "give recognition",
         "description": "Give a colleague recognition for a company value.",
-        "match": lambda m: ("recogni" in m or "kudos" in m) and "approve" not in m,
+        # AGENT_REBUILD/B3 — recognition is asked for in many plain-English ways, and
+        # every one of them must land HERE rather than fall through to a check-in or
+        # the capability blurb. "thank(s)" is deliberately NOT a trigger: a bare
+        # "thanks!" is conversation, not a command to post recognition.
+        "match": lambda m: (
+            "recogni" in m or "kudos" in m or "shout out" in m or "shoutout" in m
+            or "shout-out" in m or "praise" in m or "give props" in m or "props to" in m
+        ) and "approve" not in m,
     },
     # respond_to_checkin MUST precede open_checkin: "respond" routes to the manager
     # response; anything else about a check-in routes to opening the caller's own.
@@ -1059,7 +1073,13 @@ ACTIONS: dict[str, dict] = {
         "capability": Capability.MANAGE_OWN_CHECKIN,
         "label": "open your check-in",
         "description": "Start this week's check-in for yourself with a mood.",
-        "match": lambda m: ("checkin" in m or "check-in" in m or "check in" in m) and "respond" not in m,
+        # "log my mood" is a check-in by another name — route it here rather than
+        # leaving it unmatched (it used to reach the capability blurb). `record` is
+        # excluded so "record 4 for my Uptime KPI" still belongs to record_actual.
+        "match": lambda m: (
+            "checkin" in m or "check-in" in m or "check in" in m
+            or ("mood" in m and "record" not in m)
+        ) and "respond" not in m,
     },
 }
 

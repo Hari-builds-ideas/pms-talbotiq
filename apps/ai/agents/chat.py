@@ -919,6 +919,19 @@ def chat_answer(caller, query: str, session=None) -> dict:
     bound memory); without one (legacy/direct callers) the old single-proposal path
     still applies — the gate itself is identical either way.
     """
+    # AGENT_REBUILD/B — the conversation STATE MACHINE runs FIRST, before any LLM
+    # call. Answering a pending question, cancelling, repeating the last action, and
+    # plainly imperative commands are facts we already hold (session state + the
+    # action registry), so they must not depend on how the model happens to classify
+    # a bare "5". Letting the classifier decide those was the cause of the stuck
+    # follow-up loop and of commands landing in the wrong task. It returns None for
+    # everything else — open questions still go to the model, unchanged.
+    from apps.ai.conversation import route_turn
+
+    routed = route_turn(caller, query, session=session) if session is not None else None
+    if routed is not None:
+        return routed
+
     # "Open the draft / that review / it" — a definite-reference navigation ask,
     # resolved deterministically from the session's access-rechecked refs BEFORE
     # any LLM call. A definite reference is ALWAYS navigation (new-thing writes

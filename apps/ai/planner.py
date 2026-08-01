@@ -125,10 +125,18 @@ def _reason_for(action: str, proposal: dict) -> str:
     return proposal.get("summary", "")
 
 
-def _realize_step(user, session, action: str, subject: str, original: str, last_person: str):
+def _realize_step(user, session, action: str, subject: str, original: str, last_person: str,
+                  extra_context: str = ""):
     """Turn one planned (action, subject) into a realized proposal via the existing
     propose function — or ``None`` if the action is unknown / the caller lacks the
-    capability / nothing actionable resolved. Returns ``(proposal_or_None, person_label)``."""
+    capability / nothing actionable resolved. Returns ``(proposal_or_None, person_label)``.
+
+    ``extra_context`` is the user's EARLIER wording, appended after the synthesized
+    command when resuming a half-finished task, so detail the template can't carry
+    survives — "…for her excellent team work" still sets the recognition value after
+    the user supplies only the missing name. It is DATA appended to a message the
+    proposer parses; the resolved subject still wins because the directory's exact
+    full-name tier outranks the partial name in the earlier text."""
     spec = ACTIONS.get(action)
     if spec is None:
         return None, last_person  # unknown action — dropped
@@ -141,9 +149,17 @@ def _realize_step(user, session, action: str, subject: str, original: str, last_
     # in-scope turn). Access is re-checked when the reference resolves.
     if (not subj or _PERSON_DEIXIS.search(subj)):
         person = resolve_person_reference(user, session, subj or original)
-        subj = (getattr(person, "display_name", "") or "").strip() or last_person or subj
+        # An UNRESOLVED pronoun must be dropped, not passed on as if it were a name:
+        # "praise Ingrid Garcia for her work" yields the subject "her", and synthesizing
+        # "give recognition to her" threw the real name away and asked "who?". Falling
+        # back to an empty subject makes _synth_message use the ORIGINAL message, where
+        # the name still is.
+        subj = (getattr(person, "display_name", "") or "").strip() or last_person or ""
 
-    proposal = spec["propose"](user, _synth_message(action, subj, original))
+    message = _synth_message(action, subj, original)
+    if extra_context:
+        message = f"{message} {extra_context}".strip()
+    proposal = spec["propose"](user, message)
     if proposal is None:
         return None, last_person
     return proposal, (_subject_label(proposal) or last_person)
@@ -206,30 +222,94 @@ def _looks_like_new_command(message: str) -> bool:
     return False
 
 
-def _fill_pending_slot(user, session, message: str):
-    """If the session has a pending clarify and this message looks like the answer,
-    resume the SAME action with the supplied detail. Returns a ``planned`` dict (a
-    resolved confirm step, or the question re-asked) or ``None`` to fall through to
-    normal planning (the user changed the subject / issued a new command)."""
-    step = _pending_clarify_step(session)
-    if step is None or _looks_like_new_command(message):
-        return None
-    action = (step.params or {}).get("clarify_action")
-    original = (step.params or {}).get("clarify_original", "")
+def persist_clarify(user, session, question: str, *, slot, action, original: str,
+                    reasks: int = 0, candidates=None) -> ChatPlan:
+    """Persist a one-step CLARIFY plan that keeps a slot armed — used to re-ask a
+    question the user's answer didn't satisfy, carrying the attempt count so the
+    state machine can stop after one retry instead of looping."""
+    proposal = {
+        "action": "clarify", "feel": "clarify", "summary": question, "preview": [],
+        "params": {"clarify_slot": slot, "clarify_reasks": int(reasks)},
+        "candidates": list(candidates or []),
+    }
+    return _persist_plan(user, session, original or question, question, 1.0, [(action, proposal)])
+
+
+def fill_slot(user, session, step, answer: str, raw_message: str, *, reasks: int = 0):
+    """Resume the action a pending question belongs to, using the user's ANSWER as
+    its subject. Returns the new :class:`ChatPlan`, or ``None`` when the answer still
+    doesn't resolve and the retry budget is spent (the caller then lets the task go
+    rather than asking a third time).
+
+    Scope is NOT inherited from the earlier turn: the propose function re-resolves the
+    subject and re-checks capability + scope from scratch, exactly as on the first
+    pass, so answering a question can never widen what the caller may act on."""
+    params = step.params or {}
+    action = params.get("clarify_action")
+    original = params.get("clarify_original", "")
     if not action or action not in ACTIONS:
         return None
-    # Re-realize the clarified action: the answer is the subject; the original ask is
-    # kept as context (so e.g. a recognition value phrase survives). Access/scope are
-    # re-checked inside the propose function exactly as on the first pass.
-    proposal, _ = _realize_step(user, session, action, message, f"{original} {message}".strip(), "")
+    proposal, _ = _realize_step(
+        user, session, action, answer, raw_message, "", extra_context=original,
+    )
     if proposal is None:
         return None
     if proposal.get("feel") == "clarify":
-        # Still can't pin it down → re-ask (carry the slot forward), don't restart.
-        plan = _persist_plan(user, session, message, proposal.get("summary", ""), 1.0, [(action, proposal)])
-        return {"status": "planned", "plan": plan}
+        # The detail parsed but didn't pin a target (an unknown name, several matches).
+        # Re-ask with the proposer's OWN specific question + candidates — once.
+        if reasks > _MAX_REASKS_PER_SLOT:
+            return None
+        return persist_clarify(
+            user, session, proposal.get("summary", ""),
+            slot=(proposal.get("params") or {}).get("clarify_slot") or params.get("clarify_slot"),
+            action=action, original=original, reasks=reasks,
+            candidates=proposal.get("candidates") or [],
+        )
     summary = proposal.get("summary", "Here's what I can set up for your approval.")
-    plan = _persist_plan(user, session, message, summary, 1.0, [(action, proposal)])
+    return _persist_plan(user, session, raw_message, summary, 1.0, [(action, proposal)])
+
+
+def repeat_action(user, session, action: str, person_phrase: str, raw_message: str):
+    """"Do the same for <someone else>" — run the SAME action type again for a newly
+    named person. Returns a :class:`ChatPlan` or ``None`` if it can't be realized.
+
+    The person is resolved by the action's own propose function, so a directory-wide
+    action (recognition) still reaches a colleague on another team while a data action
+    stays permission-scoped — repeating an action never repeats its *permissions*."""
+    if action not in ACTIONS:
+        return None
+    proposal, _ = _realize_step(user, session, action, person_phrase, raw_message, "")
+    if proposal is None:
+        return None
+    summary = proposal.get("summary", "Here's what I can set up for your approval.")
+    return _persist_plan(user, session, raw_message, summary, 1.0, [(action, proposal)])
+
+
+#: One retry per slot, then let go. The endless re-ask WAS the bug.
+_MAX_REASKS_PER_SLOT = 1
+
+
+def _fill_pending_slot(user, session, message: str):
+    """Direct-planner entry point for the same slot-fill the conversation state machine
+    performs (``apps.ai.conversation``), kept so callers that reach ``build_plan``
+    without going through chat routing still complete a half-finished task. Returns a
+    ``planned`` dict or ``None`` to fall through to normal planning."""
+    from apps.ai.conversation import parse_slot_answer, pending_slot
+
+    step = pending_slot(session)
+    if step is None or _looks_like_new_command(message):
+        return None
+    params = step.params or {}
+    answer = parse_slot_answer(params.get("clarify_slot"), message)
+    if answer is None:
+        return None
+    plan = fill_slot(user, session, step, answer, message,
+                     reasks=int(params.get("clarify_reasks") or 0) + 1)
+    if plan is None:
+        return None
+    from apps.ai.conversation import abandon_slot
+
+    abandon_slot(step)
     return {"status": "planned", "plan": plan}
 
 
@@ -270,6 +350,12 @@ def build_plan(user, session, message: str) -> dict:
         proposal, last_person = _realize_step(user, session, action, subject, message, last_person)
         if proposal is None:
             omitted += 1
+            continue
+        # One ask, one step: clause-splitting can name the same action twice ("start my
+        # check-in, mood 4" splits on the comma), and offering the identical step twice
+        # is noise the human then has to approve twice. Same action AND same resolved
+        # params = the same step; different params (recognition for two people) stays.
+        if any(a == action and p.get("params") == proposal.get("params") for a, p in realized):
             continue
         realized.append((action, proposal))
 

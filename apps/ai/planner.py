@@ -504,13 +504,28 @@ def approve_step(user, plan_id, step_id) -> dict:
 # split a multi-step outcome into ordered steps — deterministically, no network.
 
 _CLAUSE_SPLIT = re.compile(r"\band\b|\bthen\b|\balso\b|[,;]", re.I)
-_SUBJECT_AFTER = re.compile(r"\b(?:for|to)\s+([A-Za-z][\w'\-]*(?:\s+[A-Z][\w'\-]*)?)", re.I)
+_SUBJECT_AFTER = re.compile(r"\b(?:for|to)\s+(.+)$", re.I)
 
 
 def _extract_subject(clause: str) -> str:
+    """The person/thing a clause is ABOUT — the text after "for"/"to", trimmed to the
+    first name-shaped run.
+
+    It uses the directory's own span logic rather than a bespoke pattern, because the
+    bespoke one silently truncated real names: it accepted one word plus at most one
+    more capitalised word, so "give recognition to Aarav A. Moreau" yielded the subject
+    "Aarav A" — and that truncated subject then REPLACED the full name in the message
+    the proposer sees, turning an exact match into "which Aarav do you mean?". It also
+    stopped at the first word of an all-lowercase name ("to priya nair" → "priya").
+    Reusing one definition of "what a name looks like" keeps the two in step.
+    """
     m = _SUBJECT_AFTER.search(clause or "")
     if m:
-        return m.group(1).strip()
+        from apps.ai.directory import _name_spans
+
+        spans = _name_spans(m.group(1))
+        if spans:
+            return spans[0]
     p = _PERSON_DEIXIS.search(clause or "")
     return p.group(0) if p else ""
 

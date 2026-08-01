@@ -231,24 +231,38 @@ def is_command(message: str) -> bool:
 
 
 def last_action_in_session(session):
-    """The action type of the most recent real task in this conversation — preferring
-    one the user actually APPROVED, else the most recent one proposed. Clarify steps
-    don't count: "the same" means the last thing DONE, not the last thing asked."""
+    """The action type of the most recent real task in this conversation, for
+    "do the same for X".
+
+    Preference order: an action the user actually APPROVED, then one that was
+    proposed, then — last — the action a still-unanswered QUESTION was gathering a
+    detail for. That last fallback matters: if the previous recognition stalled on
+    "which Priya do you mean?", the user's intent was still *recognition*, and
+    "do the same for someone else" must repeat THAT, not fall through to a data
+    lookup on the new name (which is how it ended up answering "you don't have
+    access to their data" — an answer to a question nobody asked).
+    """
     if session is None:
         return None
     plans = (
         ChatPlan.objects.filter(session=session).order_by("-created_at").prefetch_related("steps")[:20]
     )
-    fallback = None
+    known = _known_actions()
+    proposed = pending = None
     for plan in plans:
         for step in sorted(plan.steps.all(), key=lambda s: -s.ordinal):
-            if step.feel == ChatPlanStep.Feel.CLARIFY or step.action not in _known_actions():
+            if step.feel == ChatPlanStep.Feel.CLARIFY:
+                asked = (step.params or {}).get("clarify_action")
+                if pending is None and asked in known:
+                    pending = asked
+                continue
+            if step.action not in known:
                 continue
             if step.status == ChatPlanStep.Status.DONE:
                 return step.action
-            if fallback is None:
-                fallback = step.action
-    return fallback
+            if proposed is None:
+                proposed = step.action
+    return proposed or pending
 
 
 # ── the machine ──────────────────────────────────────────────────────────────────

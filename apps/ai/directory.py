@@ -68,17 +68,57 @@ _STOP = {
 }
 
 
+#: A name token: letters (ANY script), plus the apostrophes and hyphens that occur
+#: inside real surnames. `[^\W\d_]` is the portable way to say "any Unicode letter" —
+#: an `[a-z]` class here silently erased every accented and non-Latin name, so
+#: "Zoë Ćirić" and "山田 太郎" resolved to nobody. Names are not ASCII.
+_NAME_TOKEN_RE = re.compile(r"[^\W\d_][^\W\d_'’\-]*", re.UNICODE)
+
+#: A middle initial, e.g. "A." — a single letter followed by a full stop.
+_INITIAL_RE = re.compile(r"[^\W\d_]\.", re.UNICODE)
+
+
 def _name_tokens(message: str) -> list[str]:
     """Content tokens (lowercased) from the message that could be part of a name —
-    alphabetic words of length ≥ 2 with the function/command words removed. Order is
+    letter-words of length ≥ 2 with the function/command words removed. Order is
     preserved so adjacent tokens can form a full-name bigram. A trailing possessive is
     stripped ("Rhea's" → "rhea") while a real name apostrophe is kept ("O'Brien")."""
     out = []
-    for w in re.findall(r"[a-z][a-z'\-]+", (message or "").lower()):
+    for w in _NAME_TOKEN_RE.findall((message or "").lower()):
         w = re.sub(r"[’']s$", "", w)  # drop possessive 's, keep O'Brien intact
         if len(w) >= 2 and w not in _STOP:
             out.append(w)
     return out
+
+
+def _name_spans(message: str) -> list[str]:
+    """Maximal runs of consecutive words that could be a person's name, in the
+    message's ORIGINAL text — "give recognition to Aisha B. O'Brien for her great
+    work" yields ``["Aisha B. O'Brien"]``.
+
+    This exists because :func:`_name_tokens` drops anything shorter than two letters,
+    which quietly deletes MIDDLE INITIALS: "Jamal K. Cohen" tokenized to
+    ``["jamal", "cohen"]``, so the exact full name never matched its own record and
+    the lookup fell through to fuzzy ranking — where it could, and did, pick a
+    different "Jamal … Cohen". Matching the run verbatim keeps the initial, so the
+    exact tier can do its job.
+    """
+    spans, run = [], []
+    for word in (message or "").split():
+        key = re.sub(r"[^\w'’\-]", "", word.lower())
+        # A lone letter with a full stop is an INITIAL, never a stop word. Without this
+        # "Sofia A. Menon" splits at "A." (which is in the stop list as the article "a")
+        # into "Sofia" and "Menon", and the exact tier then matches a *different*
+        # colleague called plain "Sofia Menon".
+        is_initial = bool(_INITIAL_RE.fullmatch(word))
+        if key and (is_initial or key not in _STOP):
+            run.append(word.strip(",;:!?"))
+        elif run:
+            spans.append(" ".join(run))
+            run = []
+    if run:
+        spans.append(" ".join(run))
+    return [s for s in spans if s]
 
 
 def _one_or_ambiguous(users):
@@ -105,7 +145,8 @@ def _base_queryset(caller, population_ids, exclude_self):
     return qs
 
 
-def resolve_person_in_population(caller, message, *, population_ids=None, exclude_self=True):
+def resolve_person_in_population(caller, message, *, population_ids=None, exclude_self=True,
+                                 allow_fuzzy=True, require_full_name=False):
     """Resolve the person NAMED in ``message`` within a population. Returns a ``User``,
     :data:`AMBIGUOUS`, or ``None``. Directory-only — reads no performance data.
 
@@ -113,7 +154,24 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     tenant-wide actions); a set restricts to the caller's visible scope (data actions,
     which additionally run their own access check). ``exclude_self`` drops the caller
     (recognition can't be self-recognition; a data 'how am I doing' resolves self by a
-    different path)."""
+    different path).
+
+    Two knobs exist because a DIRECTORY action and a DATA question want different
+    answers to the same ambiguity, and conflating them is unsafe:
+
+    ``allow_fuzzy`` — typo tolerance. Fine when the outcome is "post a kudos to the
+    person you obviously meant". NOT fine on the data path, in either direction: a
+    guessed spelling must not silently open someone's performance record, and it must
+    not become an oracle either — a mistyped name that "corrects" to a real colleague
+    confirms that colleague exists and spells their name for you, even when the caller
+    could never see them. Data questions pass ``False`` and let the caller offer an
+    explicit, scope-limited "did you mean…?" instead.
+
+    ``require_full_name`` — when the user typed a multi-word name, demand that ALL of
+    its words match. Without it a manager asking about "Hugo O'Brien" (whom they can't
+    see) resolves to "Hana O'Brien" on their own team, on the strength of the surname
+    alone, and gets a confident answer about the wrong person.
+    """
     base = _base_queryset(caller, population_ids, exclude_self)
 
     # ── TIER 0: an EMAIL settles it. Unique per tenant and index-backed, so this is
@@ -131,15 +189,34 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     # ── TIER 1: exact full name (case-insensitive). Adjacent content bigrams cover
     # "First Last"; the joined phrase covers a bare "First Last" follow-up. An exact
     # hit WINS and only asks when two real people share that exact name. ────────────
-    exact = {}
-    bigrams = [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
+    # The verbatim name-shaped runs first — they preserve middle initials, accents and
+    # punctuation exactly as the person's record holds them. Then the stop-word-filtered
+    # bigrams, which still catch a name split across filler ("recognise Priya, our Nair").
+    #
+    # MOST SPECIFIC PHRASE WINS, and the search stops there. Pooling hits from every
+    # phrase makes a precise query less decisive than a vague one: "Aisha B. O'Brien"
+    # matches exactly one person, but its filtered bigram "aisha o'brien" also matches a
+    # DIFFERENT colleague of that name, and the union of the two is an ambiguity the
+    # user never created. Only a phrase matching two people is a real ambiguity.
+    phrases = _name_spans(message)
+    phrases += [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
     if len(tokens) >= 2:
-        bigrams.append(" ".join(tokens))  # whole cleaned phrase (3-part names, etc.)
-    for phrase in bigrams:
-        for u in base.filter(display_name__iexact=phrase)[: _MAX_CANDIDATES + 1]:
-            exact[u.id] = u
-    if exact:
-        return _one_or_ambiguous(exact.values())
+        phrases.append(" ".join(tokens))  # whole cleaned phrase (3-part names, etc.)
+    for phrase in dict.fromkeys(phrases):  # de-dup, keep order
+        hits = list(base.filter(display_name__iexact=phrase)[: _MAX_CANDIDATES + 1])
+        if hits:
+            return _one_or_ambiguous(hits)
+
+    # A multi-word name the user actually typed ("Hugo O'Brien"), if any. Under
+    # `require_full_name` every one of its words must appear in a candidate's name,
+    # so a surname alone can't carry a match to the wrong person.
+    required = []
+    if require_full_name:
+        for span in _name_spans(message):
+            span_tokens = _name_tokens(span)
+            if len(span_tokens) >= 2:
+                required = span_tokens
+                break
 
     # ── TIER 2 & 3: token-overlap ranking. Each distinctive token runs ONE indexed
     # icontains (capped); a user scores per name-token they match on a word boundary.
@@ -155,6 +232,11 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
                 count, _ = scored.get(u.id, (0, u))
                 scored[u.id] = (count + 1, u)
     query = " ".join(tokens)
+    if required:
+        scored = {
+            uid: (count, u) for uid, (count, u) in scored.items()
+            if all(re.search(rf"\b{re.escape(t)}", (u.display_name or "").lower()) for t in required)
+        }
     if scored:
         best = max(count for count, _ in scored.values())
         top = [u for count, u in scored.values() if count == best]
@@ -177,7 +259,11 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     # ── TIER 4: fuzzy full name (typo tolerance), bounded. Names CONTAINING a
     # 3-letter prefix of a query token are pulled (capped) — icontains, not
     # istartswith, so a typo in a *last* name ("menonn" → "Menon") is still reached —
-    # then ranked by difflib ratio against the full query. ──────────────────────────
+    # then ranked by difflib ratio against the full query. Skipped entirely on the
+    # data path (see ``allow_fuzzy``): there, a near-miss must be offered back to the
+    # user as a question, never acted on. ───────────────────────────────────────────
+    if not allow_fuzzy:
+        return None
     pool: dict = {}
     for tok in dict.fromkeys(tokens):
         if len(tok) < 3:

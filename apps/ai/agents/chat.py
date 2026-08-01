@@ -508,7 +508,51 @@ def _resolve_in_scope(caller, query):
     A multi-token name must FULLY match an in-scope person — so a manager asking
     about "Hugo O'Brien" never silently resolves to a same-surname "Hana O'Brien"
     on their own team. A single first-name token ("yuki") resolves to the one
-    person on the caller's team when unique."""
+    person on the caller's team when unique.
+
+    AGENT_REBUILD/A — the matching itself is delegated to the ONE canonical directory
+    resolver (:mod:`apps.ai.directory`), run twice: over the caller's VISIBLE
+    population to find the answer, and (only if that misses) over the whole tenant to
+    tell "you can't see them" apart from "they don't exist". The second pass reads
+    IDENTITY ONLY — it never touches performance data, and the caller still refuses
+    the question; it just refuses honestly.
+
+    This used to be a second, independent name matcher, and the two drifted apart in
+    ways only visible at scale: it tokenized with an ASCII-only pattern (so accented
+    and non-Latin names matched nothing) and discarded tokens under three characters
+    (so middle initials and short names were dropped). One definition of "does this
+    text name this person" is the only way those stay in agreement.
+    """
+    from apps.ai.actions import _visible_user_ids
+    from apps.ai.directory import AMBIGUOUS, resolve_person_in_population, suggest_candidates
+
+    # Strict mode on both passes: no fuzzy correction (the caller offers an explicit,
+    # scope-limited "did you mean…?" instead) and a typed full name must match in full.
+    strict = {"exclude_self": False, "allow_fuzzy": False, "require_full_name": True}
+
+    visible = _visible_user_ids(caller)
+    if visible:
+        hit = resolve_person_in_population(caller, query, population_ids=visible, **strict)
+        if hit is AMBIGUOUS:
+            options = suggest_candidates(caller, query, population_ids=visible, exclude_self=False)
+            if options:
+                return None, _dedup_sorted_users(options), None
+        elif hit is not None:
+            return hit, [], None
+
+    # Nobody in scope. Identity-only lookup across the tenant so the refusal can be
+    # specific ("you don't have access to X") rather than a misleading "not found".
+    elsewhere = resolve_person_in_population(caller, query, population_ids=None, **strict)
+    if elsewhere is AMBIGUOUS:
+        return None, [], ""      # several out-of-scope matches → generic refusal
+    if elsewhere is not None:
+        return None, [], elsewhere
+    return None, [], None
+
+
+def _resolve_in_scope_legacy(caller, query):
+    """The previous bespoke matcher, kept only as the reference the delegating
+    implementation above was checked against. Not called in production."""
     matches, wordset, tokens_of = _named_candidates(query)
     if not matches:
         return None, [], None

@@ -216,3 +216,51 @@ def test_unknown_action_from_planner_is_dropped(org):
 
         for s in plan.steps.all():
             assert s.action in ACTIONS or s.action == "clarify"
+
+
+# ── FIX 3: pending-slot follow-up — a reply FILLS the slot, never restarts ────────
+
+
+@override_settings(**FAKE)
+def test_pending_recognition_slot_is_filled_by_the_next_message(org):
+    """"recognise priya" is genuinely ambiguous (many Priyas) → a clarify step. The
+    user's next message "Priya Nair" must COMPLETE the recognition — resume the same
+    action — not start a new, unrelated plan."""
+    with tenant_context(org.tenant):
+        _name(org.manager, "Ada Lovelace")
+        _name(org.hrbp, "Priya Nair")
+        for surname in ("Silva", "Novak", "Khan"):
+            UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name=f"Priya {surname}")
+        session = _session(org.manager)
+
+        # Turn 1: ambiguous → a clarify step that remembers the action to resume.
+        out1 = build_plan(org.manager, session, "give recognition to priya")
+        step1 = out1["plan"].steps.first()
+        assert step1.feel == "clarify"
+        assert step1.params.get("clarify_action") == "give_recognition"
+
+        # Turn 2: the answer fills the slot → a give_recognition CONFIRM for Priya Nair,
+        # NOT a fresh "draft a review" plan.
+        out2 = build_plan(org.manager, session, "Priya Nair")
+        step2 = out2["plan"].steps.first()
+        assert step2.action == "give_recognition"
+        assert step2.feel == "confirm"
+        assert step2.params.get("recipient_user_id") == str(org.hrbp.id)
+
+
+@override_settings(**FAKE)
+def test_pending_slot_yields_to_a_genuine_new_command(org):
+    """A pending clarify must not hijack a real new command: if the next message is
+    itself an action ("approve my team's goals"), plan THAT, don't force-fill."""
+    with tenant_context(org.tenant):
+        _name(org.manager, "Ada Lovelace")
+        for surname in ("Silva", "Novak"):
+            UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name=f"Priya {surname}")
+        cyc = CycleFactory(tenant=org.tenant, status="ACTIVE")
+        GoalFactory(employee=org.report, cycle=cyc, status="ACTIVE")
+        session = _session(org.manager)
+
+        build_plan(org.manager, session, "give recognition to priya")  # pending clarify
+        out = build_plan(org.manager, session, "approve my team's goals")
+        actions = [s.action for s in out["plan"].steps.all()]
+        assert "approve_goals" in actions  # the new command won, not a recognition fill

@@ -156,13 +156,19 @@ def _persist_plan(user, session, message: str, summary: str, confidence, realize
         message=message[:8000], summary=summary[:2000], confidence=confidence,
     )
     for i, (action, proposal) in enumerate(realized):
+        is_clarify = proposal.get("feel") == "clarify"
+        params = proposal.get("params", {})
+        if is_clarify:
+            # Remember WHICH action needs the detail + the original ask, so the user's
+            # next message can FILL THIS SLOT and resume the same action (not restart).
+            params = {**params, "clarify_action": action, "clarify_original": message}
         ChatPlanStep.objects.create(
             tenant_id=user.tenant_id,
             plan=plan,
             ordinal=i,
-            action=action if proposal.get("feel") != "clarify" else "clarify",
+            action="clarify" if is_clarify else action,
             feel=proposal.get("feel", "confirm"),
-            params=proposal.get("params", {}),
+            params=params,
             summary=proposal.get("summary", "")[:2000],
             reason=_reason_for(action, proposal)[:2000],
             preview=proposal.get("preview", []),
@@ -173,9 +179,71 @@ def _persist_plan(user, session, message: str, summary: str, confidence, realize
     return plan
 
 
+def _pending_clarify_step(session):
+    """The most recent still-pending CLARIFY step in this session (if any) — the slot
+    the user is being asked to fill."""
+    plan = (
+        ChatPlan.objects.filter(session=session)
+        .order_by("-created_at")
+        .prefetch_related("steps")
+        .first()
+    )
+    if plan is None:
+        return None
+    return plan.steps.filter(feel=ChatPlanStep.Feel.CLARIFY, status=ChatPlanStep.Status.PENDING).order_by("ordinal").first()
+
+
+def _looks_like_new_command(message: str) -> bool:
+    """True if the message itself triggers some action (a fresh command like "approve
+    goals") rather than being a bare answer (a name/detail) to a pending question."""
+    low = (message or "").lower()
+    for spec in ACTIONS.values():
+        try:
+            if spec["match"](low):
+                return True
+        except Exception:  # noqa: BLE001 — a bad match lambda must not crash the fill
+            continue
+    return False
+
+
+def _fill_pending_slot(user, session, message: str):
+    """If the session has a pending clarify and this message looks like the answer,
+    resume the SAME action with the supplied detail. Returns a ``planned`` dict (a
+    resolved confirm step, or the question re-asked) or ``None`` to fall through to
+    normal planning (the user changed the subject / issued a new command)."""
+    step = _pending_clarify_step(session)
+    if step is None or _looks_like_new_command(message):
+        return None
+    action = (step.params or {}).get("clarify_action")
+    original = (step.params or {}).get("clarify_original", "")
+    if not action or action not in ACTIONS:
+        return None
+    # Re-realize the clarified action: the answer is the subject; the original ask is
+    # kept as context (so e.g. a recognition value phrase survives). Access/scope are
+    # re-checked inside the propose function exactly as on the first pass.
+    proposal, _ = _realize_step(user, session, action, message, f"{original} {message}".strip(), "")
+    if proposal is None:
+        return None
+    if proposal.get("feel") == "clarify":
+        # Still can't pin it down → re-ask (carry the slot forward), don't restart.
+        plan = _persist_plan(user, session, message, proposal.get("summary", ""), 1.0, [(action, proposal)])
+        return {"status": "planned", "plan": plan}
+    summary = proposal.get("summary", "Here's what I can set up for your approval.")
+    plan = _persist_plan(user, session, message, summary, 1.0, [(action, proposal)])
+    return {"status": "planned", "plan": plan}
+
+
 def build_plan(user, session, message: str) -> dict:
     """Plan ``message`` for ``user`` in ``session``. Returns a status dict the view
-    maps to HTTP: ``planned`` (a ChatPlan) | ``not_configured`` | ``budget`` | ``error``."""
+    maps to HTTP: ``planned`` (a ChatPlan) | ``not_configured`` | ``budget`` | ``error``.
+
+    First, if a prior step is waiting on a detail ("who would you like to recognise?"),
+    the message is treated as the ANSWER and resumes that same action — so replying
+    "Priya Nair" completes the original recognition instead of starting a new plan."""
+    filled = _fill_pending_slot(user, session, message)
+    if filled is not None:
+        return filled
+
     result = gateway.run(
         tenant=user.tenant_id, agent_code=AGENT_CODE, prompt=message, model=MODEL, schema=PLAN_SCHEMA
     )

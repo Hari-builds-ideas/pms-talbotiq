@@ -87,9 +87,19 @@ def _resolve_critical_role(user, message: str):
     return hits[0]
 
 
-def _clarify(question: str) -> dict:
-    """A non-executable proposal that just asks the user to disambiguate."""
-    return {"action": "clarify", "feel": "clarify", "summary": question, "preview": [], "params": {}}
+def _clarify(question: str, candidates=None) -> dict:
+    """A non-executable proposal that just asks the user to disambiguate. ``candidates``
+    (name + email) let the UI list who was meant so the user can pick — and the planner
+    records which action to resume when the user answers (pending-slot follow-up)."""
+    return {
+        "action": "clarify", "feel": "clarify", "summary": question, "preview": [],
+        "params": {}, "candidates": candidates or [],
+    }
+
+
+def _candidate_rows(users) -> list:
+    """Name+email options for a disambiguation prompt (data only — no scores)."""
+    return [{"id": str(u.id), "name": _display(u), "email": u.email} for u in users]
 
 
 def _artifact(type_: str, id_, title: str, state: str, deeplink: str) -> dict:
@@ -597,7 +607,14 @@ def _propose_give_recognition(user, message):
         return None
     recipient = _resolve_recipient_in_tenant(user, message)
     if recipient is AMBIGUOUS:
-        return _clarify("Who would you like to recognise? Please name one colleague.")
+        from apps.ai.directory import suggest_candidates
+
+        options = suggest_candidates(user, message, population_ids=None, exclude_self=True)
+        names = ", ".join(_display(u) for u in options[:6])
+        q = (f"More than one colleague matches — did you mean {names}? "
+             "Tell me their full name or email.") if names else \
+            "Who would you like to recognise? Please name one colleague."
+        return _clarify(q, candidates=_candidate_rows(options))
     if recipient is None:
         return _clarify("Who would you like to recognise, and what for? Name a colleague.")
     value = _extract_company_value(message) or "Teamwork"  # a default the human can change

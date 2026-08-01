@@ -49,6 +49,22 @@ and phrases answers naturally via Gemini — **without ever widening access**.
   message starts a fresh server session; a pronoun follow-up after clicking has no
   memory of the previous thread.
 
+## Recognition finds anyone in the company (directory ≠ data access)
+
+- **Directory resolution** (`apps/ai/directory.py`) is a name→person lookup separate
+  from data access. Recognition searches the WHOLE tenant (you may recognise a
+  colleague on another team); "how is X" and other data actions search the caller's
+  visible scope AND still run the access check. Resolving a name grants no data.
+- **Tiered + scalable:** exact full name wins and never disambiguates (even with 7
+  people named "Priya *"), then all-tokens → single token → fuzzy typo; DB-backed,
+  capped, indexed on `(tenant, display_name)` for 1000+ headcount.
+- **Pending-slot follow-up:** a clarify ("Who would you like to recognise?") is
+  answered by the next message, resuming the SAME action — replying "Priya Nair"
+  completes the recognition instead of starting a new plan.
+- **Live proof (215-person ACME, manager `ada@acme.test`):** 10/10 recognitions
+  posted to different OUT-OF-TEAM people (incl. Priya Nair, an HRBP); "how is Priya
+  Nair doing?" still refused. See PROGRESS.md Increment 25.
+
 ## Safety (unchanged, re-verified)
 
 - **Read-only**; every data read goes through `actor_can_access` + tenant-scoped

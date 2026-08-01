@@ -745,3 +745,50 @@ before each run.
 To re-run the harness: reset the quota
 (`docker compose exec web python -c "from apps.billing import atomic; atomic.reset_window('llm:global:calls')"`),
 then `python scripts/agent_intel_suite.py`.
+
+---
+
+## Increment 25 — recognition finds ANYONE in the company (directory ≠ data access)
+
+**Reported bug (live, manager ada@acme.test):** "give recognition to priya nair for
+her excellent team work" → the plan header read "Plan to give recognition to Priya
+Nair" but the step asked "Who would you like to recognise?" — the name was DROPPED.
+Replying "priya nair" then started a NEW, unrelated plan ("Draft a performance
+review for Priya Nair").
+
+**Real root cause (verified against 215-person ACME):** recognition already resolved
+tenant-wide (not team-scoped), so the "team-only lookup" hypothesis was wrong for
+recognition. The defect was **no match-tier ranking**: the resolver matched on FIRST
+NAME by word boundary, so "priya nair" matched all **7** people named "Priya *"
+(Silva, Novak, Khan, Lindqvist, Mbeki, Costa, Nair) → `AMBIGUOUS` → the exact
+"Priya Nair" (an HRBP) was drowned out. It also loaded the whole table into Python.
+
+**Fix 1 & 2 (`bed707e`) — tiered directory resolver, separated from data access.**
+New `apps/ai/directory.py`: DIRECTORY resolution (name→person) over a POPULATION,
+returning a User / AMBIGUOUS / None, reading NO performance data. Recognition passes
+`population_ids=None` (whole active tenant); data actions pass the caller's visible
+scope AND still run their access check. Tiers, DB-backed + capped: **exact full name
+wins and never disambiguates** → all-tokens present → single distinctive token →
+fuzzy typo (bounded). Added index `(tenant, display_name)` (migration 0007) for
+scale. `_resolve_person` (scoped) and `_resolve_recipient_in_tenant` (tenant-wide)
+now both delegate to it. 7 regression tests in `test_directory.py`.
+
+**Fix 3 (`1b1e4c4`) — pending-slot follow-up.** A clarify step now records which
+action + original ask it's waiting on; `build_plan` fills the slot from the next
+message (resuming the SAME action) unless that message is itself a new command.
+Ambiguous recognition also lists candidates with emails. 2 planner tests.
+
+**Live proof (manager ada@acme.test, 215-person tenant):** 10/10 recognitions posted
+to different OUT-OF-TEAM people — Priya Nair (HRBP), Hana Cohen (another manager),
+Aarav Andersen, Anya Nguyen, Clara Reyes, Elena Mbeki, Ingrid Garcia, Lena Dubois,
+Lucas Schmidt, Mei Novak — none hit a "who do you mean" dead-end. Security boundary
+intact: "how is Priya Nair doing?" → refused (out of Ada's scope). Slot follow-up:
+"give recognition to priya" → lists the 6 Priyas → reply "Priya Nair" → completes the
+recognition (no more "draft a review" hijack).
+
+**Tests:** 318 AI + 418 identity/recognition/rbac green.
+
+**RESUME HERE → Increment 26 (only if restarted):** apply the same tiered directory
+lookup to the other directory-only actions (feedback-cycle invites, 1:1s) if product
+wants cross-team there too; consider surfacing the candidate emails in the SPA
+disambiguation card.

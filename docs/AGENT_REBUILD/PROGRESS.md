@@ -99,3 +99,47 @@ capability and scope.
 **RESUME HERE → live verification of Unit B against the running stack, then Unit A**
 (resolver hardening: email match, duplicate-name disambiguation, query-count-at-scale),
 then C (reasoning), D (5,000-person seed + harness), E (report).
+
+---
+
+## Unit A — one company-wide, DB-backed person resolver
+
+### State on arrival
+Increment 25 (earlier effort) had already built `apps/ai/directory.py` with the tiered
+resolver, the company-wide directory population for recognition, and the
+`(tenant, display_name)` index. This unit closed the remaining gaps in
+`A_PERSON_RESOLUTION.md` and put the contract under test.
+
+### What changed
+- **Tier 0: exact email.** Email is the one unique handle a person has, so it is now
+  checked before anything else and is never ambiguous. This is also what makes a genuine
+  duplicate-name disambiguation *actionable* — we list both people with their emails, and
+  the user replies with one.
+- **No seed person in user-facing text.** The person re-ask said 'e.g. "Priya Nair"',
+  which is meaningless on any other tenant. It now asks for the shape of the answer
+  ("their full name, or their email address").
+- Verified by grep that no person name appears in agent *logic* — remaining occurrences
+  are comments and docstrings describing the bug that motivated the code.
+
+### Scale, measured rather than asserted
+- `(tenant, email)` and `(tenant, display_name)` indexes both already exist.
+- **Query count is constant in headcount** — the same 2 queries resolve an exact full
+  name in a 5-person tenant and a 205-person one (parametrized test).
+- **Every SELECT carries a LIMIT.** Proven by capturing the SQL for a token shared by
+  120 people: the table is never loaded into Python to be ranked. This is the property
+  that makes 5,000 and 50,000 behave the same.
+- Disambiguation lists are capped at 8 however many match.
+
+### Tests
+`apps/ai/tests/test_person_resolution.py` — 14 tests: exact full name out-of-team,
+email (settling a real name clash), shared-first-name not drowning out an exact match,
+unique first name, typo → right person, real duplicates → disambiguation *with emails*,
+unknown name → honest not-found, cross-tenant name never resolves, **directory resolves
+company-wide while data stays scoped**, naming a colleague leaks no performance detail
+end-to-end, constant query count at two tenant sizes, every query LIMITed, capped
+candidate list.
+
+768 passed across ai + recognition + identity + rbac.
+
+**RESUME HERE → Unit C** (real data + reasoned answers; the capability blurb must never
+answer an answerable question), then D (5,000-person seed + harness), then E (report).

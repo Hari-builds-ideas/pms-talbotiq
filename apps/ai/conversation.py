@@ -123,7 +123,9 @@ def _parse_role(message: str):
 #: states the EXPECTED FORMAT, because "I didn't get that" is what made it loop.
 _SLOTS = {
     "mood": (_parse_mood, "I need a number from 1 to 5 for how this week felt — e.g. “4”."),
-    "person": (_parse_person, "I need a person's name — e.g. “Priya Nair”."),
+    # No seed person appears in user-facing text: on another tenant a made-up example
+    # name is just confusing. Ask for the shape of the answer, not a specific person.
+    "person": (_parse_person, "I need a person's full name, or their email address."),
     "kpi_value": (_parse_kpi_value, "I need a KPI and a number — e.g. “85 for Uptime”."),
     "role": (_parse_role, "I need the name of a critical role — e.g. “Head of Platform”."),
 }

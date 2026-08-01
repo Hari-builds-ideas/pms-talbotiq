@@ -14,11 +14,12 @@ not permission to see their goals/reviews/scores. Callers choose the population:
     VISIBLE id set as ``population_ids`` AND still run the existing access check
     before any data is read. Directory resolution here only narrows *who was named*.
 
-Ranking is TIERED so an exact full-name match wins outright and never disambiguates,
-even when many people share a first name (the "Priya Nair" bug — 7 people named
-"Priya *" must not drown out the one exact "Priya Nair"):
+Ranking is TIERED so an exact identifier wins outright and never disambiguates, even
+when many people share a first name (the "Priya Nair" bug — 7 people named "Priya *"
+must not drown out the one exact "Priya Nair"):
 
-  1. exact full name (case-insensitive)          → 1 hit wins; ≥2 real "same name" ask
+  0. exact EMAIL (the one truly unique handle)    → always decisive, never ambiguous
+  1. exact full name (case-insensitive)           → 1 hit wins; ≥2 real "same name" ask
   2. all query name-tokens present in the name    → "priya nair" ⊆ "Priya Nair"
   3. one distinctive token (first OR last name)   → "mateo" → Mateo Santos
   4. fuzzy full-name (typo tolerance, bounded)    → "akil menonn" → Akhil Menon
@@ -43,6 +44,11 @@ _MAX_SCAN = 400
 _MAX_CANDIDATES = 8
 #: difflib ratio a fuzzy full-name match must clear (typo tolerance, not loose).
 _FUZZY_MIN = 0.82
+
+#: An email address written anywhere in the message. Email is the ONE unique handle a
+#: person has, so naming it is never ambiguous — and it's how you refer to the second
+#: "Priya Nair" once a disambiguation has listed both.
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
 #: Function/command words that are never part of a person's name. Kept deliberately
 #: small — only words that appear in the assistant's own action phrasing or as pure
@@ -108,10 +114,19 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     which additionally run their own access check). ``exclude_self`` drops the caller
     (recognition can't be self-recognition; a data 'how am I doing' resolves self by a
     different path)."""
+    base = _base_queryset(caller, population_ids, exclude_self)
+
+    # ── TIER 0: an EMAIL settles it. Unique per tenant and index-backed, so this is
+    # both the cheapest and the least ambiguous lookup — and it's how a user picks
+    # between two people who genuinely share a name after we list both. ─────────────
+    for addr in _EMAIL_RE.findall(message or ""):
+        hit = list(base.filter(email__iexact=addr)[:2])
+        if hit:
+            return _one_or_ambiguous(hit)
+
     tokens = _name_tokens(message)
     if not tokens:
         return None
-    base = _base_queryset(caller, population_ids, exclude_self)
 
     # ── TIER 1: exact full name (case-insensitive). Adjacent content bigrams cover
     # "First Last"; the joined phrase covers a bare "First Last" follow-up. An exact

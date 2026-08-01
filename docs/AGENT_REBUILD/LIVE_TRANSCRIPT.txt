@@ -1,0 +1,116 @@
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a check-in follow-up question actually gets answered
+  (before: replying '5' re-asked the same question, forever)
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › start my check-in
+  assistant ‹ Open your check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+  [OK  ] the assistant asks for a mood
+
+  user  › 5
+  assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
+      · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
+  [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
+      approve → {"plan_id": "192cc31b-ba6a-436c-b3fb-95fcd418c1dc", "step_id": "cd582917-63b8-4803-ad4b-9ac3ef6863c6", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a new command mid-question is obeyed, and cancel works
+  (before: both were ignored and the question was re-asked)
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › start my check-in
+  assistant ‹ Open the user's check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+
+  user  › give recognition to Priya Nair for her excellent work
+  assistant ‹ Plan to give recognition to Priya Nair.
+      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  [OK  ] a new command abandons the pending question — action=give_recognition
+
+  user  › start my check-in
+  assistant ‹ Open your check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+
+  user  › never mind
+  assistant ‹ Okay — I've cancelled that. What would you like to do instead?
+  [OK  ] cancel clears the pending question
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a nonsense answer is explained once, then let go
+  (before: the same question came back forever)
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › start my check-in
+  assistant ‹ Open your check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+
+  user  › banana
+  assistant ‹ I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.)
+      · step: action=clarify feel=clarify | I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my chec
+  [OK  ] says what it expects
+
+  user  › banana
+  assistant ‹ I still didn't catch that, so I've dropped the question. I need a number from 1 to 5 for how this week felt — e.g. “4”. Or tell me something else you'd like to do.
+  [OK  ] does not ask a third time
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a manager recognises a colleague OUTSIDE their team
+  (before: 'not found' — lookup was team-scoped)
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › make a recognition for Priya Nair
+  assistant ‹ Plan to give recognition to Priya Nair.
+      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  [OK  ] recognition for an out-of-team person is prepared
+      approve → {"plan_id": "3b4fc09e-67f2-4ea0-a694-6b6e3a920659", "step_id": "af9788a0-1d21-401a-a1cf-41e2508e5281", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
+  (before: it started a check-in)
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › give recognition to Priya Nair for mentoring the new joiners
+  assistant ‹ Plan to give recognition to Priya Nair.
+      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+
+  user  › do the same for Ingrid Garcia
+  assistant ‹ Give Ingrid Garcia recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+      · step: action=give_recognition feel=confirm | Give Ingrid Garcia recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  [OK  ] "do the same" repeats the recognition — action=give_recognition
+  [OK  ] …for the NEW person, not the previous one — Give Ingrid Garcia recognition for Teamwork? It posts to your team feed — edit the note fi
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a real question gets a real answer, not the capability blurb
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › how is Akhil Menon doing this cycle?
+  assistant ‹ Akhil Menon is on track this cycle and keeping pace — no red flags. The weakest signal is “Roadmap features delivered” on “Ship the H1 platform roadmap”, at 90% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
+  [OK  ] not the capability blurb
+  [OK  ] names the person asked about
+
+  user  › compare Akhil Menon and Mei Patel
+  assistant ‹ Both Akhil Menon and Mei Patel are on track and keeping pace this cycle, with no red flags. Akhil shows slightly higher attainment across their shared goals, for instance, delivering 90% of roadmap features compared to Mei's 86%. For both, 'Roadmap features delivered' is the weakest signal, but neither appears to need extra help right now.
+  [OK  ] a comparison covers both people
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: directory-wide actions, but data stays permission-scoped
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › how is Priya Nair doing?
+  assistant ‹ You don't have access to Priya Nair's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Aarav Rossi, Aisha Walsh, Akhil Menon, Ethan Nguyen, Hana O'Brien, Liam Costa, Lucas Reyes, Mateo Santos, Mei Patel, Noah Cohen, Priya Silva, Sofia Menon, and 2 more.
+  [OK  ] out-of-scope performance data is refused — honest refusal
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a name that doesn't exist is reported as such
+══════════════════════════════════════════════════════════════════════════════
+
+  user  › how is Zebediah Quartermain doing?
+  assistant ‹ I couldn't find anyone named Zebediah Quartermain — try their full name or their email address.
+  [OK  ] says it couldn't find the name
+  [OK  ] not the capability blurb
+
+══════════════════════════════════════════════════════════════════════════════
+LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'acme')
+══════════════════════════════════════════════════════════════════════════════

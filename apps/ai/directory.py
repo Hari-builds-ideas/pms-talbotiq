@@ -77,6 +77,14 @@ _NAME_TOKEN_RE = re.compile(r"[^\W\d_][^\W\d_'’\-]*", re.UNICODE)
 #: A middle initial, e.g. "A." — a single letter followed by a full stop.
 _INITIAL_RE = re.compile(r"[^\W\d_]\.", re.UNICODE)
 
+#: Longest word-run still plausible as one person's name ("Maximilian Alexander
+#: Fitzgerald-Montgomery III" is four). Longer runs are prose, not names.
+_MAX_NAME_WORDS = 6
+
+#: Ceiling on exact-tier phrase probes, so a rambling message can't turn into a long
+#: series of queries. Bounds the cost of a turn regardless of what the user types.
+_MAX_EXACT_PROBES = 8
+
 
 def _name_tokens(message: str) -> list[str]:
     """Content tokens (lowercased) from the message that could be part of a name —
@@ -103,7 +111,7 @@ def _name_spans(message: str) -> list[str]:
     different "Jamal … Cohen". Matching the run verbatim keeps the initial, so the
     exact tier can do its job.
     """
-    spans, run = [], []
+    runs, run = [], []
     for word in (message or "").split():
         key = re.sub(r"[^\w'’\-]", "", word.lower())
         # A lone letter with a full stop is an INITIAL, never a stop word. Without this
@@ -114,11 +122,23 @@ def _name_spans(message: str) -> list[str]:
         if key and (is_initial or key not in _STOP):
             run.append(word.strip(",;:!?"))
         elif run:
-            spans.append(" ".join(run))
+            runs.append(run)
             run = []
     if run:
-        spans.append(" ".join(run))
-    return [s for s in spans if s]
+        runs.append(run)
+
+    spans: list[str] = []
+    for words in runs:
+        if len(words) <= _MAX_NAME_WORDS:
+            spans.append(" ".join(words))
+        else:
+            # A long run is rambling or adversarial, not a name — nobody is called
+            # "really really … Aisha Petrova". Emitting it whole would cost a query
+            # that matches nothing AND, under require_full_name, demand that all 80
+            # words appear in someone's name. Real names sit at the END of such a run,
+            # so emit short trailing windows instead.
+            spans.extend(" ".join(words[-n:]) for n in (2, 3, 4))
+    return [s for s in dict.fromkeys(spans) if s]
 
 
 def _one_or_ambiguous(users):
@@ -202,7 +222,7 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     phrases += [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
     if len(tokens) >= 2:
         phrases.append(" ".join(tokens))  # whole cleaned phrase (3-part names, etc.)
-    for phrase in dict.fromkeys(phrases):  # de-dup, keep order
+    for phrase in list(dict.fromkeys(phrases))[:_MAX_EXACT_PROBES]:  # de-dup, keep order, bound
         hits = list(base.filter(display_name__iexact=phrase)[: _MAX_CANDIDATES + 1])
         if hits:
             return _one_or_ambiguous(hits)
@@ -214,7 +234,7 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     if require_full_name:
         for span in _name_spans(message):
             span_tokens = _name_tokens(span)
-            if len(span_tokens) >= 2:
+            if 2 <= len(span_tokens) <= _MAX_NAME_WORDS:
                 required = span_tokens
                 break
 

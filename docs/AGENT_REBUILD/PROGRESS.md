@@ -269,3 +269,41 @@ genuine optimisation (2 queries → 1) into a failure.
 **Full suite: 1624 passed. Harness: 176/176 at 5,000 people, 164/164 at 500.**
 
 **RESUME HERE → Unit E** (REPORT.md + live proof against the demo tenant over HTTP).
+
+---
+
+## Unit E — report, live proof, and one resolver for real
+
+### Live proof
+`scripts/agent_live_transcript.py` — real HTTP to localhost:8090, real logged-in user,
+real Gemini provider, demo tenant. **15/15 assertions**, transcripts captured verbatim in
+`LIVE_TRANSCRIPT.txt`. Every headline fix demonstrated end to end, including approving
+the answered check-in and the out-of-team recognition (both `status: done`).
+
+Two things this flushed out that in-process testing could not:
+- **gunicorn does not auto-reload.** The first live run tested a two-hour-old build and
+  showed the old broken behaviour. `docker compose restart web` after code changes.
+- **The API does not serialize step params** (they're internal), so live assertions read
+  the step's action/feel/summary — which is all the SPA and the user ever see anyway.
+
+### Finished the "one resolver" requirement
+`_resolve_named_person` — a test-only entry point — was still calling the old bespoke
+matcher, which meant 7 tests were guarding code production no longer used. It now
+delegates to the canonical resolver on the same strict settings the data path uses, and
+`_named_candidates`, `_pick_named` and the legacy `_resolve_in_scope` copy are deleted.
+All 7 tests still pass, now against the real thing.
+
+Bounding fell out of that: the injection test ("really " × 80 + a name) would otherwise
+have produced an 80-word exact-match phrase and, under `require_full_name`, demanded all
+80 words appear in someone's name. Long runs now emit short trailing windows instead,
+and the exact tier probes at most 8 phrases per turn — so a rambling message can't turn
+into a long series of queries.
+
+### Final state
+- Backend suite **1624 passed**, 7 deselected.
+- Scale harness **176/176** at 5,000 people (also 164/164 at 500; green on seeds 1337 /
+  99 / 4242).
+- Live transcript **15/15**.
+- `docs/AGENT_REBUILD/REPORT.md` written, including six honest remaining weaknesses.
+
+**RUN COMPLETE.** Nothing merged to `main` or `hari/agent-ui-v2`.

@@ -358,74 +358,6 @@ def _classification_prompt(query: str, session) -> str:
     )
 
 
-def _named_candidates(query):
-    """Every TENANT user whose display name (or email local-part) matches a name
-    token in ``query``. Tenant-scoped (never cross-tenant) but NOT data-scope
-    filtered — the caller's scope is applied by the call site, so we can tell
-    "no such person" apart from "exists but outside your scope" and answer
-    honestly. Returns ``(matches, wordset, tokens_of)``."""
-    from django.db.models import Q
-
-    from apps.identity.models import User
-
-    # DISTINCT name tokens in first-seen order. Dedup BEFORE the cap so a rambling or
-    # injection-laden prefix ("really really … Akhil", "ignore all previous instructions
-    # … then how is Akhil") can't bury the real name past the cap by repetition; the cap
-    # (on distinct tokens) still bounds the OR-query width. Widening the token set never
-    # widens access — the call site applies the caller's data scope. (INTEL_V2 §7.)
-    seen: set[str] = set()
-    words: list[str] = []
-    for w in re.findall(r"[a-zA-Z]{3,}", (query or "").lower()):
-        if w in _NAME_STOP_WORDS or w in seen:
-            continue
-        seen.add(w)
-        words.append(w)
-        if len(words) >= 24:
-            break
-    if not words:
-        return [], set(), {}
-    cond = None
-    for w in words:
-        c = Q(display_name__icontains=w) | Q(email__istartswith=w)
-        cond = c if cond is None else (cond | c)
-    matches = []
-    wordset = set(words)
-    tokens_of = {}  # user.id -> set of name tokens (computed once, reused below)
-    for u in User.objects.filter(cond)[:20]:  # tenant-scoped manager
-        name_tokens = set(re.findall(r"[a-z]{3,}", (u.display_name or "").lower()))
-        tokens_of[u.id] = name_tokens
-        email_local = u.email.split("@")[0].lower()
-        if (name_tokens & wordset) or (email_local in wordset):
-            matches.append(u)
-    return matches, wordset, tokens_of
-
-
-def _pick_named(matches, wordset, tokens_of):
-    """From a candidate set, pick the ONE person named, or a disambiguation list.
-    Returns ``(user|None, ambiguous_names)``. Works on whatever set it is given —
-    the call site passes only the IN-SCOPE candidates so a manager who names a
-    colleague on their team resolves cleanly instead of being offered tenant-wide
-    strangers they can't see."""
-    if len(matches) == 1:
-        return matches[0], []
-    if len(matches) > 1:
-        # A multi-word query may name ONE specific person ("leon petrova") whose
-        # full name is among the loose token-OR matches. Prefer the unique candidate
-        # whose name contains EVERY name-token the caller typed — so "Leon Petrova"
-        # wins over the "Leon *" / "* Petrova" family instead of being buried in a
-        # disambiguation list. Only the tokens that actually appear in some name
-        # count (so trailing words like "doing"/"cycle" don't disqualify anyone).
-        name_query_tokens = {
-            t for t in wordset if any(t in toks for toks in tokens_of.values())
-        }
-        if len(name_query_tokens) >= 2:
-            full = [u for u in matches if name_query_tokens <= tokens_of[u.id]]
-            if len(full) == 1:
-                return full[0], []
-        return None, _disambiguation_labels(matches)
-    return None, []
-
-
 def _dedup_sorted_users(users):
     """Candidate users deduped by id, in a stable (display, email) order — the
     canonical offered order shared by the labels AND the grounded refs, so "the
@@ -451,11 +383,20 @@ def _disambiguation_labels(users):
 
 
 def _resolve_named_person(caller, query):
-    """Scope-agnostic name resolution (unit-test entry point): resolve a NAMED
-    person from the whole tenant. Production goes through the scope-aware path in
-    ``run`` — but the raw name-matching rules are identical and proven here."""
-    matches, wordset, tokens_of = _named_candidates(query)
-    return _pick_named(matches, wordset, tokens_of)
+    """Scope-agnostic name resolution: the person NAMED in ``query``, anywhere in the
+    tenant, as ``(user|None, ambiguous_labels)``.
+
+    Delegates to the canonical directory resolver on the same strict settings the data
+    path uses, so the rules exercised here are the rules production runs — this used to
+    call a separate matcher, which meant its tests were guarding code nothing else
+    used."""
+    from apps.ai.directory import AMBIGUOUS, resolve_person_in_population, suggest_candidates
+
+    strict = {"exclude_self": False, "allow_fuzzy": False, "require_full_name": True}
+    hit = resolve_person_in_population(caller, query, **strict)
+    if hit is AMBIGUOUS:
+        return None, _disambiguation_labels(suggest_candidates(caller, query, exclude_self=False))
+    return (hit, []) if hit is not None else (None, [])
 
 
 def _is_answerable_data_question(caller, query: str) -> bool:
@@ -548,44 +489,6 @@ def _resolve_in_scope(caller, query):
     if elsewhere is not None:
         return None, [], elsewhere
     return None, [], None
-
-
-def _resolve_in_scope_legacy(caller, query):
-    """The previous bespoke matcher, kept only as the reference the delegating
-    implementation above was checked against. Not called in production."""
-    matches, wordset, tokens_of = _named_candidates(query)
-    if not matches:
-        return None, [], None
-    in_scope = [u for u in matches if actor_can_access(caller, u)]
-    # Tokens that are genuinely NAMES — they appear in some tenant user's name,
-    # counted tenant-wide so "hugo" still counts even when Hugo is out of scope.
-    real_tokens = {t for t in wordset if any(t in toks for toks in tokens_of.values())}
-
-    def _full(cands):
-        return [u for u in cands if real_tokens and real_tokens <= tokens_of[u.id]]
-
-    def _oos(cands):
-        """Out-of-scope signal: the single matching User (to ground+name), or ""
-        when several match (name them generically), never leaking data either way."""
-        return cands[0] if len(cands) == 1 else ""
-
-    if len(real_tokens) >= 2:
-        picks = _full(in_scope)
-        if len(picks) == 1:
-            return picks[0], [], None
-        if len(picks) > 1:
-            return None, _dedup_sorted_users(picks), None
-        # Nobody in scope matches the FULL name. Out of scope iff the tenant has one.
-        tenant_full = _full(matches)
-        return None, [], (_oos(tenant_full) if tenant_full else None)
-
-    # A single (or zero) real name-token — loose, first-name style ("yuki").
-    if len(in_scope) == 1:
-        return in_scope[0], [], None
-    if len(in_scope) > 1:
-        return None, _dedup_sorted_users(in_scope), None
-    # None in scope, but the name matched tenant users → it's a scope boundary.
-    return None, [], _oos(matches)
 
 
 def _accessible_report_names(caller, limit=12):

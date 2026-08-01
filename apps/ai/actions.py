@@ -24,14 +24,16 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.audit.services import record as audit_record
+from apps.ai.directory import AMBIGUOUS, resolve_person_in_population
 from apps.rbac.matrix import Capability, role_has_capability
 from apps.rbac.scope import Scope, actor_can_access, reporting_subtree_ids, scope_for_role
 
 #: cap a single proposal/execution so a runaway can't approve an unbounded set.
 _MAX_TARGETS = 50
 
-#: sentinel: a name/role matched more than one in-scope target → the chat must ASK.
-AMBIGUOUS = object()
+#: :data:`AMBIGUOUS` (a name/role matched more than one target → the chat must ASK) is
+#: the shared sentinel from :mod:`apps.ai.directory`, re-exported for the propose/
+#: execute code below that compares ``result is AMBIGUOUS``.
 
 
 def _display(user) -> str:
@@ -56,28 +58,18 @@ def _visible_user_ids(user) -> set:
 
 
 def _resolve_person(user, message: str):
-    """Resolve a person NAMED in the message, but ONLY within the caller's visible
-    scope. Returns a User, ``None`` (no in-scope match — treated as a 404; we never
-    reveal an out-of-scope person exists), or :data:`AMBIGUOUS` (the chat asks)."""
-    from apps.identity.models import User
-
-    m = (message or "").lower()
+    """Resolve a person NAMED in the message for a DATA/write action — the directory
+    lookup is restricted to the caller's VISIBLE scope, so an out-of-scope name simply
+    doesn't resolve (treated as a 404; we never reveal an out-of-scope person exists).
+    Tiered matching (exact full name wins, never disambiguates on a shared first name).
+    Returns a User, ``None``, or :data:`AMBIGUOUS`. The action's own access check still
+    runs before any data is read — resolution alone grants nothing."""
     vis = _visible_user_ids(user)
     if not vis:
         return None
-    hits = []
-    for u in User.objects.filter(id__in=vis):
-        name = (u.display_name or "").strip().lower()
-        if not name:
-            continue
-        first = name.split()[0]
-        if name in m or (len(first) >= 3 and re.search(rf"\b{re.escape(first)}\b", m)):
-            hits.append(u)
-    if not hits:
-        return None
-    if len(hits) > 1:
-        return AMBIGUOUS
-    return hits[0]
+    # exclude_self=False: the visible set already includes self, and some data actions
+    # legitimately name the caller; the per-action scope/own-guard decides what's valid.
+    return resolve_person_in_population(user, message, population_ids=vis, exclude_self=False)
 
 
 def _resolve_critical_role(user, message: str):
@@ -580,25 +572,14 @@ def _execute_record_actual(user, params) -> dict:
 
 
 def _resolve_recipient_in_tenant(user, message: str):
-    """Resolve a recognition RECIPIENT named in the message within the caller's
-    TENANT (recognition's real scope), excluding self. Returns a User, ``None`` or
-    :data:`AMBIGUOUS`. Tenant-scoped manager bounds it to the caller's tenant."""
-    from apps.identity.models import User
-
-    m = (message or "").lower()
-    hits = []
-    for u in User.objects.filter(is_active=True).exclude(id=user.id):
-        name = (u.display_name or "").strip().lower()
-        if not name:
-            continue
-        first = name.split()[0]
-        if name in m or (len(first) >= 3 and re.search(rf"\b{re.escape(first)}\b", m)):
-            hits.append(u)
-    if not hits:
-        return None
-    if len(hits) > 1:
-        return AMBIGUOUS
-    return hits[0]
+    """Resolve a recognition RECIPIENT named in the message. Recognition is a
+    DIRECTORY-only action: you may recognise anyone in the company, so the search
+    ranges over the WHOLE active tenant (``population_ids=None``), excluding self.
+    Tiered matching means an exact full name ("Priya Nair") wins even when six other
+    people share the first name "Priya" — it never collapses to a dead-end ASK.
+    Tenant isolation still rides on the scoped manager (a cross-tenant name never
+    resolves). Returns a User, ``None``, or :data:`AMBIGUOUS`."""
+    return resolve_person_in_population(user, message, population_ids=None, exclude_self=True)
 
 
 def _extract_company_value(message: str):

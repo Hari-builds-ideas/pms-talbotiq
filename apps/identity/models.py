@@ -108,7 +108,13 @@ class User(AbstractBaseUser, PermissionsMixin, TenantScopedModel):
             # Email is unique per tenant (not globally).
             models.UniqueConstraint(fields=["tenant", "email"], name="uq_user_tenant_email"),
         ]
-        indexes = [models.Index(fields=["tenant", "email"], name="ix_user_tenant_email")]
+        indexes = [
+            models.Index(fields=["tenant", "email"], name="ix_user_tenant_email"),
+            # Directory name lookup (apps.ai.directory): the AI assistant resolves a
+            # named person over the whole tenant. Indexing (tenant, display_name) keeps
+            # the exact/prefix tiers fast at 1000+ headcount instead of a full scan.
+            models.Index(fields=["tenant", "display_name"], name="ix_user_tenant_dispname"),
+        ]
 
     def __str__(self):
         return f"{self.email} [{self.role}]"

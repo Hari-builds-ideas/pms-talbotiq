@@ -374,3 +374,30 @@ tenants.
 **RESUME HERE → remaining weaknesses are REPORT.md §7 items 3, 5, 6** — all minor and
 deliberate (retired audit-referenced users, the one-retry budget, and intent phrasings
 that still fall back to the classifier). The plan's stated goals are met and proven.
+
+---
+
+## Follow-up 3 — intent phrasing, measured rather than assumed
+
+Weakness 6 claimed unusual phrasings "still depend on the LLM" without quantifying it.
+The harness now probes both directions: **27 natural phrasings across 7 actions** must
+route deterministically, and **8 question forms** must NOT be claimed by the router
+(if it ever claimed one, "how many goals should I approve?" would become an approval —
+worse than the misrouting it replaced).
+
+It found one immediately: **"do my weekly check-in" was treated as a question**, because
+the question-lead pattern matched any leading `do`. Imperatives starting with "do" were
+therefore handed to the classifier instead of going straight to the planner. Only
+"do you/i/we/they/he/she/it" is interrogative now.
+
+Also de-duplicated: the same pattern existed in `conversation.py` and `chat.py`. Two
+copies of "what a question looks like" is how the two name matchers drifted apart, so
+there's one definition now and `chat.py` imports it.
+
+27/27 phrasings, 8/8 questions. Full suite **1628 passed**; harness **211/211** (seeds
+1337/99/4242 → 211/210/208; the count varies because typo checks skip near-duplicates);
+live **15/15** on both the demo and 5,000-person tenants.
+
+**RESUME HERE → REPORT.md §7 items 3 and 5 only** — retired audit-referenced users
+(correct, minor) and the deliberate one-retry budget. Both are design choices rather
+than defects. The plan's goals are met, proven, and documented.

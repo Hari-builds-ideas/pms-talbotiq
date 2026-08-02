@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "98907948-7b2f-45ba-855e-6f44bb4df693", "step_id": "1b605151-1b9e-4a75-90c3-48cfdfee89cd", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "ae4b126d-63f1-4e29-b3f6-ff6555a596ee", "step_id": "0997ef68-4f3d-4302-a4dc-2950f42f617b", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -28,7 +28,7 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › give recognition to Avery Stone for her excellent work
-  assistant ‹ Plan to give recognition to Avery Stone.
+  assistant ‹ Give recognition to Avery Stone.
       · step: action=give_recognition feel=confirm | Give Avery Stone recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note f
   [OK  ] a new command abandons the pending question — action=give_recognition
 
@@ -46,7 +46,7 @@ SCENARIO: a nonsense answer is explained once, then let go
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your current check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › banana
@@ -67,7 +67,7 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   assistant ‹ Plan to give recognition to Avery Stone.
       · step: action=give_recognition feel=confirm | Give Avery Stone recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "da066422-f866-4447-9133-c6e16220bce3", "step_id": "88b8d534-e9b2-4411-a196-2dbb78ce3300", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "21a5ed74-3f87-40c8-88ce-3e89c224514e", "step_id": "5fc32c4c-8e9c-4e47-88b1-c00ca724392b", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
@@ -75,7 +75,7 @@ SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › give recognition to Avery Stone for mentoring the new joiners
-  assistant ‹ Give recognition to Avery Stone.
+  assistant ‹ Plan to give recognition to Avery Stone.
       · step: action=give_recognition feel=confirm | Give Avery Stone recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit the
 
   user  › do the same for Daniel Cohen
@@ -89,12 +89,12 @@ SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › how is Akhil Menon doing this cycle?
-  assistant ‹ Akhil Menon is on track this cycle and keeping pace — no red flags. The weakest signal is “Roadmap features delivered” on “Ship the H1 platform roadmap”, at 90% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
+  assistant ‹ Akhil Menon is performing well and is currently on track this cycle. While generally strong, the 'Roadmap features delivered' KPI for the 'Ship the H1 platform roadmap' goal is at 90% of its target, making it the primary area for focus. Overall, Akhil is demonstrating strong performance, and no additional support appears needed at this time.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 
   user  › compare Akhil Menon and Aarav Rossi
-  assistant ‹ Both Akhil Menon and Aarav Rossi are currently on track. Akhil is keeping pace, with the "Roadmap features delivered" KPI at 90%, indicating strong progress without immediate concerns. In contrast, Aarav is behind pace, with the same KPI at 49%, suggesting that support may be needed to ensure the "Ship the H1 platform roadmap" goal stays on track.
+  assistant ‹ Akhil Menon is on track this cycle and keeping pace — no red flags. The weakest signal is “Roadmap features delivered” on “Ship the H1 platform roadmap”, at 90% of target — that's the goal to focus on. Overall, no extra help looks needed right now. Aarav Rossi is rated on track, but behind pace — so Aarav Rossi could slip without attention. The weakest signal is “Roadmap features delivered” on “Ship the H1 platform roadmap”, at 49% of target — that's the goal to focus on. Yes — Aarav Rossi likely needs support here.
   [OK  ] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════

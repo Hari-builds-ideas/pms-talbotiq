@@ -499,6 +499,69 @@ def check_injection(report, employee, victim):
                      f"{probe[:50]!r} → {answer[:110]!r}")
 
 
+#: Natural ways people actually ask for each action. The point is coverage of PHRASING,
+#: not of the action registry — every one of these should route deterministically,
+#: without the classifier having to guess. `{p}` is filled with a real person's name.
+_PHRASINGS = {
+    "give_recognition": [
+        "give recognition to {p}", "give {p} recognition", "recognise {p}",
+        "recognize {p} for great work", "make a recognition for {p}",
+        "kudos to {p}", "shout out to {p}", "shout-out to {p}",
+        "praise {p} for the launch", "props to {p}",
+    ],
+    "open_checkin": [
+        "start my check-in", "start my checkin", "open my check in",
+        "log my mood", "do my weekly check-in", "check-in for this week",
+    ],
+    "draft_review": [
+        "draft a review for {p}", "write a review for {p}", "create a review for {p}",
+    ],
+    "initiate_360": [
+        "start a 360 for {p}", "begin a 360 feedback cycle for {p}", "launch a 360 for {p}",
+    ],
+    "schedule_review": ["schedule a review for {p}"],
+    "approve_goals": ["approve goals", "approve the pending goals"],
+    "approve_reviews": ["approve reviews", "approve the pending reviews"],
+}
+
+
+def check_intent_phrasings(report, person):
+    """Every natural phrasing of a command must route DETERMINISTICALLY — in Python,
+    from the action registry — rather than depending on how the classifier feels about
+    it. Routing was the thing the model kept getting wrong, so anything that still
+    needs the model is a known risk, and this measures exactly how much is left."""
+    from apps.ai.conversation import is_command, matched_action
+
+    for expected, phrasings in _PHRASINGS.items():
+        for template in phrasings:
+            text = template.format(p=person.display_name)
+            got = matched_action(text) if is_command(text) else None
+            report.check(f"phrasing routes deterministically → {expected}",
+                         got == expected, f"{text!r} → {got}")
+
+
+def check_question_phrasings_are_not_stolen(report, person):
+    """The other half of the contract: the deterministic router must never claim a
+    QUESTION. If it did, "how many goals should I approve?" would become an approval
+    instead of an answer — a far worse failure than the misrouting it fixes."""
+    from apps.ai.conversation import is_command
+
+    questions = [
+        "how many goals should I approve?",
+        "should I approve {p}'s goals?",
+        "what reviews are pending approval?",
+        "who has a check-in this week?",
+        "did {p} get any recognition?",
+        "can you draft a review for {p}?",
+        "how is {p} doing?",
+        "what can you do?",
+    ]
+    for template in questions:
+        text = template.format(p=person.display_name)
+        report.check("a question is never taken as a command",
+                     not is_command(text), f"{text!r} was routed as a command")
+
+
 def check_query_efficiency(report, actor, sample, headcount):
     """The property that makes 5,000 and 50,000 behave the same: resolution costs a
     constant, bounded number of queries, and none of them is unbounded."""
@@ -576,6 +639,8 @@ def main() -> int:
         check_duplicates(report, admin)
         check_edge_names(report, admin)
         check_query_efficiency(report, admin, sample, headcount)
+        check_intent_phrasings(report, sample[0])
+        check_question_phrasings_are_not_stolen(report, sample[0])
 
         # Actions, as a manager, on people OUTSIDE their team.
         reset_budget(tenant.id)

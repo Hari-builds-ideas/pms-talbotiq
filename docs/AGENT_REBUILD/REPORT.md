@@ -1,8 +1,8 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed, plus three follow-ups (§9, §10). Backend
-suite **1628 passed**, scale harness **176/176 at 5,000 people** across three seeds,
+**Status:** all five build files executed, plus follow-ups (§9–§11). Backend
+suite **1628 passed**, scale harness **211/211 at 5,000 people** across three seeds,
 live HTTP transcript **15/15 on both** the demo tenant and the 5,000-person tenant, with
 the real Gemini provider.
 
@@ -326,12 +326,12 @@ testing the old build (this cost me a confusing half hour).
 5. **One re-ask, then the question is dropped.** This is the deliberate cure for the
    infinite loop, but a user who mistypes twice has to restate the whole request. If
    that proves annoying in practice, the budget is one constant (`_MAX_REASKS`).
-6. **Intent routing is registry-driven, so unusual phrasings still depend on the LLM.**
-   I added the ones that were reported (`shout out`, `praise`, `props`, `log my mood`);
-   a phrasing nobody has said yet still relies on the classifier, which is the
-   component that was getting it wrong. The deterministic path only ever *adds* correct
-   routing — it never steals a question — so the failure mode is the old one, not a new
-   one.
+6. **Intent routing is registry-driven, so an unrecognised phrasing still falls back to
+   the LLM.** Now *measured* rather than guessed — see §11: 27 natural phrasings across
+   7 actions all route deterministically, and 8 question forms are correctly left alone.
+   A phrasing nobody has said yet still relies on the classifier, but the deterministic
+   path only ever *adds* correct routing (it never steals a question, asserted), so the
+   residual failure mode is the old one, not a new one.
 
 ---
 
@@ -431,3 +431,29 @@ Transcripts: `LIVE_TRANSCRIPT.txt` (demo) and `LIVE_TRANSCRIPT_5000.txt` (scale)
 
 **Full suite 1628 passed. Harness 176/176 (seeds 1337/99/4242). Live 15/15 on both
 tenants.**
+
+---
+
+## 11. Follow-up: intent phrasing, measured
+
+Weakness 6 said unusual phrasings "still depend on the LLM" without saying how many.
+That's an admission, not a finding, so the harness now probes it: **27 natural phrasings
+across 7 actions**, plus **8 question forms** that must *not* be claimed.
+
+Both directions matter. Routing a command deterministically is the fix; but if the
+router ever claimed a question, "how many goals should I approve?" would become an
+approval instead of an answer — a far worse failure than the misrouting it replaced.
+
+The probe immediately found one: **"do my weekly check-in" was classified as a
+question.** The question-lead pattern treated any leading `do` as interrogative, so an
+imperative starting with "do" was handed to the classifier instead of going straight to
+the planner. Only "do *you/i/we/they/he/she/it*" counts now.
+
+While fixing it I removed a duplicate: the same pattern existed in both
+`conversation.py` and `chat.py`. Two copies of "what a question looks like" is precisely
+how the two name matchers drifted apart, so there is now one definition and `chat.py`
+imports it.
+
+**27/27 phrasings route deterministically; 8/8 questions are left alone.** Harness total
+is now **211/211** (seeds 1337/99/4242: 211, 210, 208 — the count varies because typo
+checks skip near-duplicate names).

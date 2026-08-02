@@ -64,10 +64,18 @@ _DO_THE_SAME_RE = re.compile(
     re.I,
 )
 
-#: A question, not an instruction — used to tell a topic change from a slot answer.
+#: A question, not an instruction — used to tell a topic change from a slot answer, and
+#: to stop the deterministic router claiming something the user was ASKING.
+#:
+#: "do" is the awkward one and gets its own branch: "do you have…?" is a question, but
+#: "do my weekly check-in" and "do the same for X" are instructions. Treating a bare
+#: leading "do" as interrogative sent "do my weekly check-in" to the classifier instead
+#: of straight to the planner. Only "do <pronoun>" counts.
 _QUESTION_RE = re.compile(
-    r"^\s*(?:how|what|who|whose|which|when|why|where|is|are|was|were|does|do|did|"
-    r"can|could|should|would|will|am|any|tell\s+me|show\s+me|list)\b",
+    r"^\s*(?:(?:how|what|whats|what's|who|whose|which|when|why|where|is|are|was|were|"
+    r"does|did|can|could|should|would|will|am|any|list)\b"
+    r"|do\s+(?:you|i|we|they|he|she|it)\b"
+    r"|tell\s+me\b|show\s+me\b)",
     re.I,
 )
 

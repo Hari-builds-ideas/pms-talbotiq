@@ -413,24 +413,20 @@ def _is_answerable_data_question(caller, query: str) -> bool:
     routes the message to the performance path; that path still resolves the person
     itself and still applies the full scope gate, so this can widen no access.
     """
+    # ONE definition of "this is a question", shared with the conversation router.
+    # A second copy here is exactly how the two name matchers drifted apart.
+    from apps.ai.conversation import _QUESTION_RE
+
     text = (query or "").strip()
     if not text:
         return False
     low = text.lower()
     if any(w in low for w in _PERF_WORDS):
         return True
-    if not (text.endswith("?") or _QUESTION_LEAD_RE.match(text)):
+    if not (text.endswith("?") or _QUESTION_RE.match(text)):
         return False
     named, ambiguous, out_of_scope = _resolve_in_scope(caller, text)
     return named is not None or bool(ambiguous) or out_of_scope is not None
-
-
-#: Question-leading words — a message that opens with one is being ASKED, not stated.
-_QUESTION_LEAD_RE = re.compile(
-    r"^\s*(?:how|what|whats|what's|who|whose|which|when|why|where|is|are|was|were|"
-    r"does|do|did|can|could|should|would|will|has|have|any|tell\s+me|show\s+me)\b",
-    re.I,
-)
 
 
 def _resolve_in_scope(caller, query):

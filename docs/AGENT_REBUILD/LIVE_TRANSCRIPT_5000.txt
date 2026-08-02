@@ -1,6 +1,6 @@
 tenant 'scale' · acting as Theo Nair <p100@scale.test>
   in scope:     Lena Oyelaran, Lena Castellanos
-  out of team:  Maximilian Alexander Fitzgerald-Montgomery III, Theo Bhatt
+  out of team:  Aarav Sharma, Mei Chen
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a check-in follow-up question actually gets answered
@@ -8,7 +8,7 @@ SCENARIO: a check-in follow-up question actually gets answered
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
   [OK  ] the assistant asks for a mood
 
@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "71463602-c713-4542-a68f-21bd77ed7fa1", "step_id": "72c296b2-2bf3-421c-8d00-34a4b5572e52", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "12f11f87-1b1e-4b0e-9cdb-4735400e1da3", "step_id": "60438a40-2003-443f-beff-ab31481a86da", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -27,9 +27,9 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
   assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
-  user  › give recognition to Maximilian Alexander Fitzgerald-Montgomery III for her excellent work
-  assistant ‹ Plan to give recognition to Maximilian Alexander Fitzgerald-Montgomery III.
-      · step: action=give_recognition feel=confirm | Give Maximilian Alexander Fitzgerald-Montgomery III recognition for her excellent work (filed under Teamwork)? It posts 
+  user  › give recognition to Aarav Sharma for her excellent work
+  assistant ‹ Give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note 
   [OK  ] a new command abandons the pending question — action=give_recognition
 
   user  › start my check-in
@@ -46,7 +46,7 @@ SCENARIO: a nonsense answer is explained once, then let go
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › banana
@@ -63,33 +63,33 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   (before: 'not found' — lookup was team-scoped)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › make a recognition for Maximilian Alexander Fitzgerald-Montgomery III
-  assistant ‹ Plan to give recognition to Maximilian Alexander Fitzgerald-Montgomery III.
-      · step: action=give_recognition feel=confirm | Give Maximilian Alexander Fitzgerald-Montgomery III recognition for Teamwork? It posts to your team feed — edit the note
+  user  › make a recognition for Aarav Sharma
+  assistant ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "6777e55c-ab82-4b14-94f0-02690a6589fe", "step_id": "3beb319d-c9e0-4c6c-9d07-27a69b4cdbae", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "cca00820-0413-45fd-99b0-c81093b39d78", "step_id": "505876ae-9153-4f66-92c4-f0f203069b9c", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
   (before: it started a check-in)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › give recognition to Maximilian Alexander Fitzgerald-Montgomery III for mentoring the new joiners
-  assistant ‹ Plan to give recognition to Maximilian Alexander Fitzgerald-Montgomery III.
-      · step: action=give_recognition feel=confirm | Give Maximilian Alexander Fitzgerald-Montgomery III recognition for mentoring the new joiners (filed under Teamwork)? It
+  user  › give recognition to Aarav Sharma for mentoring the new joiners
+  assistant ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit th
 
-  user  › do the same for Theo Bhatt
-  assistant ‹ Give Theo Bhatt recognition for Teamwork? It posts to your team feed — edit the note first if you like.
-      · step: action=give_recognition feel=confirm | Give Theo Bhatt recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  user  › do the same for Mei Chen
+  assistant ‹ Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+      · step: action=give_recognition feel=confirm | Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] "do the same" repeats the recognition — action=give_recognition
-  [OK  ] …for the NEW person, not the previous one — Give Theo Bhatt recognition for Teamwork? It posts to your team feed — edit the note first
+  [OK  ] …for the NEW person, not the previous one — Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first i
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › how is Lena Oyelaran doing this cycle?
-  assistant ‹ Lena Oyelaran is currently flagged as 'At risk' and is behind pace this cycle. Her 'Operations objective 5' goal, which has a 100% weight, shows 'Attainment' at 55% of its 100% target. This indicates a key area for focus, and Lena would likely benefit from support to improve her attainment here.
+  assistant ‹ Lena Oyelaran is currently flagged as 'At risk' and is behind pace this cycle. Her 'Attainment' for 'Operations objective 5' is at 55% of its target, indicating this is the primary area needing attention. It appears Lena would benefit from support to improve performance on this objective.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 
@@ -101,8 +101,8 @@ SCENARIO: a real question gets a real answer, not the capability blurb
 SCENARIO: directory-wide actions, but data stays permission-scoped
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Maximilian Alexander Fitzgerald-Montgomery III doing?
-  assistant ‹ You don't have access to Maximilian Alexander Fitzgerald-Montgomery III's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Lena Castellanos, Lena Cavendish, Lena Hartmann, Lena Marchetti, Lena Okafor, Lena Oyelaran, Lena Steinberg, Lena Travers, Lena Whitfield.
+  user  › how is Aarav Sharma doing?
+  assistant ‹ You don't have access to Aarav Sharma's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Lena Castellanos, Lena Cavendish, Lena Hartmann, Lena Marchetti, Lena Okafor, Lena Oyelaran, Lena Steinberg, Lena Travers, Lena Whitfield.
   [OK  ] out-of-scope performance data is refused — honest refusal
 
 ══════════════════════════════════════════════════════════════════════════════

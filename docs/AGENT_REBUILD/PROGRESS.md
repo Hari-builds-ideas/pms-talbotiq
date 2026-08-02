@@ -401,3 +401,41 @@ live **15/15** on both the demo and 5,000-person tenants.
 **RESUME HERE → REPORT.md §7 items 3 and 5 only** — retired audit-referenced users
 (correct, minor) and the deliberate one-retry budget. Both are design choices rather
 than defects. The plan's goals are met, proven, and documented.
+
+---
+
+## Follow-up 4 — constant cost tested at 25,000, and a harness that was testing nothing
+
+**The claim, measured.** §4 asserted 5,000 and 50,000 "behave the same" from the query
+plan rather than from a measurement. Built a 25,000-person tenant (12s to seed, 100k
+performance rows) and measured: **1 query, 0.5 ms median at 500 / 5,000 / 25,000** —
+flat, no unbounded SELECT at any size. Harness **210/210** at 25,000, **220/220** at
+5,000, live HTTP **15/15** on all three tenants with the real LLM.
+
+**The harness was silently covering nothing.** At 25,000 the typo category *disappeared*
+and still showed green: the fixture's 5,700 unique name pairs can't fill 25,000 people,
+so nearly everyone gains a near-duplicate variant and the check skips those by design.
+Every candidate was skipped → zero checks → category gone from the output. Fixed two
+ways: typos are also probed against names unique BY CONSTRUCTION (edge-case names, whose
+first names appear in no generated combination), and the harness now states its own
+coverage ("exercised on 5 name(s); 10 skipped as near-duplicates"), so covering nothing
+is a failure rather than an absence.
+
+Related artefact: rival detection scanned by first name only, capped at 200 — at 25,000
+people 500 share a first name, so the cap cut off before the variants and 6 typo checks
+failed demanding an identity a near-duplicate makes impossible. Filters on both names now.
+
+**Roles.** Every scenario had acted as a manager; HRBP and admin — the widest data scopes
+— were unproven. Added: each gets a real answer company-wide, and the same person asked
+about by an employee is still refused.
+
+**Fixture wart.** The deliberately-triplicated "Priya Nair" sat at index 0, so the ADMIN
+account was one of three people with that name and every harness line printing the actor
+read like a bug. Leadership slots now take ordinary generated names.
+
+Full suite **1628 passed**.
+
+**RESUME HERE → nothing substantive is outstanding.** REPORT.md §7 leaves only items 3
+and 5, both deliberate design choices (retired audit-referenced users; the one-retry
+budget). Further iterations would be polish: more phrasings, more injection probes, or a
+larger fixture name pool so typo coverage is full at 25,000+ rather than partial.

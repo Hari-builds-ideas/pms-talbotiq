@@ -1,6 +1,6 @@
-tenant 'acme' · acting as Ada Lovelace <ada@acme.test>
-  in scope:     Akhil Menon, Aarav Rossi
-  out of team:  Avery Stone, Daniel Cohen
+tenant 'scale25' · acting as Theo Nair <p100@scale25.test>
+  in scope:     Saanvi A. Garcia, Saanvi B. Dvorak
+  out of team:  Aarav Sharma, Mei Chen
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a check-in follow-up question actually gets answered
@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "24fc52e9-39f4-4840-b880-a22a5dbb5d60", "step_id": "5ce46d07-c128-4376-aa12-b94500c2039c", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "59987dd8-8641-46d8-9046-28d9841ea93d", "step_id": "930e6c6c-d263-4355-b78f-b52eeaf71430", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -24,16 +24,16 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
-  user  › give recognition to Avery Stone for her excellent work
-  assistant ‹ Give recognition to Avery Stone.
-      · step: action=give_recognition feel=confirm | Give Avery Stone recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note f
+  user  › give recognition to Aarav Sharma for her excellent work
+  assistant ‹ Give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note 
   [OK  ] a new command abandons the pending question — action=give_recognition
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › never mind
@@ -46,7 +46,7 @@ SCENARIO: a nonsense answer is explained once, then let go
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › banana
@@ -63,46 +63,46 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   (before: 'not found' — lookup was team-scoped)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › make a recognition for Avery Stone
-  assistant ‹ Plan to give recognition to Avery Stone.
-      · step: action=give_recognition feel=confirm | Give Avery Stone recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  user  › make a recognition for Aarav Sharma
+  assistant ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "b6f6d000-3b9d-43cc-b418-e7238ea727b5", "step_id": "9e9fd100-1f84-4425-a1e6-3dfe7c6c2be7", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "296618f1-7426-4f45-b1ce-e3e27a2b0f77", "step_id": "d56602f4-9e7d-4bf3-aae1-b9e6fe781bf4", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
   (before: it started a check-in)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › give recognition to Avery Stone for mentoring the new joiners
-  assistant ‹ Plan to give recognition to Avery Stone.
-      · step: action=give_recognition feel=confirm | Give Avery Stone recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit the
+  user  › give recognition to Aarav Sharma for mentoring the new joiners
+  assistant ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit th
 
-  user  › do the same for Daniel Cohen
-  assistant ‹ Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
-      · step: action=give_recognition feel=confirm | Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  user  › do the same for Mei Chen
+  assistant ‹ Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+      · step: action=give_recognition feel=confirm | Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] "do the same" repeats the recognition — action=give_recognition
-  [OK  ] …for the NEW person, not the previous one — Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note fir
+  [OK  ] …for the NEW person, not the previous one — Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first i
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Akhil Menon doing this cycle?
-  assistant ‹ Akhil Menon is performing strongly this cycle and is currently on track. While most metrics are robust, the 'Roadmap features delivered' KPI for the 'Ship the H1 platform roadmap' goal is at 90% of its target, indicating a slight area for focus. Overall, Akhil is doing well, and no immediate additional support appears necessary.
+  user  › how is Saanvi A. Garcia doing this cycle?
+  assistant ‹ Saanvi A. Garcia is on track this cycle and keeping pace — no red flags. The weakest signal is “Attainment” on “Operations objective 5”, at 80% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 
-  user  › compare Akhil Menon and Aarav Rossi
-  assistant ‹ Both Akhil Menon and Aarav Rossi are currently on track, but their pace differs significantly. Akhil is keeping pace with strong attainment, particularly on "Roadmap features delivered" at 90%, suggesting no immediate support is needed. In contrast, Aarav is behind pace, with "Roadmap features delivered" at 49%, indicating a need for attention and potential support to prevent slipping.
+  user  › compare Saanvi A. Garcia and Saanvi B. Dvorak
+  assistant ‹ Saanvi B. Dvorak is flagged at risk and behind pace. The weakest signal is “Attainment” on “Operations objective 6”, at 55% of target — that's the goal to focus on. Yes — Saanvi B. Dvorak likely needs support here. I can't share Saanvi Garcia's though — they're outside your access.
   [OK  ] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: directory-wide actions, but data stays permission-scoped
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Avery Stone doing?
-  assistant ‹ You don't have access to Avery Stone's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Aarav Rossi, Aisha Walsh, Akhil Menon, Ethan Nguyen, Hana O'Brien, Liam Costa, Lucas Reyes, Mateo Santos, Mei Patel, Noah Cohen, Priya Silva, Sofia Menon, and 2 more.
+  user  › how is Aarav Sharma doing?
+  assistant ‹ You don't have access to Aarav Sharma's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Saanvi A. Garcia, Saanvi A. Radcliffe, Saanvi Aziz, Saanvi B. Donnelly, Saanvi B. Dvorak, Saanvi C. Haugen, Saanvi C. Ortega, Saanvi C. Yamamoto.
   [OK  ] out-of-scope performance data is refused — honest refusal
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -115,5 +115,5 @@ SCENARIO: a name that doesn't exist is reported as such
   [OK  ] not the capability blurb
 
 ══════════════════════════════════════════════════════════════════════════════
-LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'acme')
+LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'scale25')
 ══════════════════════════════════════════════════════════════════════════════

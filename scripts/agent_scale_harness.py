@@ -259,10 +259,30 @@ def check_typos(report, rng, actor, sample):
         parts = [p for p in name.split() if not p.endswith(".")]
         return f"{parts[0]} {parts[-1]}".lower() if len(parts) >= 2 else name.lower()
 
-    for person in sample:
+    # Names that are unique BY CONSTRUCTION — their first names appear in no generated
+    # combination — so typo tolerance is always exercised, whatever the headcount. At
+    # 25,000 people the generated pool (50 × 114 pairs) forces near-duplicates on almost
+    # everyone, and without these the whole category silently covered NOTHING while
+    # still showing green. A check that tests nothing is worse than a failing one.
+    from apps.core.management.commands.seed_scale_tenant import EDGE_NAMES
+
+    guaranteed = [
+        u for name, copies in EDGE_NAMES if copies == 1
+        for u in User.objects.filter(display_name=name, is_active=True)[:1]
+        if len(name.split()) >= 2 and name.isascii()  # a typo in a non-Latin name is a different test
+    ]
+    checked = 0
+    for person in list(sample) + guaranteed:
         pair = bare_pair(person.display_name)
-        rivals = [u for u in User.objects.filter(is_active=True,
-                                                 display_name__icontains=pair.split()[0])[:200]
+        first, last = pair.split()[0], pair.split()[-1]
+        # Filter on BOTH names. Scanning by first name alone and truncating was wrong at
+        # scale: 500 people share a first name in a 25,000-person tenant, so the cap cut
+        # off before reaching the "Ibrahim ?. Kaminski" variants and the check then
+        # demanded an exact identity that a near-duplicate makes impossible. Two
+        # icontains narrows to a handful, so no cap is needed.
+        rivals = [u for u in User.objects.filter(is_active=True)
+                  .filter(display_name__icontains=first)
+                  .filter(display_name__icontains=last)[:50]
                   if bare_pair(u.display_name) == pair]
         if len(rivals) > 1:
             continue  # a near-duplicate exists — see the docstring
@@ -270,9 +290,17 @@ def check_typos(report, rng, actor, sample):
         if mangled == person.display_name:
             continue
         got = resolve_person_in_population(actor, f"give recognition to {mangled}")
+        checked += 1
         report.check("typo still finds the person",
                      got is not None and got is not AMBIGUOUS and got.id == person.id,
                      f"{mangled!r} (for {person.display_name!r}) → {got!r}")
+
+    if not checked:
+        report.check("typo tolerance was actually exercised", False,
+                     "every candidate had a near-duplicate — this category covered NOTHING")
+    else:
+        report.note(f"typo tolerance exercised on {checked} name(s); "
+                    f"{len(sample) + len(guaranteed) - checked} skipped as near-duplicates")
 
 
 def check_duplicates(report, actor):
@@ -562,6 +590,40 @@ def check_question_phrasings_are_not_stolen(report, person):
                      not is_command(text), f"{text!r} was routed as a command")
 
 
+def check_roles_see_their_own_scope(report, actors, everyone_sample):
+    """Each ROLE must get its own envelope — the same question, different correct
+    answers. Only the manager path was exercised before, which left the two roles with
+    the WIDEST data access completely unproven at scale.
+
+    An HRBP or admin legitimately sees far more people than a manager, so this asserts
+    the shape of the answer rather than a fixed list: whoever they ask about in their
+    scope gets a real answer, and an employee still gets refused for the same person.
+    """
+    employee = actors["employee"]
+    for role in ("hrbp", "admin"):
+        actor = actors.get(role)
+        if actor is None:
+            report.check(f"{role} exists in the tenant", False, "role missing from the fixture")
+            continue
+        subject = next((p for p in everyone_sample if p.id != actor.id), None)
+        if subject is None:
+            continue
+
+        answer = say(actor, fresh_session(actor), f"how is {subject.display_name} doing?")["answer"]
+        report.check(f"{role} gets a real answer for someone company-wide",
+                     BLURB_TELL not in answer and subject.display_name.split()[0] in answer,
+                     f"{role} → {answer[:110]!r}")
+
+        # The same person, asked by an EMPLOYEE, must still be refused — a wide role
+        # existing doesn't widen anyone else's scope.
+        if subject.id not in (employee.id, employee.manager_id):
+            emp_answer = say(employee, fresh_session(employee),
+                             f"how is {subject.display_name} doing?")["answer"].lower()
+            leaked = [w for w in ("at risk", "critical", "on track", "behind pace") if w in emp_answer]
+            report.check("an employee is still refused what an HRBP can see", not leaked,
+                         f"employee saw {leaked}: {emp_answer[:100]!r}")
+
+
 def check_query_efficiency(report, actor, sample, headcount):
     """The property that makes 5,000 and 50,000 behave the same: resolution costs a
     constant, bounded number of queries, and none of them is unbounded."""
@@ -625,10 +687,13 @@ def main() -> int:
         manager = rng.choice(managers)
         my_reports = team_of(manager)
         admin = User.objects.filter(role="ADMIN", is_active=True).first()
+        hrbp = User.objects.filter(role="HRBP", is_active=True).first()
         employee = my_reports[0] if my_reports else pick(1)[0]
+        actors = {"manager": manager, "employee": employee, "admin": admin, "hrbp": hrbp}
 
         print(f"acting as: manager {manager.display_name!r} ({len(my_reports)} reports), "
-              f"employee {employee.display_name!r}, admin {admin.display_name!r}")
+              f"employee {employee.display_name!r}, "
+              f"hrbp {getattr(hrbp, 'display_name', None)!r}, admin {admin.display_name!r}")
 
         sample = pick(args.people)
 
@@ -664,6 +729,8 @@ def main() -> int:
                    and u.manager_id != employee.id and u.id != employee.manager_id][:5]
         check_scope_refusals(report, employee, outside)
         check_injection(report, employee, outside[0] if outside else manager)
+        reset_budget(tenant.id)
+        check_roles_see_their_own_scope(report, actors, pick(3))
 
     return report.render()
 

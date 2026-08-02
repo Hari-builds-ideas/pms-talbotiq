@@ -249,10 +249,16 @@ class Command(BaseCommand):
 
         The only duplicates in the tenant are the ones EDGE_NAMES asks for on purpose.
         """
+        # Leadership slots (index 0 = admin, then the HRBPs) get ordinary generated
+        # names. The edge cases start after them: putting the deliberately-triplicated
+        # "Priya Nair" at index 0 made the ADMIN one of three people with that name,
+        # which reads as a bug in every harness line that prints the actor.
+        leadership = max(headcount // 500, 2) + 1
         names: list[str] = []
+        edge: list[str] = []
         for name, copies in EDGE_NAMES:
-            names.extend([name] * copies)
-        used = set(names)
+            edge.extend([name] * copies)
+        used = set(edge)
 
         nf, nl = len(FIRST_NAMES), len(LAST_NAMES)
         alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -277,6 +283,8 @@ class Command(BaseCommand):
             used.add(candidate)
             names.append(candidate)
             i += 1
+            if len(names) == leadership:      # leadership filled — now the edge cases
+                names.extend(edge)
 
         # Fail loudly if the scheme ever regresses: the ONLY duplicates in this tenant
         # must be the ones EDGE_NAMES asks for, or the harness can no longer distinguish

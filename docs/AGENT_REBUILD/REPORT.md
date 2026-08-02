@@ -1,15 +1,15 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed, plus follow-ups (§9–§11). Backend
-suite **1628 passed**, scale harness **211/211 at 5,000 people** across three seeds,
-live HTTP transcript **15/15 on both** the demo tenant and the 5,000-person tenant, with
+**Status:** all five build files executed, plus follow-ups (§9–§12). Backend
+suite **1628 passed**, scale harness **220/220 at 5,000** and **210/210 at 25,000**
+people, live HTTP transcript **15/15 on all three tenants** (demo, 5,000, 25,000) with
 the real Gemini provider.
 
 Evidence files next to this one:
-- `LIVE_TRANSCRIPT.txt` — real conversations over HTTP, real LLM, demo tenant
-- `LIVE_TRANSCRIPT_5000.txt` — the same scenarios against 5,000 people
-- `SCALE_HARNESS_RESULTS.txt` — the 5,000-person behavioural run
+- `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` — real conversations over HTTP,
+  real LLM, at three company sizes
+- `SCALE_HARNESS_RESULTS.txt` / `_25000.txt` — the behavioural runs
 - `PROGRESS.md` — the per-unit log, including the things that went wrong on the way
 
 ---
@@ -199,12 +199,12 @@ docker compose exec web python scripts/agent_scale_harness.py --people 20
 on a 500-person tenant. People are chosen at random from across the whole company each
 run — a fixed list would only prove it works for the people I thought to list.
 
-| Measure | 500 people | 5,000 people |
-|---|---|---|
-| Queries per resolution | 1 | 1 |
-| Median latency | 0.5 ms | 0.5 ms |
-| p95 latency | 0.6 ms | 0.5 ms |
-| Unbounded SELECTs | 0 | 0 |
+| Measure | 500 people | 5,000 people | 25,000 people |
+|---|---|---|---|
+| Queries per resolution | 1 | 1 | 1 |
+| Median latency | 0.5 ms | 0.5 ms | 0.5 ms |
+| p95 latency | 0.6 ms | 0.5 ms | 0.5 ms |
+| Unbounded SELECTs | 0 | 0 | 0 |
 
 **Constant cost, measured rather than asserted.** Every SELECT carries a LIMIT, so the
 table is never loaded into Python to be ranked — that is the property that makes 5,000
@@ -457,3 +457,46 @@ imports it.
 **27/27 phrasings route deterministically; 8/8 questions are left alone.** Harness total
 is now **211/211** (seeds 1337/99/4242: 211, 210, 208 — the count varies because typo
 checks skip near-duplicate names).
+
+---
+
+## 12. Follow-up: the constant-cost claim, tested at 25,000
+
+§4 asserted that "5,000 and 50,000 behave the same". That was an inference from the
+query plan, not a measurement, so I built a 25,000-person tenant and measured it.
+
+**It holds.** 1 query and 0.5 ms median at 500, 5,000 and 25,000 people — flat, with no
+unbounded SELECT at any size. Seeding 25,000 people with 100,000 performance rows takes
+12 seconds. The harness passes **210/210** there and **220/220** at 5,000, and the live
+HTTP transcript passes **15/15** against all three tenants with the real LLM.
+
+### The harness was quietly covering nothing
+
+At 25,000 people the typo category **silently vanished** — and still showed green. The
+fixture's name pool (50 × 114 = 5,700 pairs) can't fill 25,000 people uniquely, so
+almost everyone acquires a near-duplicate variant, and the check skips those by design
+(a typo legitimately lands on the closer name). Every candidate was skipped, so the
+category ran zero checks and simply disappeared from the output.
+
+A check that tests nothing is worse than one that fails, so two things changed: typos are
+now also probed against names that are unique **by construction** (the edge-case names,
+whose first names appear in no generated combination), and the harness **states its own
+coverage** — "typo tolerance exercised on 5 name(s); 10 skipped as near-duplicates". If
+it ever covers nothing again, that is now a failure with an explanation.
+
+A related artefact fixed at the same time: the rival-detection scan filtered on first
+name only and truncated at 200, which at 25,000 people (500 people share a first name)
+cut off before reaching the variants — so 6 typo checks failed demanding an exact
+identity that a near-duplicate makes impossible. It filters on both names now.
+
+### Roles: the two widest scopes were untested
+
+Every scenario had acted as a manager, leaving HRBP and admin — the roles with the
+*most* data access — unproven at scale. Added: each gets a real answer for someone
+company-wide, and the same person asked about by an employee is still refused. A wide
+role existing must not widen anyone else's scope.
+
+Also fixed: the fixture put the deliberately-triplicated "Priya Nair" at index 0, so the
+**admin account was one of three people with that name** and every harness line printing
+the actor read like a bug. Leadership slots now get ordinary generated names and the
+edge cases start after them.

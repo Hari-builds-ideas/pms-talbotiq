@@ -336,3 +336,41 @@ Live: "Give Priya Nair recognition for mentoring the new joiners (filed under Te
 **RESUME HERE → remaining documented weaknesses in REPORT.md §7**, most valuable first:
 (2) a real-LLM run at larger scale, (4) near-duplicate typo handling, (6) more intent
 phrasings. None is blocking; the run's stated goals are all met.
+
+---
+
+## Follow-up 2 — near-tie disambiguation + live proof at 5,000
+
+**Weakness 4 (fixed).** Exact fuzzy ties already asked; a *near* tie (0.94 vs 0.92)
+silently picked a winner. Between "Jon Smith" and "Jon Smyth" that is a coin toss
+deciding who receives someone's recognition. A fuzzy winner must now clear the
+runner-up by `_FUZZY_MARGIN = 0.05`; anything inside the margin is offered as a choice.
+Small on purpose — a real typo lands 0.10+ clear, so ordinary typo tolerance is
+unaffected (harness still 10/10 on typos). 2 tests.
+
+**Weakness 2 (closed).** `agent_live_transcript.py` hardcoded both the tenant and the
+people — the latter being exactly what this run's rules forbid. It now discovers its
+cast from the DB (a manager with real reports, two of them, two people outside the
+team) and takes `--tenant` / `--password`, so the same scenarios replay anywhere:
+
+    python3 scripts/agent_live_transcript.py                  # acme  → 15/15
+    python3 scripts/agent_live_transcript.py --tenant scale   # 5,000 → 15/15
+
+Both with the real Gemini provider. The 5,000-person run happened to cast
+"Maximilian Alexander Fitzgerald-Montgomery III" as the out-of-team recipient — a
+five-part 45-character name, resolved and recognised correctly.
+
+Two traps found while doing it:
+- cast selection must avoid the deliberately-duplicated names, or "do the same for X"
+  tests the disambiguation path instead of the one intended;
+- the LLM budget must be reset per SCENARIO, not per run. Nine assertions failed on the
+  first full scale pass purely because the per-window ceiling tripped partway through;
+  the same scenarios passed 3/3 in isolation. A budget refusal reads exactly like a
+  logic bug — worth remembering.
+
+Full suite **1628 passed**; harness **176/176** on three seeds; live **15/15** on both
+tenants.
+
+**RESUME HERE → remaining weaknesses are REPORT.md §7 items 3, 5, 6** — all minor and
+deliberate (retired audit-referenced users, the one-retry budget, and intent phrasings
+that still fall back to the classifier). The plan's stated goals are met and proven.

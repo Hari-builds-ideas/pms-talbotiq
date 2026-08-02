@@ -1,6 +1,6 @@
-tenant 'acme' · acting as Ada Lovelace <ada@acme.test>
-  in scope:     Akhil Menon, Aarav Rossi
-  out of team:  Avery Stone, Daniel Cohen
+tenant 'scale' · acting as Theo Nair <p100@scale.test>
+  in scope:     Lena Oyelaran, Lena Castellanos
+  out of team:  Maximilian Alexander Fitzgerald-Montgomery III, Theo Bhatt
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a check-in follow-up question actually gets answered
@@ -8,7 +8,7 @@ SCENARIO: a check-in follow-up question actually gets answered
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
   [OK  ] the assistant asks for a mood
 
@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "98907948-7b2f-45ba-855e-6f44bb4df693", "step_id": "1b605151-1b9e-4a75-90c3-48cfdfee89cd", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "1cd83dd5-31ea-46ea-bec9-f3b6d1208f6e", "step_id": "962720b9-6c91-45f2-bc35-9f720274e7b6", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -24,16 +24,16 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
-  user  › give recognition to Avery Stone for her excellent work
-  assistant ‹ Plan to give recognition to Avery Stone.
-      · step: action=give_recognition feel=confirm | Give Avery Stone recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note f
+  user  › give recognition to Maximilian Alexander Fitzgerald-Montgomery III for her excellent work
+  assistant ‹ Plan to give recognition to Maximilian Alexander Fitzgerald-Montgomery III.
+      · step: action=give_recognition feel=confirm | Give Maximilian Alexander Fitzgerald-Montgomery III recognition for her excellent work (filed under Teamwork)? It posts 
   [OK  ] a new command abandons the pending question — action=give_recognition
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › never mind
@@ -46,7 +46,7 @@ SCENARIO: a nonsense answer is explained once, then let go
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › banana
@@ -63,46 +63,46 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   (before: 'not found' — lookup was team-scoped)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › make a recognition for Avery Stone
-  assistant ‹ Plan to give recognition to Avery Stone.
-      · step: action=give_recognition feel=confirm | Give Avery Stone recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  user  › make a recognition for Maximilian Alexander Fitzgerald-Montgomery III
+  assistant ‹ Plan to give recognition to Maximilian Alexander Fitzgerald-Montgomery III.
+      · step: action=give_recognition feel=confirm | Give Maximilian Alexander Fitzgerald-Montgomery III recognition for Teamwork? It posts to your team feed — edit the note
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "da066422-f866-4447-9133-c6e16220bce3", "step_id": "88b8d534-e9b2-4411-a196-2dbb78ce3300", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "086a8505-f6fd-41fb-8ce0-46c942310282", "step_id": "5e78b9e0-7287-4bdb-a562-53f497a42bff", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
   (before: it started a check-in)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › give recognition to Avery Stone for mentoring the new joiners
-  assistant ‹ Give recognition to Avery Stone.
-      · step: action=give_recognition feel=confirm | Give Avery Stone recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit the
+  user  › give recognition to Maximilian Alexander Fitzgerald-Montgomery III for mentoring the new joiners
+  assistant ‹ Plan to give recognition to Maximilian Alexander Fitzgerald-Montgomery III.
+      · step: action=give_recognition feel=confirm | Give Maximilian Alexander Fitzgerald-Montgomery III recognition for mentoring the new joiners (filed under Teamwork)? It
 
-  user  › do the same for Daniel Cohen
-  assistant ‹ Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
-      · step: action=give_recognition feel=confirm | Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  user  › do the same for Theo Bhatt
+  assistant ‹ Give Theo Bhatt recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+      · step: action=give_recognition feel=confirm | Give Theo Bhatt recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] "do the same" repeats the recognition — action=give_recognition
-  [OK  ] …for the NEW person, not the previous one — Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note fir
+  [OK  ] …for the NEW person, not the previous one — Give Theo Bhatt recognition for Teamwork? It posts to your team feed — edit the note first
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Akhil Menon doing this cycle?
-  assistant ‹ Akhil Menon is on track this cycle and keeping pace — no red flags. The weakest signal is “Roadmap features delivered” on “Ship the H1 platform roadmap”, at 90% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
+  user  › how is Lena Oyelaran doing this cycle?
+  assistant ‹ Lena Oyelaran is flagged at risk and behind pace. The weakest signal is “Attainment” on “Operations objective 5”, at 55% of target — that's the goal to focus on. Yes — Lena Oyelaran likely needs support here.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 
-  user  › compare Akhil Menon and Aarav Rossi
-  assistant ‹ Both Akhil Menon and Aarav Rossi are currently on track. Akhil is keeping pace, with the "Roadmap features delivered" KPI at 90%, indicating strong progress without immediate concerns. In contrast, Aarav is behind pace, with the same KPI at 49%, suggesting that support may be needed to ensure the "Ship the H1 platform roadmap" goal stays on track.
+  user  › compare Lena Oyelaran and Lena Castellanos
+  assistant ‹ Lena Oyelaran is currently flagged as at risk and behind pace, indicating she likely needs support. Her 'Attainment' on 'Operations objective 5' is at 55% of target, which is the primary area to focus on. In contrast, Lena Castellanos is on track and keeping pace with no red flags. While her 'Attainment' on 'Operations objective 1' is at 80%, no extra help appears needed at this time.
   [OK  ] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: directory-wide actions, but data stays permission-scoped
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Avery Stone doing?
-  assistant ‹ You don't have access to Avery Stone's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Aarav Rossi, Aisha Walsh, Akhil Menon, Ethan Nguyen, Hana O'Brien, Liam Costa, Lucas Reyes, Mateo Santos, Mei Patel, Noah Cohen, Priya Silva, Sofia Menon, and 2 more.
+  user  › how is Maximilian Alexander Fitzgerald-Montgomery III doing?
+  assistant ‹ You don't have access to Maximilian Alexander Fitzgerald-Montgomery III's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Lena Castellanos, Lena Cavendish, Lena Hartmann, Lena Marchetti, Lena Okafor, Lena Oyelaran, Lena Steinberg, Lena Travers, Lena Whitfield.
   [OK  ] out-of-scope performance data is refused — honest refusal
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -115,5 +115,5 @@ SCENARIO: a name that doesn't exist is reported as such
   [OK  ] not the capability blurb
 
 ══════════════════════════════════════════════════════════════════════════════
-LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'acme')
+LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'scale')
 ══════════════════════════════════════════════════════════════════════════════

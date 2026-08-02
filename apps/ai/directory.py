@@ -45,6 +45,11 @@ _MAX_CANDIDATES = 8
 #: difflib ratio a fuzzy full-name match must clear (typo tolerance, not loose).
 _FUZZY_MIN = 0.82
 
+#: How far ahead of the runner-up a fuzzy winner must be to be acted on rather than
+#: offered as a choice. Small on purpose: a real typo lands well clear of everyone else
+#: (0.10+), so this only catches genuine coin tosses between similar names.
+_FUZZY_MARGIN = 0.05
+
 #: An email address written anywhere in the message. Email is the ONE unique handle a
 #: person has, so naming it is never ambiguous — and it's how you refer to the second
 #: "Priya Nair" once a disambiguation has listed both.
@@ -290,16 +295,22 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
             continue
         for u in base.filter(display_name__icontains=tok[:3])[:_MAX_SCAN]:
             pool[u.id] = u
-    best_ratio, winners = 0.0, []
-    for u in pool.values():
-        ratio = difflib.SequenceMatcher(None, query, (u.display_name or "").lower()).ratio()
-        if ratio > best_ratio + 1e-9:
-            best_ratio, winners = ratio, [u]
-        elif abs(ratio - best_ratio) <= 1e-9:
-            winners.append(u)
-    if best_ratio >= _FUZZY_MIN:
-        return _one_or_ambiguous(winners[: _MAX_CANDIDATES + 1])
-    return None
+    rated = sorted(
+        ((difflib.SequenceMatcher(None, query, (u.display_name or "").lower()).ratio(), u)
+         for u in pool.values()),
+        key=lambda pair: pair[0],
+        reverse=True,
+    )
+    if not rated or rated[0][0] < _FUZZY_MIN:
+        return None
+    # A guess is only a guess worth acting on when it's CLEARLY better than the next
+    # one. Exact ties already asked, but a 0.94-vs-0.92 near-tie used to silently pick
+    # the winner — and with two colleagues whose names differ by a letter ("Jon Smith"
+    # / "Jon Smyth") that is a coin toss deciding who gets someone's recognition. Every
+    # candidate within the margin is offered instead, so the user picks.
+    best = rated[0][0]
+    winners = [u for ratio, u in rated if best - ratio <= _FUZZY_MARGIN]
+    return _one_or_ambiguous(winners[: _MAX_CANDIDATES + 1])
 
 
 def suggest_candidates(caller, message, *, population_ids=None, exclude_self=True, limit=_MAX_CANDIDATES):

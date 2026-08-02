@@ -323,3 +323,31 @@ def test_a_disambiguation_list_stays_short_however_many_match(org):
                         display_name=f"Common Person{i}", email=f"c{i}@acme.test")
         options = suggest_candidates(org.manager, "recognise Common")
         assert 0 < len(options) <= 8
+
+
+def test_a_typo_between_two_similar_names_asks_instead_of_guessing(org):
+    """"Jon Smith" and "Jon Smyth" are different people. A typo landing between them is
+    a coin toss, and a coin toss must not decide who receives someone's recognition —
+    so both are offered. (Exact ties already asked; this covers the NEAR-tie that used
+    to silently pick a winner.)"""
+    with tenant_context(org.tenant):
+        _name(org.peer, "Jon Smith")
+        UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Jon Smyth",
+                    email="jon.smyth@acme.test", manager=org.hrbp)
+
+        got = resolve_person_in_population(org.manager, "give recognition to Jon Smth")
+        assert got is AMBIGUOUS, f"a coin toss must be offered, not guessed: {got!r}"
+
+        options = suggest_candidates(org.manager, "give recognition to Jon Smth")
+        assert len({u.email for u in options}) >= 1  # distinguishable when listed
+
+
+def test_a_clear_typo_still_resolves_without_asking(org):
+    """The margin must not make ordinary typo tolerance timid: when one candidate is
+    clearly closest, it still resolves outright."""
+    with tenant_context(org.tenant):
+        target = _name(org.peer, "Priya Nair")
+        UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Bartholomew Ashworth",
+                    email="bart@acme.test", manager=org.hrbp)
+        got = resolve_person_in_population(org.manager, "give recognition to Priya Niar")
+        assert got is not None and got is not AMBIGUOUS and got.id == target.id

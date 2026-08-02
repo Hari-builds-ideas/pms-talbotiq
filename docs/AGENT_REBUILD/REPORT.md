@@ -1,13 +1,15 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed. Backend suite **1624 passed**, scale harness
-**176/176 at 5,000 people**, live HTTP transcript **15/15** against the demo tenant with
+**Status:** all five build files executed, plus three follow-ups (§9, §10). Backend
+suite **1628 passed**, scale harness **176/176 at 5,000 people** across three seeds,
+live HTTP transcript **15/15 on both** the demo tenant and the 5,000-person tenant, with
 the real Gemini provider.
 
 Evidence files next to this one:
-- `LIVE_TRANSCRIPT.txt` — real conversations over HTTP, real LLM, verbatim
-- `SCALE_HARNESS_RESULTS.txt` — the 5,000-person run
+- `LIVE_TRANSCRIPT.txt` — real conversations over HTTP, real LLM, demo tenant
+- `LIVE_TRANSCRIPT_5000.txt` — the same scenarios against 5,000 people
+- `SCALE_HARNESS_RESULTS.txt` — the 5,000-person behavioural run
 - `PROGRESS.md` — the per-unit log, including the things that went wrong on the way
 
 ---
@@ -308,18 +310,19 @@ testing the old build (this cost me a confusing half hour).
 1. ~~**Recognition loses the user's own wording.**~~ **Fixed** after the first draft of
    this report — see §9. It now reads "Give Priya Nair recognition for *mentoring the
    new joiners* (filed under Teamwork)?" and the posted note carries their words.
-2. **The scale harness uses the deterministic classifier, not Gemini.** That is
-   deliberate — the routing under test is deterministic by design — but it means
-   real-LLM behaviour is only proven at demo scale (215 people) via the live transcript,
-   not at 5,000. A real-LLM run at 5,000 would cost a lot of quota; it has not been done.
+2. ~~**Real-LLM behaviour is only proven at demo scale.**~~ **Closed** — see §10. The
+   live transcript now runs against the 5,000-person tenant too, with the real LLM:
+   **15/15**. (The *harness* still uses the deterministic classifier, deliberately —
+   the routing it tests is deterministic by design, and 5,000 people × every category
+   would be a great deal of quota for no extra signal.)
 3. **`--reset` on the scale tenant cannot delete audit-referenced users.** The
    append-only audit log PROTECTs its actors, so a few dozen users per run are *retired*
    (deactivated and renamed out of the way) rather than deleted. Correct, but the table
    grows slowly across resets.
-4. **Near-duplicate names are resolved by closeness, not by asking.** If a company has
-   both "Aisha O'Brien" and "Aisha B. O'Brien", a typo lands on whichever is closer
-   rather than offering both. Exact names and genuine duplicates are handled correctly;
-   this is only the typo-plus-near-duplicate corner.
+4. ~~**Near-duplicate names are resolved by closeness, not by asking.**~~ **Fixed** —
+   see §10. A fuzzy winner must now beat the runner-up by a clear margin; a genuine
+   coin toss between "Jon Smith" and "Jon Smyth" is offered as a choice instead of
+   guessed.
 5. **One re-ask, then the question is dropped.** This is the deliberate cure for the
    infinite loop, but a user who mistypes twice has to restate the whole request. If
    that proves annoying in practice, the budget is one constant (`_MAX_REASKS`).
@@ -377,3 +380,54 @@ assistant ‹ Give Priya Nair recognition for mentoring the new joiners (filed u
 ```
 
 Two tests added. **Full suite 1626 passed; harness still 176/176; live still 15/15.**
+
+---
+
+## 10. Follow-up: a coin toss is offered, and the live proof now runs at 5,000
+
+### Weakness 4 — a near-tie is no longer guessed
+
+Exact fuzzy ties already asked, but a *near* tie (0.94 vs 0.92) silently picked the
+winner. With two colleagues whose names differ by a letter — "Jon Smith" and
+"Jon Smyth", both seeded on purpose — that is a coin toss deciding who receives
+someone's recognition. A fuzzy winner must now beat the runner-up by a margin
+(`_FUZZY_MARGIN = 0.05`); everything inside the margin is offered as a choice.
+
+The margin is deliberately small. A real typo lands well clear of everyone else
+(0.10+), so this only catches genuine coin tosses — "Priya Niar" → Priya Nair still
+resolves outright, and the harness's 10/10 typo checks still pass.
+
+### Weakness 2 — the live transcript runs against the 5,000-person tenant
+
+`agent_live_transcript.py` was demo-only in two ways: the tenant was hardcoded, and so
+were the people ("Priya Nair", "Akhil Menon"). The second is exactly what this run's
+own rules forbid. It now **discovers its cast from the database** — a manager who
+actually has reports, two of those reports, and two people outside their team — so the
+same scenarios replay against any tenant:
+
+```bash
+python3 scripts/agent_live_transcript.py                  # demo tenant  → 15/15
+python3 scripts/agent_live_transcript.py --tenant scale   # 5,000 people → 15/15
+```
+
+Both pass with the real Gemini provider. On the 5,000-person run the randomly-chosen
+out-of-team recipient was **"Maximilian Alexander Fitzgerald-Montgomery III"** — a
+45-character five-part name, resolved and recognised without a hitch, which is a better
+test than anything I would have written by hand.
+
+Two things this flushed out:
+
+- **Cast selection has to avoid the deliberate duplicates.** The first run cast
+  "Priya Nair" (seeded three times) as both outsiders, so "do the same for X" exercised
+  the disambiguation path instead of the one under test. Discovery now prefers unique
+  names.
+- **The budget has to be reset per scenario, not per run.** Each turn costs several
+  metered LLM calls, so a full pass tripped the per-window ceiling partway through and
+  every later scenario "failed" with a budget refusal that looked exactly like a logic
+  bug. Nine assertions failed for that reason before I spotted it; run in isolation
+  they passed 3/3. Worth remembering when reading any failing live run.
+
+Transcripts: `LIVE_TRANSCRIPT.txt` (demo) and `LIVE_TRANSCRIPT_5000.txt` (scale).
+
+**Full suite 1628 passed. Harness 176/176 (seeds 1337/99/4242). Live 15/15 on both
+tenants.**

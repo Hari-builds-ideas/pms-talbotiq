@@ -307,3 +307,32 @@ into a long series of queries.
 - `docs/AGENT_REBUILD/REPORT.md` written, including six honest remaining weaknesses.
 
 **RUN COMPLETE.** Nothing merged to `main` or `hari/agent-ui-v2`.
+
+---
+
+## Follow-up 1 — recognition keeps the reason the user gave
+
+First of the documented weaknesses, fixed rather than left in the list.
+
+**Two causes.** The category must be a configured company value, so "for mentoring the
+new joiners" files under Teamwork and the note read "Recognised for Teamwork." — the
+reason discarded. Underneath that, the reason never reached the proposer at all: the
+planner's template `"give recognition to {s}"` expresses verb-plus-name and nothing
+else, so the message arrived as "give recognition to Ingrid Garcia".
+
+**Fix.** When the user's own message already names the subject, prefer it over the
+template — the template exists to *inject* a subject the message lacks (a resolved
+pronoun, a slot answer), not to replace a complete message. Single-action plans only: a
+multi-step ask names other people in the same string, and each step must stay pinned to
+its own subject. The reason is the clause after "for" unless that clause is just the
+person's name ("make a recognition for Ingrid Garcia"), and it becomes the note; the
+value is shown as what it's filed under. The note is DATA — stored verbatim, human
+approves first.
+
+Live: "Give Priya Nair recognition for mentoring the new joiners (filed under Teamwork)?"
+
+2 tests. Full suite **1626 passed**, harness **176/176**, live **15/15**.
+
+**RESUME HERE → remaining documented weaknesses in REPORT.md §7**, most valuable first:
+(2) a real-LLM run at larger scale, (4) near-duplicate typo handling, (6) more intent
+phrasings. None is blocking; the run's stated goals are all met.

@@ -5,7 +5,7 @@ SCENARIO: a check-in follow-up question actually gets answered
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open your performance check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
   [OK  ] the assistant asks for a mood
 
@@ -13,7 +13,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "192cc31b-ba6a-436c-b3fb-95fcd418c1dc", "step_id": "cd582917-63b8-4803-ad4b-9ac3ef6863c6", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "b1ca65ef-a54f-4e44-9d32-7a2b13795320", "step_id": "666ab516-6cd2-43e8-bbce-1e1fcffdd517", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -25,8 +25,8 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › give recognition to Priya Nair for her excellent work
-  assistant ‹ Plan to give recognition to Priya Nair.
-      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  assistant ‹ Give recognition to Priya Nair.
+      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note fi
   [OK  ] a new command abandons the pending question — action=give_recognition
 
   user  › start my check-in
@@ -61,10 +61,10 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › make a recognition for Priya Nair
-  assistant ‹ Plan to give recognition to Priya Nair.
+  assistant ‹ Give recognition to Priya Nair.
       · step: action=give_recognition feel=confirm | Give Priya Nair recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "3b4fc09e-67f2-4ea0-a694-6b6e3a920659", "step_id": "af9788a0-1d21-401a-a1cf-41e2508e5281", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "ba68d6b1-8a58-4104-ad13-665e9279b3d3", "step_id": "e5226f00-9245-4701-9d4f-11f1c295d47c", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
@@ -72,8 +72,8 @@ SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › give recognition to Priya Nair for mentoring the new joiners
-  assistant ‹ Plan to give recognition to Priya Nair.
-      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  assistant ‹ Give recognition to Priya Nair.
+      · step: action=give_recognition feel=confirm | Give Priya Nair recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit the 
 
   user  › do the same for Ingrid Garcia
   assistant ‹ Give Ingrid Garcia recognition for Teamwork? It posts to your team feed — edit the note first if you like.
@@ -86,12 +86,12 @@ SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › how is Akhil Menon doing this cycle?
-  assistant ‹ Akhil Menon is on track this cycle and keeping pace — no red flags. The weakest signal is “Roadmap features delivered” on “Ship the H1 platform roadmap”, at 90% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
+  assistant ‹ Akhil Menon is doing well this cycle, currently on track and keeping pace with his goals. While he's performing strongly across the board, the 'Roadmap features delivered' KPI for 'Ship the H1 platform roadmap' is at 90% of its target, making it a key area to focus on. Overall, Akhil is performing very well, and no immediate additional support appears to be needed.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 
   user  › compare Akhil Menon and Mei Patel
-  assistant ‹ Both Akhil Menon and Mei Patel are on track and keeping pace this cycle, with no red flags. Akhil shows slightly higher attainment across their shared goals, for instance, delivering 90% of roadmap features compared to Mei's 86%. For both, 'Roadmap features delivered' is the weakest signal, but neither appears to need extra help right now.
+  assistant ‹ Both Akhil Menon and Mei Patel are currently on track and keeping pace this cycle, showing no red flags. Akhil consistently demonstrates slightly higher attainment across their shared goals, for instance, delivering 90% of roadmap features compared to Mei's 86%. For both, the 'Roadmap features delivered' KPI on the 'Ship the H1 platform roadmap' goal is the primary area for focus. Overall, neither appears to require additional support at this time.
   [OK  ] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════

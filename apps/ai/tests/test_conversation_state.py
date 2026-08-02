@@ -263,3 +263,36 @@ def test_each_intent_routes_to_the_action_it_names(org, message, expected):
         assert expected in _actions(out), (
             f"{message!r} must route to {expected}, got {_actions(out)}"
         )
+
+
+# ── recognition keeps the reason the user actually gave ──────────────────────────
+
+
+@override_settings(**FAKE)
+def test_recognition_keeps_the_users_own_reason(org):
+    """The category has to be one of the configured company values, so "for mentoring
+    the new joiners" is filed under Teamwork. That must not throw the reason away: the
+    note is free text and should say what the person actually said."""
+    with tenant_context(org.tenant):
+        _name(org.peer, "Ingrid Garcia")
+        session = _session(org.manager)
+        out = _say(org.manager, session,
+                   "give recognition to Ingrid Garcia for mentoring the new joiners")
+        step = _steps(out)[0]
+        assert step.action == "give_recognition"
+        assert "mentoring the new joiners" in step.params["note"]
+        assert "mentoring the new joiners" in step.summary
+
+
+@override_settings(**FAKE)
+def test_recognition_without_a_reason_still_reads_sensibly(org):
+    """"make a recognition for Ingrid Garcia" — the clause after "for" is the NAME, not
+    a reason, and must not be echoed back as one."""
+    with tenant_context(org.tenant):
+        _name(org.peer, "Ingrid Garcia")
+        session = _session(org.manager)
+        out = _say(org.manager, session, "make a recognition for Ingrid Garcia")
+        step = _steps(out)[0]
+        assert step.action == "give_recognition"
+        assert "Recognised for Ingrid" not in step.params["note"]
+        assert step.params["note"] == "Recognised for Teamwork."

@@ -126,7 +126,7 @@ def _reason_for(action: str, proposal: dict) -> str:
 
 
 def _realize_step(user, session, action: str, subject: str, original: str, last_person: str,
-                  extra_context: str = ""):
+                  extra_context: str = "", prefer_original: bool = False):
     """Turn one planned (action, subject) into a realized proposal via the existing
     propose function — or ``None`` if the action is unknown / the caller lacks the
     capability / nothing actionable resolved. Returns ``(proposal_or_None, person_label)``.
@@ -157,6 +157,14 @@ def _realize_step(user, session, action: str, subject: str, original: str, last_
         subj = (getattr(person, "display_name", "") or "").strip() or last_person or ""
 
     message = _synth_message(action, subj, original)
+    # When the user's own message ALREADY names this subject, it beats the template:
+    # the template can only express "<verb> to <name>" and silently drops everything
+    # else, so "give recognition to Ingrid for mentoring the new joiners" reached the
+    # proposer as "give recognition to Ingrid" and the reason was lost. Only for
+    # single-action plans — in a multi-step ask the full message names other people
+    # too, and each step must stay pinned to its own subject.
+    if prefer_original and subj and subj.lower() in (original or "").lower():
+        message = original
     if extra_context:
         message = f"{message} {extra_context}".strip()
     proposal = spec["propose"](user, message)
@@ -278,7 +286,8 @@ def repeat_action(user, session, action: str, person_phrase: str, raw_message: s
     stays permission-scoped — repeating an action never repeats its *permissions*."""
     if action not in ACTIONS:
         return None
-    proposal, _ = _realize_step(user, session, action, person_phrase, raw_message, "")
+    proposal, _ = _realize_step(user, session, action, person_phrase, raw_message, "",
+                                prefer_original=True)
     if proposal is None:
         return None
     summary = proposal.get("summary", "Here's what I can set up for your approval.")
@@ -347,7 +356,10 @@ def build_plan(user, session, message: str) -> dict:
             continue
         action = (raw.get("action") or "").strip()
         subject = (raw.get("subject") or "").strip()
-        proposal, last_person = _realize_step(user, session, action, subject, message, last_person)
+        proposal, last_person = _realize_step(
+            user, session, action, subject, message, last_person,
+            prefer_original=(len(raw_steps) == 1),
+        )
         if proposal is None:
             omitted += 1
             continue

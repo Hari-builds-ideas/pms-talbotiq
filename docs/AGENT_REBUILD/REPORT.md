@@ -305,12 +305,9 @@ testing the old build (this cost me a confusing half hour).
 
 ## 7. Honest remaining weaknesses
 
-1. **Recognition loses the user's own wording.** "give recognition to Priya *for
-   mentoring the new joiners*" produces a card reading "for **Teamwork**" — the category
-   falls back to a default because "mentoring the new joiners" isn't one of the
-   configured company values, and the note is a generated sentence rather than the
-   user's. The human edits before approving, so nothing wrong is posted, but it is not
-   what they said. Worth fixing by carrying the free text into the note.
+1. ~~**Recognition loses the user's own wording.**~~ **Fixed** after the first draft of
+   this report — see §9. It now reads "Give Priya Nair recognition for *mentoring the
+   new joiners* (filed under Teamwork)?" and the posted note carries their words.
 2. **The scale harness uses the deterministic classifier, not Gemini.** That is
    deliberate — the routing under test is deterministic by design — but it means
    real-LLM behaviour is only proven at demo scale (215 people) via the live transcript,
@@ -347,3 +344,36 @@ testing the old build (this cost me a confusing half hour).
   `apps/ai/tests/test_person_resolution.py`, and this directory.
 - Deleted: `_named_candidates`, `_pick_named` and a legacy resolver copy in
   `apps/ai/agents/chat.py` — orphaned by the resolver unification.
+
+---
+
+## 9. Follow-up: recognition keeps the reason the user gave
+
+Weakness 1 above, fixed rather than left in the list.
+
+**Two causes, not one.** The category must be a configured company value, so "for
+mentoring the new joiners" can only ever be filed under Teamwork — correct for
+reporting, but the posted note then said "Recognised for Teamwork." and the reason was
+gone. Underneath that, the reason never even reached the proposer: the planner's
+template `"give recognition to {s}"` can only express verb-plus-name, so the message
+arrived as "give recognition to Ingrid Garcia" with everything after the name discarded.
+
+**The fix.** When the user's own message already names the subject, it beats the
+template — the template exists to *inject* a subject the message lacks (a resolved
+pronoun, a slot answer), not to replace a message that is already complete. Applied to
+single-action plans only: in a multi-step ask the full message names other people too,
+and each step must stay pinned to its own subject. The reason is then extracted as the
+clause after "for" (unless that clause is just the person's name, as in "make a
+recognition for Ingrid Garcia") and used as the note, with the value shown as the
+category it's filed under. The note is DATA — stored verbatim and approved by the human
+first, exactly like a note typed on the Recognition screen.
+
+Live, after the fix:
+
+```
+user      › give recognition to Priya Nair for mentoring the new joiners
+assistant ‹ Give Priya Nair recognition for mentoring the new joiners (filed under
+            Teamwork)? It posts to your team feed — edit the note first if you like.
+```
+
+Two tests added. **Full suite 1626 passed; harness still 176/176; live still 15/15.**

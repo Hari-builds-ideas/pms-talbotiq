@@ -608,6 +608,33 @@ def _extract_company_value(message: str):
     return None
 
 
+def _extract_recognition_reason(message: str, recipient) -> str:
+    """The user's OWN words for why they're recognising someone — the clause after
+    "for", when it isn't just the person's name.
+
+    The category has to be one of the configured company values, so "for mentoring the
+    new joiners" can only ever be filed under a value like Teamwork. That's correct for
+    reporting, but it meant the posted note said "Recognised for Teamwork." and the
+    reason the person actually gave was thrown away. The note is free text, so their
+    wording belongs there.
+
+    Returned as DATA: it is stored verbatim on the recognition (and the human approves
+    it first), exactly like a note typed into the Recognition screen — never
+    re-interpreted as an instruction.
+    """
+    text = (message or "").strip()
+    match = re.search(r"\bfor\s+(.+)$", text, re.I)
+    if not match:
+        return ""
+    reason = match.group(1).strip(" .!?,;")
+    # "make a recognition for Priya Nair" — the clause is the NAME, not a reason.
+    name_tokens = {t for t in re.findall(r"[^\W\d_]+", (getattr(recipient, "display_name", "") or "").lower())}
+    reason_tokens = {t for t in re.findall(r"[^\W\d_]+", reason.lower())}
+    if reason_tokens and reason_tokens <= name_tokens:
+        return ""
+    return reason[:400]
+
+
 def _propose_give_recognition(user, message):
     if not role_has_capability(user.role, Capability.GIVE_RECOGNITION):
         return None
@@ -624,15 +651,23 @@ def _propose_give_recognition(user, message):
     if recipient is None:
         return _clarify("Who would you like to recognise, and what for? Name a colleague.")
     value = _extract_company_value(message) or "Teamwork"  # a default the human can change
+    reason = _extract_recognition_reason(message, recipient)
+    note = f"Recognised for {reason}." if reason else f"Recognised for {value}."
     return {
         "action": "give_recognition",
         "feel": "confirm",
-        "summary": f"Give {_display(recipient)} recognition for {value}? It posts to your team feed — edit the note first if you like.",
-        "preview": [{"recipient": _display(recipient), "value": value}],
+        # Echo the person's OWN reason back in the summary when they gave one, so the
+        # card they approve says what they meant rather than only the value bucket.
+        "summary": (f"Give {_display(recipient)} recognition for {reason} (filed under {value})? "
+                    "It posts to your team feed — edit the note first if you like."
+                    if reason else
+                    f"Give {_display(recipient)} recognition for {value}? "
+                    "It posts to your team feed — edit the note first if you like."),
+        "preview": [{"recipient": _display(recipient), "value": value, "reason": reason}],
         "params": {
             "recipient_user_id": str(recipient.id),
             "category": value,
-            "note": f"Recognised for {value}.",  # a clean default note; the human edits/approves
+            "note": note,  # the human edits/approves before anything posts
         },
     }
 

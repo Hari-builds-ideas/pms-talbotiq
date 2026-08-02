@@ -237,7 +237,16 @@ _SELF_REF_RE = re.compile(r"\b(my|mine|myself|i|me|i'm)\b", re.I)
 #: "my goals AND X's" mixed query. Excludes bare "me"/"i" so "show me X's goals"
 #: (where "me" is the indirect object, not a claim on the caller's own data) is NOT
 #: mistaken for a self-reference.
-_SELF_MINE_RE = re.compile(r"\b(my|mine|my\s+own)\b", re.I)
+#:
+#: "my <person>" is also excluded. "my manager is off sick, is X at risk?" claims
+#: nothing about the caller's OWN performance — but a bare "my" made it a mixed
+#: self+other query, so the reply opened with the caller's own risk and pace when they
+#: had asked about somebody else entirely.
+_SELF_MINE_RE = re.compile(
+    r"\b(?:my|mine|my\s+own)\b(?!\s+(?:manager|managers|boss|lead|leads|team|teams|"
+    r"report|reports|colleague|colleagues|peer|peers|director|hrbp|skip|mentor)\b)",
+    re.I,
+)
 
 #: An EXPLICIT request for the raw goal LIST ("show/list my goals", "what are my
 #: goals"). Only these get the flat title list; everything else about a person

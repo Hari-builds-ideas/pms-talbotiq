@@ -261,7 +261,6 @@ class Command(BaseCommand):
         used = set(edge)
 
         nf, nl = len(FIRST_NAMES), len(LAST_NAMES)
-        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         i = 0
         while len(names) < headcount:
             # (first, last) must be a BIJECTION over i, not merely "spread out". An
@@ -274,12 +273,23 @@ class Command(BaseCommand):
             first = FIRST_NAMES[i % nf]
             last = LAST_NAMES[(i // nf + i % nf) % nl]
             candidate = f"{first} {last}"
-            initial = 0
+            # Beyond nf × nl people the pairs run out. The fallback used to be a middle
+            # initial ("Aarav A. Sharma"), which is unique but sits a hair away from
+            # "Aarav Sharma" — so at 25,000 people almost everyone had a near-twin, and
+            # the harness's typo check (which must skip near-twins, since a typo
+            # legitimately lands on the closer name) ended up covering NOTHING.
+            #
+            # A hyphenated second surname is unique AND well separated: a typo of
+            # "Aarav Sharma-Chen" still lands clearly on it rather than on "Aarav
+            # Sharma". Deliberate near-duplicates stay the job of EDGE_NAMES, where
+            # they're visible and intentional.
+            extra = 0
             while candidate in used:
-                candidate = f"{first} {alphabet[initial % 26]}. {last}"
-                if initial >= 26:  # exhausted single initials — add a second one
-                    candidate = f"{first} {alphabet[initial % 26]}.{alphabet[(initial // 26) % 26]}. {last}"
-                initial += 1
+                second = LAST_NAMES[(i // nf + i % nf + 1 + extra) % nl]
+                candidate = f"{first} {last}-{second}" if second != last else candidate
+                extra += 1
+                if extra > nl:  # pathological: fall back to a distinguishing initial
+                    candidate = f"{first} {chr(65 + extra % 26)}. {last}"
             used.add(candidate)
             names.append(candidate)
             i += 1

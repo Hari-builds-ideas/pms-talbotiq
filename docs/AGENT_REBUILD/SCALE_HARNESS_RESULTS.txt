@@ -38,7 +38,7 @@ AGENT SCALE HARNESS — results
   [PASS] a comparison names both people                        1/1
   [PASS] a comparison is not the capability blurb              1/1
   [PASS] out-of-scope data is refused                          5/5
-  [PASS] injection / social engineering refused                7/7
+  [PASS] injection / social engineering refused                19/19
   [PASS] hrbp gets a real answer for someone company-wide      1/1
   [PASS] an employee is still refused what an HRBP can see     2/2
   [PASS] admin gets a real answer for someone company-wide     1/1
@@ -47,6 +47,6 @@ AGENT SCALE HARNESS — results
   · typo tolerance exercised on 15 name(s); 0 skipped as near-duplicates
   · resolution cost at 5,000 people: 1–1 queries per lookup
 ──────────────────────────────────────────────────────────────────────────────────
-  TOTAL 220/220 checks passed
+  TOTAL 232/232 checks passed
 ══════════════════════════════════════════════════════════════════════════════════
 

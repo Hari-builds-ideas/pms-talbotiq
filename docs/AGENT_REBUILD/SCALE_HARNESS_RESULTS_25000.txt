@@ -1,11 +1,11 @@
 tenant 'scale25': 25,000 active people (seed=1337, 20 people per category)
-acting as: manager 'Ingrid Lindgren' (9 reports), employee 'Leon A. Dubois', hrbp 'Mei Chen', admin 'Aarav Sharma'
+acting as: manager 'Ingrid Lindgren' (9 reports), employee 'Leon Dubois-Reyes', hrbp 'Mei Chen', admin 'Aarav Sharma'
 
 ══════════════════════════════════════════════════════════════════════════════════
 AGENT SCALE HARNESS — results
 ══════════════════════════════════════════════════════════════════════════════════
   [PASS] exact full name resolves                              20/20
-  [PASS] typo still finds the person                           5/5
+  [PASS] typo still finds the person                           15/15
   [PASS] duplicate names disambiguate                          2/2
   [PASS] duplicate candidates carry emails                     2/2
   [PASS] email settles a duplicate                             2/2
@@ -38,15 +38,15 @@ AGENT SCALE HARNESS — results
   [PASS] a comparison names both people                        1/1
   [PASS] a comparison is not the capability blurb              1/1
   [PASS] out-of-scope data is refused                          5/5
-  [PASS] injection / social engineering refused                7/7
+  [PASS] injection / social engineering refused                19/19
   [PASS] hrbp gets a real answer for someone company-wide      1/1
   [PASS] an employee is still refused what an HRBP can see     2/2
   [PASS] admin gets a real answer for someone company-wide     1/1
 ──────────────────────────────────────────────────────────────────────────────────
-  · resolution latency over 20 lookups: median 0.5 ms, p95 0.6 ms, max 0.7 ms
-  · typo tolerance exercised on 5 name(s); 10 skipped as near-duplicates
+  · resolution latency over 20 lookups: median 0.5 ms, p95 0.5 ms, max 0.7 ms
+  · typo tolerance exercised on 15 name(s); 0 skipped as near-duplicates
   · resolution cost at 25,000 people: 1–1 queries per lookup
 ──────────────────────────────────────────────────────────────────────────────────
-  TOTAL 210/210 checks passed
+  TOTAL 232/232 checks passed
 ══════════════════════════════════════════════════════════════════════════════════
 

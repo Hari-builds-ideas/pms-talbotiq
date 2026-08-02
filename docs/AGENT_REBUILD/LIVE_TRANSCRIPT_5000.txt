@@ -8,7 +8,7 @@ SCENARIO: a check-in follow-up question actually gets answered
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
   [OK  ] the assistant asks for a mood
 
@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "12f11f87-1b1e-4b0e-9cdb-4735400e1da3", "step_id": "60438a40-2003-443f-beff-ab31481a86da", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "6ce58d53-13af-4533-a44d-bcd2ef432652", "step_id": "48201c3c-3982-47e1-958c-3d552874b370", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -24,11 +24,11 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › give recognition to Aarav Sharma for her excellent work
-  assistant ‹ Give recognition to Aarav Sharma.
+  assistant ‹ Plan to give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note 
   [OK  ] a new command abandons the pending question — action=give_recognition
 
@@ -46,7 +46,7 @@ SCENARIO: a nonsense answer is explained once, then let go
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › banana
@@ -67,7 +67,7 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   assistant ‹ Plan to give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "cca00820-0413-45fd-99b0-c81093b39d78", "step_id": "505876ae-9153-4f66-92c4-f0f203069b9c", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "01b32fb3-9238-42c1-ad5c-0eced153b80d", "step_id": "aac7a8d7-d661-46ba-93d2-f4940f841668", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
@@ -89,7 +89,7 @@ SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › how is Lena Oyelaran doing this cycle?
-  assistant ‹ Lena Oyelaran is currently flagged as 'At risk' and is behind pace this cycle. Her 'Attainment' for 'Operations objective 5' is at 55% of its target, indicating this is the primary area needing attention. It appears Lena would benefit from support to improve performance on this objective.
+  assistant ‹ Lena Oyelaran is currently flagged as 'At risk' and is behind pace this cycle. Her 'Operations objective 5' is a key area, with the 'Attainment' KPI at 55% of its 100% target. This indicates a need for support to help her get back on track with this important goal.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 

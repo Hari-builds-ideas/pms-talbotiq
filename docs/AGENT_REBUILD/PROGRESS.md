@@ -439,3 +439,64 @@ Full suite **1628 passed**.
 and 5, both deliberate design choices (retired audit-referenced users; the one-retry
 budget). Further iterations would be polish: more phrasings, more injection probes, or a
 larger fixture name pool so typo coverage is full at 25,000+ rather than partial.
+
+---
+
+## Follow-up 5 — full typo coverage at 25,000, and four scale-only resolver bugs
+
+**Fixture.** The collision fallback was a middle initial ("Aarav A. Sharma"), unique but
+a hair from "Aarav Sharma" — so at 25,000 people almost everyone had a near-twin and the
+typo check (which must skip near-twins) covered nothing. It's now a hyphenated second
+surname ("Theo Kim-Muller"): unique AND well separated. Near-duplicate families dropped
+from ~20,000 people to **5** — only the deliberate EDGE_NAMES ones. Typo coverage is now
+15/15 at both sizes.
+
+**Injection probes** widened from 7 to 19, grouped by the trick each tries: instruction
+override, false authority, social engineering, role-play, exfiltration framing,
+destructive, code/markup injection, and an instruction hidden inside a data field.
+
+**Four resolver bugs, all invisible below ~10,000 people:**
+
+1. **Truncated token scans biased the winner.** Per-token scoring is only sound while no
+   token's match set is truncated; at 25,000 ~500 share a forename, past the cap, so
+   "Ibrahim Kaminski-Mancini" could miss its own "ibrahim" credit and lose to "Ibrahim
+   Kaminski" — decided by arbitrary row order. Replaced by a SQL intersection tier
+   (match all the words of a typed name at once, then drop words from the end), which
+   returns a handful of rows and needs no cap.
+2. **A surname-only fragment picked a different person.** The first version intersected
+   *adjacent pairs*, which for a three-word query includes the surname pair — so "how is
+   Lucia Dubois-Reyes doing?" resolved to the caller, who was "Leon Dubois-Reyes". Subsets
+   are now always a PREFIX, anchoring the forename.
+3. **A subset of the typed name counted as an exact match.** The stop-word bigram of
+   "Ibrahim Kaminski-Manciin" is "ibrahim kaminski", which exactly matched a shorter
+   colleague and won outright in tier 1. Bigrams are now only offered when the name IS
+   two words.
+4. **Similarity normalised one side only.** The candidate lost its hyphens, the query
+   kept them, so a typo scored better against the shorter name than the person meant.
+
+**Two more, found in the same pass:**
+- The probe budget was consumed by junk spans ("but tell", "nothing but tell") before
+  reaching the real name. Spans containing a capitalised word are tried first; wholly
+  lowercase input is unaffected.
+- **`_SELF_MINE_RE` treated "my manager" as a claim on the caller's own data**, so
+  "my manager is off sick, is X at risk?" opened with the CALLER's risk and pace. "my"
+  followed by a person-noun no longer counts as self-reference.
+
+**The full-name requirement is now data-driven.** The first attempt returned early
+whenever ≥2 significant tokens were typed, which broke five comparison tests — "compare"
+counted as a name word. It now asks the directory which typed words are actually
+somebody's name (one bounded probe each, identity only): "compare" belongs to nobody,
+"Lucia" belongs to someone. A stop-list would have to guess, and guessing wrong breaks it
+in both directions.
+
+**Also worth recording:** a full-suite run killed mid-flight left the reused test database
+corrupt, and the next run reported 176 failures / 679 errors that had nothing to do with
+the code. `pytest --create-db` restored it. Don't debug a mass failure without ruling
+that out first.
+
+4 regression tests added (31 in `test_person_resolution.py`).
+Full suite **1628 passed**; harness **232/232 at BOTH 5,000 and 25,000**; live **15/15**
+on all three tenants.
+
+**RESUME HERE → nothing outstanding.** REPORT.md §7 leaves items 3 and 5, both deliberate
+design choices. Further work is optional polish.

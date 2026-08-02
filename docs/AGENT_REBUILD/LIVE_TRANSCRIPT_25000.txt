@@ -1,5 +1,5 @@
 tenant 'scale25' · acting as Theo Nair <p100@scale25.test>
-  in scope:     Saanvi A. Garcia, Saanvi B. Dvorak
+  in scope:     Saanvi Garcia-Kim, Saanvi Dvorak-Falconer
   out of team:  Aarav Sharma, Mei Chen
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -8,7 +8,7 @@ SCENARIO: a check-in follow-up question actually gets answered
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open your check-in.
+  assistant ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
   [OK  ] the assistant asks for a mood
 
@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "59987dd8-8641-46d8-9046-28d9841ea93d", "step_id": "930e6c6c-d263-4355-b78f-b52eeaf71430", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      approve → {"plan_id": "b9f9f8bc-b61c-47f5-a17a-55eeb7197f60", "step_id": "8ea6a42a-debf-4713-9d63-746cab09ab74", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -24,7 +24,7 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › start my check-in
-  assistant ‹ Open the user's check-in.
+  assistant ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   user  › give recognition to Aarav Sharma for her excellent work
@@ -67,7 +67,7 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   assistant ‹ Plan to give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "296618f1-7426-4f45-b1ce-e3e27a2b0f77", "step_id": "d56602f4-9e7d-4bf3-aae1-b9e6fe781bf4", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      approve → {"plan_id": "2ac3d822-10d2-427b-8266-0ce7dc9c2100", "step_id": "b99bdeed-f25e-4423-a0b5-56e80824bff0", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
@@ -75,7 +75,7 @@ SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › give recognition to Aarav Sharma for mentoring the new joiners
-  assistant ‹ Plan to give recognition to Aarav Sharma.
+  assistant ‹ Give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit th
 
   user  › do the same for Mei Chen
@@ -88,13 +88,13 @@ SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
 SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Saanvi A. Garcia doing this cycle?
-  assistant ‹ Saanvi A. Garcia is on track this cycle and keeping pace — no red flags. The weakest signal is “Attainment” on “Operations objective 5”, at 80% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
+  user  › how is Saanvi Garcia-Kim doing this cycle?
+  assistant ‹ Saanvi Garcia-Kim is on track and keeping pace this cycle, with no red flags. Her "Attainment" for "Operations objective 5" is currently at 80% of its target, which is the main area to focus on. Overall, no additional support appears to be needed right now.
   [OK  ] not the capability blurb
   [OK  ] names the person asked about
 
-  user  › compare Saanvi A. Garcia and Saanvi B. Dvorak
-  assistant ‹ Saanvi B. Dvorak is flagged at risk and behind pace. The weakest signal is “Attainment” on “Operations objective 6”, at 55% of target — that's the goal to focus on. Yes — Saanvi B. Dvorak likely needs support here. I can't share Saanvi Garcia's though — they're outside your access.
+  user  › compare Saanvi Garcia-Kim and Saanvi Dvorak-Falconer
+  assistant ‹ Saanvi Garcia-Kim is currently on track and keeping pace, with her 'Operations objective 5' at 80% attainment. In contrast, Saanvi Dvorak-Falconer is flagged at risk and behind pace, with her 'Operations objective 6' at 55% attainment. While Saanvi Garcia-Kim appears to need no immediate extra help, Saanvi Dvorak-Falconer's progress suggests support would be beneficial for her objective.
   [OK  ] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════
@@ -102,7 +102,7 @@ SCENARIO: directory-wide actions, but data stays permission-scoped
 ══════════════════════════════════════════════════════════════════════════════
 
   user  › how is Aarav Sharma doing?
-  assistant ‹ You don't have access to Aarav Sharma's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Saanvi A. Garcia, Saanvi A. Radcliffe, Saanvi Aziz, Saanvi B. Donnelly, Saanvi B. Dvorak, Saanvi C. Haugen, Saanvi C. Ortega, Saanvi C. Yamamoto.
+  assistant ‹ You don't have access to Aarav Sharma's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Saanvi Aziz, Saanvi Donnelly-Freeman, Saanvi Dvorak-Falconer, Saanvi Garcia-Kim, Saanvi Haugen-Oyelaran, Saanvi Ortega-Steinberg, Saanvi Radcliffe-Sandoval, Saanvi Yamamoto-Ivanov.
   [OK  ] out-of-scope performance data is refused — honest refusal
 
 ══════════════════════════════════════════════════════════════════════════════

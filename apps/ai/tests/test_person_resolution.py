@@ -351,3 +351,64 @@ def test_a_clear_typo_still_resolves_without_asking(org):
                     email="bart@acme.test", manager=org.hrbp)
         got = resolve_person_in_population(org.manager, "give recognition to Priya Niar")
         assert got is not None and got is not AMBIGUOUS and got.id == target.id
+
+
+# ── bugs the 25,000-person harness found (all four are scale-only) ───────────────
+
+
+def test_a_subset_of_the_typed_name_is_not_an_exact_match(org):
+    """Typing three name-words must not "exactly" match a two-word colleague. The
+    stop-word bigram of "Ibrahim Kaminski-Mancini" is "ibrahim kaminski", which matched
+    a DIFFERENT, shorter person outright and beat the person actually meant."""
+    with tenant_context(org.tenant):
+        target = _name(org.peer, "Ibrahim Kaminski-Mancini")
+        UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Ibrahim Kaminski",
+                    email="ibrahim.k@acme.test", manager=org.hrbp)
+        got = resolve_person_in_population(org.manager, "give recognition to Ibrahim Kaminski-Manciin")
+        assert got is not None and got is not AMBIGUOUS and got.id == target.id
+
+
+def test_a_surname_only_fragment_never_picks_a_different_person(org):
+    """"how is Lucia Dubois-Reyes doing?" must not resolve to a colleague who merely
+    shares the surname — even when they're the only Dubois-Reyes the caller can see.
+    Candidate word-sets are anchored on the FORENAME for exactly this reason."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Leon Dubois-Reyes")     # in the manager's team
+        other = UserFactory(tenant=org.tenant, role="EMPLOYEE", manager=org.hrbp,
+                            display_name="Lucia Dubois-Reyes", email="lucia.dr@acme.test")
+        visible = {org.manager.id, org.report.id}
+
+        scoped = resolve_person_in_population(
+            org.manager, "how is Lucia Dubois-Reyes doing?", population_ids=visible,
+            exclude_self=False, allow_fuzzy=False, require_full_name=True)
+        assert scoped is None, "the surname alone must not carry the match to Leon"
+
+        anywhere = resolve_person_in_population(
+            org.manager, "how is Lucia Dubois-Reyes doing?", exclude_self=False,
+            allow_fuzzy=False, require_full_name=True)
+        assert anywhere is not None and anywhere.id == other.id
+
+
+def test_query_vocabulary_is_not_mistaken_for_a_name(org):
+    """The full-name requirement is data-driven, not a word list: "compare" belongs to
+    nobody, so it can't be treated as part of the name and block the lookup. A stop-list
+    would have to guess, and guessing wrong breaks this in both directions."""
+    with tenant_context(org.tenant):
+        target = _name(org.report, "Ingrid Garcia")
+        got = resolve_person_in_population(
+            org.manager, "compare Ingrid Garcia", population_ids={org.manager.id, org.report.id},
+            exclude_self=False, allow_fuzzy=False, require_full_name=True)
+        assert got is not None and got is not AMBIGUOUS and got.id == target.id
+
+
+def test_a_hyphen_does_not_decide_which_person_is_meant(org):
+    """Similarity compares like with like. Normalising only the candidate's punctuation
+    scored a typo better against a shorter name than against the person meant."""
+    from apps.ai.directory import _normalised, _similarity
+
+    with tenant_context(org.tenant):
+        target = _name(org.peer, "Hugo Haddad-Andersen")
+        shorter = UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Hugo Haddad",
+                              email="hugo.h@acme.test", manager=org.hrbp)
+        query = _normalised("hugo haddad-andersne")
+        assert _similarity(query, target) > _similarity(query, shorter)

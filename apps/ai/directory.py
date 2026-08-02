@@ -38,8 +38,13 @@ import re
 #: Sentinel: the name matched more than one real person → the caller must pick.
 AMBIGUOUS = object()
 
-#: Cap on rows pulled per partial/fuzzy query — bounds work at any headcount.
-_MAX_SCAN = 400
+#: Cap on rows pulled per single-token / fuzzy query — bounds work at any headcount.
+#: Sized above the largest realistic same-first-name cohort: at 50,000 people sharing
+#: 50 forenames that is ~1,000, and a truncated cohort silently distorts ranking (see
+#: the adjacent-pair tier). Ranking a few thousand names with difflib is a couple of
+#: milliseconds, so the headroom is cheap; the pair tier keeps the common case at one
+#: small query regardless.
+_MAX_SCAN = 3000
 #: Most candidates we ever surface in a disambiguation.
 _MAX_CANDIDATES = 8
 #: difflib ratio a fuzzy full-name match must clear (typo tolerance, not loose).
@@ -89,6 +94,13 @@ _MAX_NAME_WORDS = 6
 #: Ceiling on exact-tier phrase probes, so a rambling message can't turn into a long
 #: series of queries. Bounds the cost of a turn regardless of what the user types.
 _MAX_EXACT_PROBES = 8
+
+#: Ceiling on adjacent-pair intersection probes — same reasoning, and a name is one
+#: adjacent pair, so a long message needs no more than a few tries to find it.
+_MAX_PAIR_PROBES = 8
+
+#: How far ahead of the runner-up a candidate must be to be chosen rather than offered.
+_TIEBREAK_MARGIN = 0.08
 
 
 def _name_tokens(message: str) -> list[str]:
@@ -144,6 +156,71 @@ def _name_spans(message: str) -> list[str]:
             # so emit short trailing windows instead.
             spans.extend(" ".join(words[-n:]) for n in (2, 3, 4))
     return [s for s in dict.fromkeys(spans) if s]
+
+
+def _tenant_name_tokens(tokens) -> set:
+    """Of ``tokens``, the ones that appear in SOME active person's name in this tenant.
+
+    Tells a name apart from query vocabulary using the directory itself rather than a
+    word list — "compare" belongs to nobody, "Lucia" belongs to someone. One bounded
+    LIMIT-1 probe per token; identity only, and it reads nothing but display names, so
+    it can't widen access. Tenant-scoped by the manager, so it never sees another
+    tenant's names.
+    """
+    from apps.identity.models import User
+
+    real = set()
+    for tok in list(tokens)[:_MAX_PAIR_PROBES]:
+        if User.objects.filter(is_active=True, display_name__icontains=tok).exists():
+            real.add(tok)
+    return real
+
+
+def _prioritised_spans(message: str) -> list[str]:
+    """Name-shaped runs, with the ones containing a CAPITALISED word first.
+
+    The probe budget is finite, and a rambling message produces junk runs ("but tell",
+    "nothing but tell") that can consume it before the real name is reached — which is
+    how "…tell me Lucia Dubois-Reyes's real risk status" ended up resolving nobody and
+    then answering about the caller instead. A typed name is usually capitalised, so
+    that is a cheap, order-preserving way to look in the right place first. Wholly
+    lowercase input is unaffected: nothing is capitalised, so the order is unchanged.
+    """
+    spans = _name_spans(message)
+    return sorted(spans, key=lambda s: 0 if any(w[:1].isupper() for w in s.split()) else 1)
+
+
+def _matches_all(user, toks) -> bool:
+    """Every token appears in the user's name at a WORD BOUNDARY. `icontains` alone
+    would let "ann" match "Joanna"; the boundary check is what makes a token a name
+    part rather than a substring."""
+    name_l = (user.display_name or "").lower()
+    return all(re.search(rf"\b{re.escape(t)}", name_l) for t in toks)
+
+
+def _normalised(text: str) -> str:
+    """Lowercase words separated by single spaces — hyphens and punctuation split, not
+    kept. Both sides of every similarity comparison go through this, so a hyphen can
+    never decide which person the user meant."""
+    return " ".join(re.findall(r"[^\W\d_]+", (text or "").lower(), re.UNICODE))
+
+
+def _similarity(query: str, user) -> float:
+    """How close a candidate's name is to what the user typed — both sides already
+    reduced by :func:`_normalised`."""
+    return difflib.SequenceMatcher(None, query, _normalised(user.display_name or "")).ratio()
+
+
+def _best_of(users, query: str):
+    """One candidate, or :data:`AMBIGUOUS`. A single hit wins; several are separated by
+    similarity to what was typed, and only a CLEAR winner is taken — otherwise the
+    caller asks, because picking between two near-identical names is a coin toss."""
+    if len(users) == 1:
+        return users[0]
+    rated = sorted(((_similarity(query, u), u) for u in users), key=lambda p: p[0], reverse=True)
+    if rated[0][0] >= 0.72 and rated[0][0] - rated[1][0] >= _TIEBREAK_MARGIN:
+        return rated[0][1]
+    return _one_or_ambiguous([u for _, u in rated[: _MAX_CANDIDATES + 1]])
 
 
 def _one_or_ambiguous(users):
@@ -224,7 +301,14 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     # DIFFERENT colleague of that name, and the union of the two is an ambiguity the
     # user never created. Only a phrase matching two people is a real ambiguity.
     phrases = _name_spans(message)
-    phrases += [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
+    if len(tokens) == 2:
+        # Adjacent bigrams catch a two-part name split by filler ("recognise Priya, our
+        # Nair"). They are only offered when the name IS two words, because a bigram of a
+        # LONGER name is a proper subset of what the user typed — and a subset must never
+        # count as an exact match. "Ibrahim Kaminski-Manciin" (a typo of
+        # "Ibrahim Kaminski-Mancini") reduced to the bigram "ibrahim kaminski", which
+        # exactly matched a DIFFERENT, shorter colleague and won outright.
+        phrases += [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
     if len(tokens) >= 2:
         phrases.append(" ".join(tokens))  # whole cleaned phrase (3-part names, etc.)
     for phrase in list(dict.fromkeys(phrases))[:_MAX_EXACT_PROBES]:  # de-dup, keep order, bound
@@ -232,53 +316,81 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
         if hits:
             return _one_or_ambiguous(hits)
 
-    # A multi-word name the user actually typed ("Hugo O'Brien"), if any. Under
-    # `require_full_name` every one of its words must appear in a candidate's name,
-    # so a surname alone can't carry a match to the wrong person.
-    required = []
-    if require_full_name:
-        for span in _name_spans(message):
-            span_tokens = _name_tokens(span)
-            if 2 <= len(span_tokens) <= _MAX_NAME_WORDS:
-                required = span_tokens
-                break
+    # The comparison form: words only, hyphens split, so query and candidate are
+    # reduced the SAME way. Normalising only one side distorted the score — the query
+    # "ibrahim kaminski-manciin" kept its hyphen while candidates lost theirs, and the
+    # typo scored better against the shorter "Ibrahim Kaminski" than against the person
+    # actually meant.
+    query = _normalised(" ".join(tokens))
+    significant = [t for t in dict.fromkeys(tokens) if len(t) >= 3]
 
-    # ── TIER 2 & 3: token-overlap ranking. Each distinctive token runs ONE indexed
-    # icontains (capped); a user scores per name-token they match on a word boundary.
-    # The highest-scoring users win — so "priya nair" (both tokens) beats a lone
-    # "priya", and a single "mateo" still resolves. ─────────────────────────────────
+    # ── TIER 2: NAME INTERSECTION. For each name-shaped run the user typed, ask the
+    # database for people matching ALL of its words at once, then — if nobody does —
+    # progressively drop words from the END, which is where typos usually are.
+    #
+    # It intersects in SQL rather than scoring per token in Python, because per-token
+    # scoring is only sound while no token's match set is truncated. At 25,000 people
+    # ~500 share a forename, past the scan cap, so "Ibrahim Kaminski-Mancini" could miss
+    # its own "ibrahim" credit, score 1 instead of 2, and lose to "Ibrahim Kaminski"
+    # which happened to fall inside the cap — the winner decided by arbitrary row order.
+    # An intersection returns a handful of rows and needs no cap at all.
+    #
+    # The FORENAME stays anchored: subsets are always a prefix of the run, never a
+    # trailing fragment. Matching on surnames alone put "how is Lucia Dubois-Reyes
+    # doing?" onto a *different* Dubois-Reyes — the same mistake as answering about
+    # "Hana O'Brien" when asked about "Hugo O'Brien".
+    probes = 0
+    for span in _prioritised_spans(message):
+        span_tokens = [t for t in _name_tokens(span) if len(t) >= 3]
+        if len(span_tokens) < 2:
+            continue  # a single word is tier 3's job
+        # Never more than a plausible name's worth of words: a 5-word run is prose with
+        # a name inside it, and probing all five just burns the budget. Exact long names
+        # are tier 1's job anyway.
+        for keep in range(min(len(span_tokens), 4), 1, -1):
+            if probes >= _MAX_PAIR_PROBES:
+                break
+            subset = span_tokens[:keep]
+            probes += 1
+            qs = base
+            for tok in subset:
+                qs = qs.filter(display_name__icontains=tok)
+            hits = [u for u in qs[: _MAX_CANDIDATES + 1] if _matches_all(u, subset)]
+            if hits:
+                return _best_of(hits, query)
+
+    # Which of the typed words are actually SOMEBODY'S NAME, asked of the whole tenant.
+    # This has to be data-driven: a stop-list can't know that "compare" is query
+    # vocabulary while "Lucia" is a person, and guessing wrong breaks it both ways —
+    # treating "compare" as a name blocks "compare Ingrid Garcia and Lucas Schmidt",
+    # and ignoring the forename lets "Lucia Dubois-Reyes" match a different
+    # "… Dubois-Reyes". Identity only, and only on the data path.
+    required = _tenant_name_tokens(significant) if require_full_name else set()
+    if len(required) < 2:
+        required = set()
+
+    # ── TIER 3: single distinctive token ("mateo" → Mateo Santos). One indexed
+    # icontains, capped; several genuine matches stay ambiguous. ─────────────────────
     scored: dict = {}
-    for tok in dict.fromkeys(tokens):  # de-dup, keep order
-        if len(tok) < 3:
-            continue
+    for tok in significant:
         for u in base.filter(display_name__icontains=tok)[:_MAX_SCAN]:
-            name_l = (u.display_name or "").lower()
-            if re.search(rf"\b{re.escape(tok)}", name_l):
+            if _matches_all(u, (tok,)):
                 count, _ = scored.get(u.id, (0, u))
                 scored[u.id] = (count + 1, u)
-    query = " ".join(tokens)
     if required:
-        scored = {
-            uid: (count, u) for uid, (count, u) in scored.items()
-            if all(re.search(rf"\b{re.escape(t)}", (u.display_name or "").lower()) for t in required)
-        }
+        # A typed full name must match in full. Dropping a word here is how a manager
+        # asking about "Hugo O'Brien" got told about "Hana O'Brien" on their own team.
+        scored = {uid: (c, u) for uid, (c, u) in scored.items() if _matches_all(u, required)}
     if scored:
         best = max(count for count, _ in scored.values())
         top = [u for count, u in scored.values() if count == best]
         if len(top) == 1:
             return top[0]
-        # Several tied on token-count. If the user NAMED a full person (≥2 tokens),
-        # break the tie by fuzzy similarity to the whole query and accept ONLY a clear
-        # winner — so "mateo santoss" picks Mateo Santos over Mateo Okafor, but a bare
-        # "priya" (one token, 7 real Priyas) stays genuinely AMBIGUOUS.
+        # Several tied. When the user NAMED a full person (≥2 tokens) a clear closest
+        # match is taken — "mateo santoss" picks Mateo Santos over Mateo Okafor — but a
+        # bare "priya" with several real Priyas stays genuinely AMBIGUOUS.
         if len(tokens) >= 2:
-            rated = sorted(
-                ((difflib.SequenceMatcher(None, query, (u.display_name or "").lower()).ratio(), u) for u in top),
-                key=lambda t: t[0],
-                reverse=True,
-            )
-            if rated[0][0] >= 0.72 and rated[0][0] - rated[1][0] >= 0.08:
-                return rated[0][1]
+            return _best_of(top, query)
         return _one_or_ambiguous(top[: _MAX_CANDIDATES + 1])
 
     # ── TIER 4: fuzzy full name (typo tolerance), bounded. Names CONTAINING a
@@ -295,12 +407,8 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
             continue
         for u in base.filter(display_name__icontains=tok[:3])[:_MAX_SCAN]:
             pool[u.id] = u
-    rated = sorted(
-        ((difflib.SequenceMatcher(None, query, (u.display_name or "").lower()).ratio(), u)
-         for u in pool.values()),
-        key=lambda pair: pair[0],
-        reverse=True,
-    )
+    rated = sorted(((_similarity(query, u), u) for u in pool.values()),
+                   key=lambda pair: pair[0], reverse=True)
     if not rated or rated[0][0] < _FUZZY_MIN:
         return None
     # A guess is only a guess worth acting on when it's CLEARLY better than the next

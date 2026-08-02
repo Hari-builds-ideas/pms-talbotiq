@@ -1,10 +1,10 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed, plus follow-ups (§9–§12). Backend
-suite **1628 passed**, scale harness **220/220 at 5,000** and **210/210 at 25,000**
-people, live HTTP transcript **15/15 on all three tenants** (demo, 5,000, 25,000) with
-the real Gemini provider.
+**Status:** all five build files executed, plus follow-ups (§9–§13). Backend
+suite **1628 passed**, scale harness **232/232 at BOTH 5,000 and 25,000** people, live
+HTTP transcript **15/15 on all three tenants** (demo, 5,000, 25,000) with the real
+Gemini provider.
 
 Evidence files next to this one:
 - `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` — real conversations over HTTP,
@@ -500,3 +500,59 @@ Also fixed: the fixture put the deliberately-triplicated "Priya Nair" at index 0
 **admin account was one of three people with that name** and every harness line printing
 the actor read like a bug. Leadership slots now get ordinary generated names and the
 edge cases start after them.
+
+---
+
+## 13. Follow-up: four resolver bugs that only appear above ~10,000 people
+
+§12 restored the typo category at 25,000 by giving the fixture realistic distinct names
+(a hyphenated second surname rather than a middle initial, which sat a hair from the base
+name). With that category actually running, it failed — and the failures were real.
+
+1. **Truncated token scans decided the winner by row order.** Scoring a candidate per
+   matched token is only sound while no token's match set is cut off. At 25,000 people
+   ~500 share a forename, past the scan cap, so "Ibrahim Kaminski-Mancini" could miss its
+   own forename credit, score 1 instead of 2, and lose to "Ibrahim Kaminski" — which
+   happened to fall inside the cap. Replaced with a **SQL intersection tier**: match all
+   the words of a typed name at once, then drop words from the end (where typos live).
+   A handful of rows, no cap needed, and cheaper than what it replaced.
+2. **A surname-only fragment reached a different person.** The first version intersected
+   *adjacent pairs*, which for a three-word query also tries the surname pair — so
+   "how is Lucia Dubois-Reyes doing?" resolved to the caller, "Leon Dubois-Reyes". Subsets
+   are now always a **prefix**, so the forename stays anchored. Same class of mistake as
+   answering about "Hana O'Brien" when asked about "Hugo O'Brien".
+3. **A subset of the typed name counted as an exact match.** The stop-word bigram of
+   "Ibrahim Kaminski-Manciin" is "ibrahim kaminski", which exactly matched a shorter
+   colleague and won in tier 1 before anything else ran. Bigrams are now only offered when
+   the name IS two words.
+4. **Similarity normalised one side only** — the candidate lost its hyphens, the query
+   kept them — so punctuation decided which person was meant.
+
+Two more surfaced in the same pass: the probe budget was consumed by junk word-runs
+("but tell", "nothing but tell") before reaching the actual name, and `"my manager is off
+sick, is X at risk?"` opened with the **caller's own** risk and pace, because a bare "my"
+counted as a claim on their own data.
+
+### One thing I got wrong, and what it taught me
+
+My first full-name rule returned early whenever two or more significant words were typed.
+That broke five comparison tests, because `"compare"` is a word but not a name. The fix is
+to ask the **directory** which typed words are actually somebody's name — "compare"
+belongs to nobody, "Lucia" belongs to someone — rather than assuming every token is one.
+A stop-list has to guess, and guessing wrong breaks it in both directions: treat "compare"
+as a name and comparisons stop working; ignore the forename and the wrong person is
+matched.
+
+### A false alarm worth remembering
+
+A full-suite run killed mid-flight left the *reused* test database corrupt, and the next
+run reported **176 failures and 679 errors** that had nothing to do with any code change —
+including basic tenancy tests. `pytest --create-db` restored it (1628 passed). If you ever
+see mass failures across unrelated apps, rule that out before reading a single traceback.
+
+Injection probes also widened from 7 to 19, grouped by the trick each one tries:
+instruction override, false authority, social engineering, role-play, exfiltration
+framing, destructive, code/markup injection, and an instruction hidden inside a data field.
+
+4 regression tests added. **Harness 232/232 at both 5,000 and 25,000; live 15/15 on all
+three tenants; full suite 1628 passed.**

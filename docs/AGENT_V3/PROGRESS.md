@@ -115,9 +115,102 @@ refused by scope, and an impersonating call that changes nothing.
 
 **apps/ai + apps/billing: 498 passed.**
 
-**RESUME HERE → Unit C** (`C_OPEN_ENDED.md`). The loop exists but **nothing calls it yet**
-— `chat_answer` still routes to the pre-coded paths, so there is no behaviour change in
-the product. Unit C wires it in behind the existing flow (the state machine and the
-approval-gated writes must keep priority; the agent handles what falls through to the
-capability blurb today), adds the composition few-shots, and proves the question classes
-in `C_OPEN_ENDED.md`. Then D (eval harness) and E (report).
+---
+
+## Unit C — wiring it in, without regressing anything
+
+### Where the agent sits, and why there
+Below everything. `chat_answer` runs `_deterministic_answer` — the whole assistant as it
+was, state machine first, then the approval-gated write plans, then the scoped person and
+team reads — and only hands the turn on when that produced a **non-answer**. A state
+machine that sometimes yields to a model is not a state machine, and the deterministic
+paths are the proven ones.
+
+The four places a non-answer is produced are marked with `_UNANSWERED`: the capability
+blurb, a name that didn't resolve, an unmapped search, an empty scope. The marker is
+stripped in `chat_answer` and never reaches the API.
+
+**The agent's reply is used only when it is tool-grounded.** A turn where the model
+called no tool has no scoped data behind it, so whatever it wrote is its own prose. That
+single structural rule is also what keeps small talk on the deterministic redirect —
+there is nothing for a tool to fetch about the weather, so nothing the model says
+survives. It is a guard, not a heuristic: it cannot be talked around.
+
+### The one place the agent overrides a real answer
+Trend questions. "Did she get better this cycle?" came back with where she is *now* — at
+risk, behind pace. True, and not the question: the diagnosis reports a position and has
+no concept of movement. `_TREND_RE` hands that whole class on. The override is one-way —
+the deterministic answer stays as the fallback, so asking the agent can improve an answer
+and never remove one — and it never touches a write plan, a refusal or the blurb.
+
+### Two bugs this unit exposed
+"Compare my two weakest performers" read the "my" as self-reference and answered with the
+*caller's* own goals. A confidently wrong answer is worse than a missing one, so a team
+question in a shape nothing matches is now marked rather than answered (`_TEAM_SUBJECT_RE`).
+
+And the agent could not ask about the signed-in user at all: every person tool takes a
+`person_id`, and "have I improved?" has no name in it to look up. `find_people` resolves
+`"me"` — in the tool, not by putting the caller's id in the prompt, because an id the
+model never sees is an id it cannot substitute for somebody else's.
+
+### What the agent actually serves
+20 of the 56 eval cases; the rest keep their pre-coded answers, which are exact and
+scope-bound already. The agent owns improvement/trend, open-ended synthesis, readiness,
+comparison-by-ranking and cross-entity follow-ups. That split is deliberate and is the
+honest answer to "did you rewrite the assistant?" — no: the questions nobody coded now
+have somewhere to go.
+
+### Tests
+`apps/ai/tests/test_open_ended.py` — 22, scripted model. Improvement through
+`compute_improvement` against a hand-checked fixture (+24/+4/−6); exact counts; only the
+caller's own people named; a promotion answer framed as a suggestion; out-of-scope
+refused; no-data said plainly; an untooled answer discarded; writes still becoming plans;
+a pre-coded answer never replaced; the deterministic answer surviving a silent agent; an
+invented person id handled as a result rather than a crash.
+
+**apps/ai: 434 passed** (was 412).
+
+---
+
+## Unit D — the eval harness
+
+`docs/AGENT_V3/eval_questions.jsonl` (56 cases, 24 tags) + `scripts/agent_eval.py`, run
+through the real product path against the **live Gemini provider** on the 5,000-person
+tenant.
+
+Three properties worth stating. **Ground truth is computed, not written down** — a case
+names a probe (`top_improver`) the runner evaluates itself through the same scoped tools,
+so expected values track the fixture instead of rotting the first time somebody reseeds.
+**Two gates are hard and not averaged** — one leak or one number no tool returned fails
+the whole run, because one leak in sixty questions is a 98% pass and a breach. **No names
+in the bank** — `{report}`/`{stranger}` placeholders are filled from whatever tenant is in
+front of it.
+
+### Result (live model, 5,000 people, 56 cases)
+```
+scope-safe 56/56 · no-fabrication 56/56 · behaviour 56/56
+judge: grounded 2.00/2 (n=20 agent-served) · relevant 1.68/2 · reasoned 1.82/2
+latency median 4.6 s · p95 14.4 s          RESULT: PASS
+```
+
+### Three things the harness found, in itself and in the product
+- **It scored 30 of 56 cases as failures because the tenant's daily AI budget ran out.**
+  A budget refusal is a fact about the harness, and it must never be able to masquerade
+  as a verdict on the assistant. Budgets reset per case now, and an infrastructure status
+  is reported as itself.
+- **It cried leak on prose.** The name check matched tokens, so "Yes" inside "Reyes"
+  registered as naming a colleague. A hit now counts only when the whole display name is
+  in the answer — and a name the *user typed* is exempt, because "You don't have access to
+  Hana Ferrari's data" tells the caller nothing they did not just write.
+- **A model that skips `find_people` invents an id.** The run produced
+  `"jamal_whitfield_id"`, which the ORM rejects as a UUID from inside a tool call. That is
+  now a "no such person" result the model can correct itself from.
+
+Grounded-ness is judged only where the agent served the turn. A deterministic path
+queries the ORM directly and records no tool calls, so there is no evidence to give the
+judge — and the first judged run marked twenty correct answers as hallucinations for
+exactly that reason. Grading against evidence we never captured measures the harness.
+
+**RESUME HERE → Unit E** (`E_REPORT.md`): `docs/AGENT_V3/REPORT.md` — what was added,
+before/after transcripts, the scope/safety proof, eval numbers, scale, and what Hari
+should test himself.

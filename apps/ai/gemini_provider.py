@@ -171,6 +171,48 @@ class GeminiProvider(LLMProvider):
             "confidence": confidence,
         }
 
+    # ── function-calling (AGENT_V3/B) ─────────────────────────────────────────
+    def generate_with_tools(self, *, agent_code: str, messages: list, tools: list,
+                            model: str) -> dict:
+        """One turn of a tool-calling conversation.
+
+        Returns either an assistant message carrying ``tool_calls`` (the model wants
+        data) or one carrying ``content`` (the final answer). The caller runs the tools
+        and calls back in with the results appended — this method holds no state, so a
+        retry or a crash can never leave half a conversation behind.
+
+        Deliberately NOT JSON mode: the final answer is prose for a person to read, and
+        the structure we care about arrives as ``tool_calls``, which the endpoint returns
+        as typed fields rather than as text we would have to parse back.
+        """
+        if not self.configured:
+            raise LLMProviderError("GeminiProvider has no API key.")
+        self._reserve_global()
+
+        payload = {
+            "model": _model_for(model),
+            "messages": messages,
+            "temperature": 0.1,  # lower than prose: tool ARGUMENTS should not be creative
+            "max_tokens": self.max_tokens,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+        data = self._post_with_backoff(f"{self.base_url}/chat/completions", payload, headers)
+        choice = (data.get("choices") or [{}])[0]
+        message = choice.get("message") or {}
+        usage = data.get("usage") or {}
+        return {
+            "content": message.get("content") or "",
+            "tool_calls": message.get("tool_calls") or [],
+            "finish_reason": choice.get("finish_reason"),
+            "model": payload["model"],
+            "prompt_tokens": int(usage.get("prompt_tokens", 0)),
+            "completion_tokens": int(usage.get("completion_tokens", 0)),
+        }
+
     def _post_with_backoff(self, url, payload, headers, *, attempts=3) -> dict:
         """POST with retry+backoff on the TRANSIENT failures — connection errors,
         429 (honoring Retry-After), and 5xx — with jitter so many concurrent jobs

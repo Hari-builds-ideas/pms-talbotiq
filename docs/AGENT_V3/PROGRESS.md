@@ -67,9 +67,57 @@ results; and review STATE exposed while the draft body is not.
 **AI suite: 402 passed.** No production behaviour changed yet — this unit only adds a new
 module; nothing calls it until Unit B.
 
-**RESUME HERE → Unit B** (`B_AGENT_LOOP.md`): the Gemini function-calling loop. The
-groundwork that matters: `LLMGateway.run()` is single-shot (prompt → JSON) and will need a
-tool-calling sibling that keeps budget / PII-scrub / trace / metering intact, plus a
-provider method that passes `tools` and returns `tool_calls` — Gemini's OpenAI-compatible
-`/chat/completions` endpoint supports both. Then C (open-ended), D (eval harness),
-E (report).
+---
+
+## Unit B — the function-calling loop
+
+### Three layers, each with one job
+- **`GeminiProvider.generate_with_tools`** — one turn: send messages + tool schemas, get
+  back either `tool_calls` or prose. Holds no state, so a retry or a crash can never
+  leave half a conversation behind. Deliberately *not* JSON mode: the final answer is
+  prose for a person, and the structure we care about arrives as typed `tool_calls`
+  rather than as text we would have to parse back.
+- **`LLMGateway.run_tools`** — a sibling of `run()`, not a replacement, because rule 6
+  says every LLM call goes through the gateway and a tool call is still an LLM call.
+  Budget, tracing and metering all still apply.
+- **`apps/ai/agent_loop.py`** — the loop, the system prompt, and the record of what it did.
+
+### Two decisions worth stating
+**Only user text is PII-scrubbed.** Tool results come from our own scoped queries;
+scrubbing them would corrupt the very numbers the answer is built on, and a redacted
+score is worse than no score. The PII risk is in what the user types, which is what gets
+cleaned.
+
+**The loop terminates by construction.** Two ceilings — 6 rounds and 12 total tool calls.
+Exceeding either ends the turn with an honest "I couldn't finish working that out", never
+a partial investigation presented as a conclusion. Unbounded rounds are unbounded latency
+*and* unbounded spend, since each round reserves budget.
+
+### The system prompt carries the rules the code cannot
+Scope and arithmetic are enforced structurally (the tools own both), but *choosing* the
+aggregate tool is the model's job, so the prompt is explicit: "how many" → `team_aggregate`,
+"who is top" → `rank_team`, "improved" → `compute_improvement`, and "if you find yourself
+adding, counting or sorting, stop and call the tool instead". It also states what to say
+when a tool returns `{"empty": true}` or `{"denied": true}` — the model needs a *true
+thing to say*, or it will find something plausible instead.
+
+### Tests
+`apps/ai/tests/test_agent_loop.py` — 10, against a **scripted** model. What is under test
+is the loop: that tools run as the trusted caller, that denials arrive as relayable data,
+that the cap holds, that failures degrade honestly. Those are properties of our code;
+wiring them to a live model would make every assertion depend on what Gemini felt like
+doing that minute. Whether it *picks* the right tools is unit D's question.
+
+One test was initially passing for the wrong reason and was split: the impersonation case
+asserted `denied OR error`, and the injected `caller`/`role` arguments made it an
+*argument* error, so the scope path was never exercised. It now does both — a clean call
+refused by scope, and an impersonating call that changes nothing.
+
+**apps/ai + apps/billing: 498 passed.**
+
+**RESUME HERE → Unit C** (`C_OPEN_ENDED.md`). The loop exists but **nothing calls it yet**
+— `chat_answer` still routes to the pre-coded paths, so there is no behaviour change in
+the product. Unit C wires it in behind the existing flow (the state machine and the
+approval-gated writes must keep priority; the agent handles what falls through to the
+capability blurb today), adds the composition few-shots, and proves the question classes
+in `C_OPEN_ENDED.md`. Then D (eval harness) and E (report).

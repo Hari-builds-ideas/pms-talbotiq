@@ -500,3 +500,78 @@ on all three tenants.
 
 **RESUME HERE → nothing outstanding.** REPORT.md §7 leaves items 3 and 5, both deliberate
 design choices. Further work is optional polish.
+
+---
+
+## Follow-up 6 — a typo stops being a coin toss, and the proof extends to 50,000
+
+### The measurement that motivated it
+Similarity was a whole-string `difflib` ratio, and a shared forename is half of a
+two-word name — so it dominated the score and drowned out the half where the user
+actually made the mistake. Measured over typo pairs and each one's nearest wrong
+colleague, difflib put the **worst true match at 0.900 and the best impostor at 0.905**.
+The distributions overlap, so a one-letter slip landed inside `_TIEBREAK_MARGIN` and came
+back as "which of these did you mean?" — offering eight people to someone who had typed
+the right name with two letters swapped.
+
+### What changed
+- **`_edit_ratio`** — Damerau (optimal string alignment) rather than difflib's shared
+  subsequence, which on short words is generous to the point of uselessness ("lauretn"
+  scores 0.77 against "larsen", an entirely different surname, purely for sharing
+  l/a/r/e/n in order). Adjacent letters SWAPPED cost one mistake, not two: a
+  transposition is the most common way a name gets mistyped.
+- **`_similarity` pairs word with word**, one-to-one and scored both ways, so a name with
+  a part MISSING is penalised rather than rewarded — otherwise "Lucas Cardoso" beats
+  "Lucas Cardoso-Ismail" on a query naming all three. Same sets now separate **0.817
+  against 0.833**.
+- **`_ranked`** shortlists with the blunt ratio and decides with the careful one, because
+  a shared forename ties a thousand people and reordering names never in contention
+  costs milliseconds for nothing.
+- **`suggest_candidates` ranks within each band by closeness**, not alphabetically. Asked
+  about "Nora Lauretn" the eight names offered back were Nora Abbott through Nora
+  Abbott-Hartmann; the Nora Laurent she meant was not among them. A list that cannot
+  contain the answer is worse than no list.
+- **`_MAX_INTERSECT = 60`** — the intersection tier ranked an arbitrary
+  `_MAX_CANDIDATES + 1` rows, so where a common first+last pair has relatives (sixteen
+  people are "Amara Haddad-…") the person meant fell outside the window and a
+  transposition came back ambiguous.
+- **`AMBIGUOUS` is a named sentinel** so a harness line reads `AMBIGUOUS` rather than
+  `<object object at 0xffff8f5a0870>`.
+
+### The calibration I nearly missed
+The rewrite broke `test_typo_in_a_name_still_resolves_by_fuzzy`, and the failure was
+right: `_FUZZY_MIN = 0.82` was calibrated for difflib, and the same names simply score
+lower now. "akil menonn" → Akhil Menon (a mistake in *each* word) scores 0.817 and was
+rejected outright — the assistant answered "no such person" to an obvious typo. The floor
+is now **0.78**, which on this metric reads as "about one mistyped character per word".
+It is not a loosening: what stops a wrong name being ACTED on is `_FUZZY_MARGIN`, not the
+floor, and the floor only decides whether the best guess is worth considering at all.
+
+### Two properties measured rather than asserted
+- **The cap has headroom.** Over 300 random people in the 50,000-person tenant the
+  largest full-name intersection is **17 rows** against a cap of 60.
+- **The blunt shortlist never drops the answer.** In the worst cohort — 1,003 people
+  sharing the forename "Priya" — a transposed-letter surname typo ranks the true person
+  **first** in 40/40 trials. It orders; it does not discard.
+
+### A false reading worth recording, twice over
+Running the harness *concurrently with the full test suite* showed resolution latency
+rising 0.5 → 1.3 → 1.6 ms across 5k/25k/50k, and I was about to report the flat-cost
+claim as broken. Measured without contention it is **0.5 ms median at all three sizes**.
+Then the live transcript capture came back 6/15 — HTTP 429 on the `ai` bucket, because
+the passing run and the capture fell in the same per-minute window. Both readings look
+exactly like logic failures. Measure the machine you think you are measuring.
+
+### Tests
+2 added to `test_person_resolution.py` (33 total): the Nora Laurent/Larsen near-tie that
+motivated the metric and was never covered, and the two-typo name that pins the floor to
+the new scale.
+
+Full suite **1635 passed**, 7 deselected. Harness **239/239 at 5,000, 25,000 AND 50,000**
+— 1 query per lookup, 0.5 ms median, no unbounded SELECT at any size, typo tolerance
+17/17 with none skipped. Live HTTP **15/15 on all four tenants** with the real LLM.
+
+**RESUME HERE → still nothing substantive outstanding.** REPORT.md §7 items 3 and 5
+remain deliberate design choices. The 50,000-person tenant is now a standing artefact
+(`SCALE_HARNESS_RESULTS_50000.txt`, `LIVE_TRANSCRIPT_50000.txt`) if a future change needs
+re-proving at that size.

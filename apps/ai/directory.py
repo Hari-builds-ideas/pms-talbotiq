@@ -35,8 +35,19 @@ from __future__ import annotations
 import difflib
 import re
 
+class _Ambiguous:
+    """Sentinel type. Named rather than a bare ``object()`` only so that it prints as
+    ``AMBIGUOUS`` — a harness line reading ``<object object at 0xffff8f5a0870>`` says
+    nothing about what went wrong."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+        return "AMBIGUOUS"
+
+
 #: Sentinel: the name matched more than one real person → the caller must pick.
-AMBIGUOUS = object()
+AMBIGUOUS = _Ambiguous()
 
 #: Cap on rows pulled per single-token / fuzzy query — bounds work at any headcount.
 #: Sized above the largest realistic same-first-name cohort: at 50,000 people sharing
@@ -47,8 +58,19 @@ AMBIGUOUS = object()
 _MAX_SCAN = 3000
 #: Most candidates we ever surface in a disambiguation.
 _MAX_CANDIDATES = 8
-#: difflib ratio a fuzzy full-name match must clear (typo tolerance, not loose).
-_FUZZY_MIN = 0.82
+#: Score a fuzzy full-name match must clear (typo tolerance, not loose). Read against
+#: :func:`_similarity`, which averages per-word character accuracy, this says "about one
+#: mistyped character per word": one error in a five-letter word scores 0.8, and a name
+#: with an error in BOTH of its words ("akil menonn" → Akhil Menon) scores 0.817.
+#:
+#: Lower than the 0.82 that stood here while the metric was a whole-string difflib ratio
+#: — the same names simply score lower now — and it is NOT a loosening. Measured over
+#: typo pairs and their nearest wrong colleague, difflib put the worst true match at
+#: 0.900 and the best impostor at 0.905: overlapping, which is why a one-letter slip
+#: came back as "which of these did you mean?". Word-by-word the same sets separate,
+#: 0.817 against 0.833. What stops a wrong name being ACTED on is _FUZZY_MARGIN below,
+#: not this floor; this only decides whether the best guess is worth considering at all.
+_FUZZY_MIN = 0.78
 
 #: How far ahead of the runner-up a fuzzy winner must be to be acted on rather than
 #: offered as a choice. Small on purpose: a real typo lands well clear of everyone else
@@ -99,8 +121,21 @@ _MAX_EXACT_PROBES = 8
 #: adjacent pair, so a long message needs no more than a few tries to find it.
 _MAX_PAIR_PROBES = 8
 
+#: How many intersection rows are ranked. The intersection of every word the user typed
+#: is narrow by construction — but "Amara Haddad" has sixteen relatives in a
+#: 50,000-person tenant, and ranking an ARBITRARY _MAX_CANDIDATES + 1 of them left the
+#: person actually meant outside the window, so a plain surname typo came back
+#: ambiguous. Wide enough to hold everyone who shares a common first+last pair; still a
+#: LIMIT, so the table is never loaded into Python.
+_MAX_INTERSECT = 60
+
 #: How far ahead of the runner-up a candidate must be to be chosen rather than offered.
 _TIEBREAK_MARGIN = 0.08
+
+#: How many candidates get the careful word-by-word comparison. A shared forename ties
+#: a thousand people in a large tenant; the blunt whole-string ratio is good enough to
+#: say which forty are worth looking at properly, and never good enough to decide.
+_MAX_RERANK = 40
 
 
 def _name_tokens(message: str) -> list[str]:
@@ -205,10 +240,87 @@ def _normalised(text: str) -> str:
     return " ".join(re.findall(r"[^\W\d_]+", (text or "").lower(), re.UNICODE))
 
 
+def _edit_ratio(a: str, b: str) -> float:
+    """1.0 for two identical words, falling with the number of single-character
+    mistakes it takes to turn one into the other, over the length of the longer word.
+
+    This is the question a typo actually asks — "how many keystrokes wrong is this?" —
+    and `difflib`'s ratio is not. difflib measures shared subsequence, which on short
+    words is generous to the point of uselessness: "lauretn" scores 0.77 against
+    "larsen", a completely different surname, purely for sharing l/a/r/e/n in order.
+
+    Adjacent letters SWAPPED count as one mistake, not two (Damerau, in its optimal
+    string alignment form). Plain Levenshtein charges a transposition double, and a
+    transposition is the most common way a name gets mistyped — it left "Zara Baure"
+    scoring 0.60 against the Zara Bauer meant and 0.57 against an unrelated Zara
+    Laurent, which is not a distinction worth acting on.
+    """
+    if a == b:
+        return 1.0
+    if not a or not b:
+        return 0.0
+    before, previous = None, list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        current = [i]
+        for j, cb in enumerate(b, 1):
+            cost = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (ca != cb))
+            if i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb:
+                cost = min(cost, before[j - 2] + 1)
+            current.append(cost)
+        before, previous = previous, current
+    return 1 - previous[-1] / max(len(a), len(b))
+
+
 def _similarity(query: str, user) -> float:
-    """How close a candidate's name is to what the user typed — both sides already
-    reduced by :func:`_normalised`."""
+    """How close a candidate's name is to what the user typed, compared WORD BY WORD —
+    both sides already reduced by :func:`_normalised`.
+
+    Comparing the two names as whole strings looks reasonable and is wrong at scale,
+    because the shared part of a name dominates the score. In a 50,000-person tenant a
+    thousand people share a forename, so "Nora Lauretn" scored 0.92 against the Nora
+    Laurent it obviously meant and 0.87 against an unrelated Nora Larsen — inside the
+    tie-break margin, so a one-letter transposition came back as "which of these did you
+    mean?". Same for "Lucas Cardoso-Ismali": 0.95 for Ismail, 0.90 for Grimaldi.
+
+    Pairing each word with its best partner on the other side puts the difference where
+    the user actually made it. The pairing is one-to-one and scored both ways, so a name
+    with a part MISSING is penalised rather than rewarded — otherwise "Lucas Cardoso"
+    would beat "Lucas Cardoso-Ismail" on a query naming all three.
+    """
+    left = query.split()
+    right = _normalised(user.display_name or "").split()
+    if not left or not right:
+        return 0.0
+    unpaired = list(right)
+    total = 0.0
+    for word in left:
+        if not unpaired:
+            break
+        best = max(unpaired, key=lambda other: _edit_ratio(word, other))
+        total += _edit_ratio(word, best)
+        unpaired.remove(best)
+    return 2 * total / (len(left) + len(right))
+
+
+def _rough_similarity(query: str, user) -> float:
+    """Whole-string ratio. Too blunt to decide between two people (see
+    :func:`_similarity`), but cheap — used only to shortlist which candidates are worth
+    the word-by-word comparison when a tie runs to hundreds of names."""
     return difflib.SequenceMatcher(None, query, _normalised(user.display_name or "")).ratio()
+
+
+def _ranked(users, query: str):
+    """Candidates ordered by how well they match what was typed, best first.
+
+    The blunt whole-string ratio shortlists and the word-by-word one decides. A shared
+    forename can tie a thousand people together, and running the careful comparison over
+    all of them would cost milliseconds to reorder names that were never in contention.
+    """
+    pool = list(users)
+    if len(pool) > _MAX_RERANK:
+        pool = [u for _, u in sorted(((_rough_similarity(query, u), u) for u in pool),
+                                     key=lambda p: p[0], reverse=True)[:_MAX_RERANK]]
+    return sorted(((_similarity(query, u), u) for u in pool), key=lambda p: p[0], reverse=True)
 
 
 def _best_of(users, query: str):
@@ -217,7 +329,7 @@ def _best_of(users, query: str):
     caller asks, because picking between two near-identical names is a coin toss."""
     if len(users) == 1:
         return users[0]
-    rated = sorted(((_similarity(query, u), u) for u in users), key=lambda p: p[0], reverse=True)
+    rated = _ranked(users, query)
     if rated[0][0] >= 0.72 and rated[0][0] - rated[1][0] >= _TIEBREAK_MARGIN:
         return rated[0][1]
     return _one_or_ambiguous([u for _, u in rated[: _MAX_CANDIDATES + 1]])
@@ -333,7 +445,7 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
     # ~500 share a forename, past the scan cap, so "Ibrahim Kaminski-Mancini" could miss
     # its own "ibrahim" credit, score 1 instead of 2, and lose to "Ibrahim Kaminski"
     # which happened to fall inside the cap — the winner decided by arbitrary row order.
-    # An intersection returns a handful of rows and needs no cap at all.
+    # An intersection returns few enough rows that one wide LIMIT holds all of them.
     #
     # The FORENAME stays anchored: subsets are always a prefix of the run, never a
     # trailing fragment. Matching on surnames alone put "how is Lucia Dubois-Reyes
@@ -355,7 +467,17 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
             qs = base
             for tok in subset:
                 qs = qs.filter(display_name__icontains=tok)
-            hits = [u for u in qs[: _MAX_CANDIDATES + 1] if _matches_all(u, subset)]
+            rows = list(qs[: _MAX_INTERSECT + 1])
+            if len(rows) > _MAX_INTERSECT:
+                # More people share these words than a disambiguation prompt could ever
+                # list. If the user typed all of them, that is a real ambiguity and the
+                # honest answer is to ask. If a word was DROPPED to get here, the answer
+                # is not in this set — the dropped word is the distinguishing one, so
+                # leave it to the fuzzy tier, which still has it.
+                if keep == len(span_tokens):
+                    return AMBIGUOUS
+                break
+            hits = [u for u in rows if _matches_all(u, subset)]
             if hits:
                 return _best_of(hits, query)
 
@@ -407,8 +529,7 @@ def resolve_person_in_population(caller, message, *, population_ids=None, exclud
             continue
         for u in base.filter(display_name__icontains=tok[:3])[:_MAX_SCAN]:
             pool[u.id] = u
-    rated = sorted(((_similarity(query, u), u) for u in pool.values()),
-                   key=lambda pair: pair[0], reverse=True)
+    rated = _ranked(pool.values(), query)
     if not rated or rated[0][0] < _FUZZY_MIN:
         return None
     # A guess is only a guess worth acting on when it's CLEARLY better than the next
@@ -438,5 +559,16 @@ def suggest_candidates(caller, message, *, population_ids=None, exclude_self=Tru
             if re.search(rf"\b{re.escape(tok)}", name_l):
                 count, _ = scored.get(u.id, (0, u))
                 scored[u.id] = (count + 1, u)
-    ranked = sorted(scored.values(), key=lambda cu: (-cu[0], (cu[1].display_name or "").lower()))
-    return [u for _, u in ranked[:limit]]
+    # Most words matched first, and within that, CLOSEST NAME first. Ordering the band
+    # alphabetically was fine while a band held three people and useless once it held a
+    # thousand: asked about "Nora Lauretn", the eight names offered back were Nora
+    # Abbott through Nora Abbott-Hartmann, and the Nora Laurent she meant was not among
+    # them. A list that can't contain the answer is worse than no list.
+    query = _normalised(" ".join(tokens))
+    out: list = []
+    for band in sorted({count for count, _ in scored.values()}, reverse=True):
+        members = [u for count, u in scored.values() if count == band]
+        out.extend(u for _, u in _ranked(members, query))
+        if len(out) >= limit:
+            break
+    return out[:limit]

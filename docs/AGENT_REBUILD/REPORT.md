@@ -1,15 +1,15 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed, plus follow-ups (§9–§13). Backend
-suite **1628 passed**, scale harness **232/232 at BOTH 5,000 and 25,000** people, live
-HTTP transcript **15/15 on all three tenants** (demo, 5,000, 25,000) with the real
+**Status:** all five build files executed, plus follow-ups (§9–§14). Backend
+suite **1635 passed**, scale harness **239/239 at 5,000, 25,000 AND 50,000** people, live
+HTTP transcript **15/15 on all four tenants** (demo, 5,000, 25,000, 50,000) with the real
 Gemini provider.
 
 Evidence files next to this one:
-- `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` — real conversations over HTTP,
-  real LLM, at three company sizes
-- `SCALE_HARNESS_RESULTS.txt` / `_25000.txt` — the behavioural runs
+- `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` / `_50000.txt` — real conversations
+  over HTTP, real LLM, at four company sizes
+- `SCALE_HARNESS_RESULTS.txt` / `_25000.txt` / `_50000.txt` — the behavioural runs
 - `PROGRESS.md` — the per-unit log, including the things that went wrong on the way
 
 ---
@@ -199,17 +199,17 @@ docker compose exec web python scripts/agent_scale_harness.py --people 20
 on a 500-person tenant. People are chosen at random from across the whole company each
 run — a fixed list would only prove it works for the people I thought to list.
 
-| Measure | 500 people | 5,000 people | 25,000 people |
-|---|---|---|---|
-| Queries per resolution | 1 | 1 | 1 |
-| Median latency | 0.5 ms | 0.5 ms | 0.5 ms |
-| p95 latency | 0.6 ms | 0.5 ms | 0.5 ms |
-| Unbounded SELECTs | 0 | 0 | 0 |
+| Measure | 500 people | 5,000 people | 25,000 people | 50,000 people |
+|---|---|---|---|---|
+| Queries per resolution | 1 | 1 | 1 | 1 |
+| Median latency | 0.5 ms | 0.5 ms | 0.5 ms | 0.5 ms |
+| p95 latency | 0.6 ms | 0.5 ms | 0.5 ms | 0.5 ms |
+| Unbounded SELECTs | 0 | 0 | 0 | 0 |
 
 **Constant cost, measured rather than asserted.** Every SELECT carries a LIMIT, so the
 table is never loaded into Python to be ranked — that is the property that makes 5,000
-and 50,000 behave the same. Seeding 5,000 people with 20,000 goal/KPI/score rows takes
-~2 seconds.
+and 50,000 behave the same. The 50,000 column is a measurement, not an extrapolation
+(§14). Seeding 5,000 people with 20,000 goal/KPI/score rows takes ~2 seconds.
 
 ### Seven real bugs the harness found that the unit tests did not
 
@@ -287,16 +287,28 @@ first (the transcript script does this automatically).
 
 ```bash
 # unit + integration
-docker compose exec web pytest -q                      # expect 1624 passed
+docker compose exec web pytest -q                      # expect 1635 passed
 
 # 5,000-person behavioural harness
 docker compose exec web python manage.py seed_scale_tenant --headcount 5000 --reset
-docker compose exec web python scripts/agent_scale_harness.py --people 20
-                                                       # expect 176/176, exit 0
+docker compose exec web python scripts/agent_scale_harness.py --tenant scale
+                                                       # expect 239/239, exit 0
 
-# live HTTP against the demo tenant, real LLM
+# the same, at 25,000 and 50,000 (already seeded as 'scale25' / 'scale50')
+docker compose exec web python scripts/agent_scale_harness.py --tenant scale25
+docker compose exec web python scripts/agent_scale_harness.py --tenant scale50
+
+# live HTTP, real LLM — the tenant's cast is discovered from the DB, not hardcoded
 python3 scripts/agent_live_transcript.py               # expect 15/15
+python3 scripts/agent_live_transcript.py --tenant scale50
 ```
+
+Two traps if you re-run these. `docker compose exec web pytest` runs **inside the web
+container**, so a harness or transcript run at the same time is competing for the same
+CPU — it inflates the latency numbers and nothing else. And the `ai` throttle bucket is
+**per minute** (20/min on a STARTER tenant), so back-to-back transcript runs against the
+*same* tenant will 429 partway through; the failures read exactly like logic bugs. Leave
+a minute between them.
 
 The scale tenant is separate (`scale`), logs in with `Passw0rd!scale`, and the command
 **refuses** to touch `acme`. If you restart the web container, note that gunicorn does
@@ -556,3 +568,74 @@ framing, destructive, code/markup injection, and an instruction hidden inside a 
 
 4 regression tests added. **Harness 232/232 at both 5,000 and 25,000; live 15/15 on all
 three tenants; full suite 1628 passed.**
+
+---
+
+## 14. Follow-up: a typo stops being a coin toss, and the proof extends to 50,000
+
+### The metric was measuring the wrong thing
+
+Similarity was a whole-string `difflib` ratio. A shared forename is *half of a two-word
+name*, so it dominated the score and drowned out the half where the user actually made
+the mistake. Measured over typo pairs and each one's nearest wrong colleague:
+
+| | worst TRUE match | best IMPOSTOR | separated? |
+|---|---|---|---|
+| difflib (whole string) | 0.900 | 0.905 | **no — overlapping** |
+| word-by-word Damerau | 0.817 | 0.833 | yes |
+
+Overlapping distributions is not a threshold that needs tuning, it is a metric that
+cannot answer the question. In practice "nora lauretn" scored 0.917 against the Nora
+Laurent meant and 0.870 against an unrelated Nora Larsen — inside the tie-break margin,
+so one transposed letter came back as "which of these did you mean?".
+
+What replaced it:
+
+- **Damerau edit distance, not shared subsequence.** difflib's ratio is generous on short
+  words to the point of uselessness: "lauretn" scores 0.77 against "larsen", a completely
+  different surname, purely for sharing l/a/r/e/n *in order*. Adjacent letters SWAPPED
+  count as one mistake rather than two, because a transposition is the most common way a
+  name gets mistyped.
+- **Word paired with word**, one-to-one and scored both ways, so a name with a part
+  MISSING is penalised rather than rewarded — otherwise "Lucas Cardoso" beats "Lucas
+  Cardoso-Ismail" on a query naming all three.
+- **A shortlist, then the careful comparison.** A shared forename ties a thousand people;
+  the blunt ratio is good enough to say which forty are worth looking at properly and
+  never good enough to decide.
+- **Disambiguation lists rank by closeness, not alphabetically.** Asked about "Nora
+  Lauretn" the eight names offered back were Nora Abbott through Nora Abbott-Hartmann —
+  the Nora Laurent she meant was not among them. A list that cannot contain the answer is
+  worse than no list.
+
+### The calibration I nearly missed
+
+The rewrite broke an existing typo test, and the failure was right. `_FUZZY_MIN = 0.82`
+was calibrated for difflib; the same names simply score lower on the new metric. "akil
+menonn" → Akhil Menon — a mistake in *each* word — scores 0.817, so the assistant
+answered **"no such person" to an obvious typo**. The floor is now 0.78, which on this
+metric reads as "about one mistyped character per word". This is not a loosening: what
+stops a wrong name being ACTED on is the runner-up margin, not the floor, and the floor
+only decides whether the best guess is worth considering at all.
+
+### Two properties measured rather than asserted
+
+- **The intersection cap has headroom.** Over 300 random people in the 50,000-person
+  tenant, the largest full-name intersection is **17 rows** against a cap of 60.
+- **The shortlist never drops the answer.** In the worst cohort — 1,003 people sharing
+  the forename "Priya" — a transposed-letter surname typo ranks the true person **first**
+  in 40/40 trials. It orders candidates; it does not discard them.
+
+### A false reading worth recording, twice in one session
+
+Run *concurrently with the full test suite*, the harness showed resolution latency rising
+0.5 → 1.3 → 1.6 ms across 5k/25k/50k, and I was ready to report the flat-cost claim as
+broken. Measured without contention it is **0.5 ms median at every size**. Minutes later
+a live-transcript capture came back 6/15 — HTTP 429 on the `ai` bucket, because the
+passing run and the capture fell inside the same per-minute window. Both readings look
+exactly like logic failures and neither was. Measure the machine you think you are
+measuring; §13 records the same lesson about a corrupt reused test database.
+
+2 regression tests added, 33 in `test_person_resolution.py`. **Harness 239/239 at 5,000,
+25,000 AND 50,000** — 1 query per lookup, 0.5 ms median, no unbounded SELECT at any size,
+typo tolerance 17/17 with none skipped. **Live 15/15 on all four tenants** with the real
+LLM. **Full suite 1635 passed**, 7 deselected.

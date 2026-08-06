@@ -1,5 +1,5 @@
-tenant 'scale25': 25,000 active people (seed=1337, 25 people per category)
-acting as: manager 'Ingrid Lindgren' (9 reports), employee 'Leon Dubois-Reyes', hrbp 'Mei Chen', admin 'Aarav Sharma'
+tenant 'scale50': 50,000 active people (seed=1337, 25 people per category)
+acting as: manager 'Tariq Achebe' (9 reports), employee 'Ingrid Dubois-Reyes', hrbp 'Mei Chen', admin 'Aarav Sharma'
 
 ══════════════════════════════════════════════════════════════════════════════════
 AGENT SCALE HARNESS — results
@@ -43,9 +43,9 @@ AGENT SCALE HARNESS — results
   [PASS] an employee is still refused what an HRBP can see     2/2
   [PASS] admin gets a real answer for someone company-wide     1/1
 ──────────────────────────────────────────────────────────────────────────────────
-  · resolution latency over 25 lookups: median 0.5 ms, p95 0.5 ms, max 0.8 ms
+  · resolution latency over 25 lookups: median 0.5 ms, p95 0.5 ms, max 0.7 ms
   · typo tolerance exercised on 17 name(s); 0 skipped as near-duplicates
-  · resolution cost at 25,000 people: 1–1 queries per lookup
+  · resolution cost at 50,000 people: 1–1 queries per lookup
 ──────────────────────────────────────────────────────────────────────────────────
   TOTAL 239/239 checks passed
 ══════════════════════════════════════════════════════════════════════════════════

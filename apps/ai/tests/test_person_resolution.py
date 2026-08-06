@@ -412,3 +412,51 @@ def test_a_hyphen_does_not_decide_which_person_is_meant(org):
                               email="hugo.h@acme.test", manager=org.hrbp)
         query = _normalised("hugo haddad-andersne")
         assert _similarity(query, target) > _similarity(query, shorter)
+
+
+def test_a_typo_survives_a_crowd_of_relatives(org):
+    """A common first+last pair collects relatives: in a 50,000-person tenant sixteen
+    people are "Amara Haddad-<something>". Dropping the typo'd word to intersect on
+    "amara haddad" then matched all sixteen, and only an ARBITRARY window of them was
+    ranked — the person actually meant fell outside it, so a one-letter transposition
+    came back as a disambiguation prompt listing eight wrong people."""
+    with tenant_context(org.tenant):
+        target = _name(org.peer, "Amara Haddad-Muller")
+        for surname in ("Andersen", "Garcia", "Kim", "Nguyen", "Patel", "Tanaka",
+                        "Rossi", "Okafor", "Sharma", "Jimenez", "Ingram", "Chen"):
+            UserFactory(tenant=org.tenant, role="EMPLOYEE", manager=org.hrbp,
+                        display_name=f"Amara Haddad-{surname}",
+                        email=f"amara.{surname.lower()}@acme.test")
+
+        got = resolve_person_in_population(org.manager, "give recognition to Amara Haddad-Mullre")
+        assert got is not None and got is not AMBIGUOUS and got.id == target.id
+
+
+def test_a_typo_is_not_a_coin_toss_against_a_colleague_sharing_a_forename(org):
+    """The reason similarity is compared word by word rather than as whole strings.
+
+    A shared forename is half of a two-word name, so it dominates a whole-string ratio
+    and drowns out the half where the user actually made the mistake: difflib scored
+    "nora lauretn" at 0.917 against the Nora Laurent meant and 0.870 against an
+    unrelated Nora Larsen — inside the tie-break margin, so one transposed letter came
+    back as "which of these did you mean?". Comparing word to word puts the difference
+    where it was made, and the gap becomes decisive."""
+    with tenant_context(org.tenant):
+        target = _name(org.peer, "Nora Laurent")
+        UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Nora Larsen",
+                    email="nora.larsen@acme.test", manager=org.hrbp)
+        UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Nora Abbott",
+                    email="nora.abbott@acme.test", manager=org.hrbp)
+
+        got = resolve_person_in_population(org.manager, "give recognition to Nora Lauretn")
+        assert got is not None and got is not AMBIGUOUS and got.id == target.id
+
+
+def test_a_two_typo_name_still_resolves(org):
+    """The fuzzy floor is calibrated for the word-by-word metric, not the difflib one it
+    replaced. Both words of "Akhil Menon" mistyped scores 0.817 — a floor left at the old
+    scale's 0.82 rejected an obvious typo outright and answered "no such person"."""
+    with tenant_context(org.tenant):
+        target = _name(org.peer, "Akhil Menon")
+        got = resolve_person_in_population(org.manager, "give kudos to akil menonn")
+        assert got is not None and got is not AMBIGUOUS and got.id == target.id

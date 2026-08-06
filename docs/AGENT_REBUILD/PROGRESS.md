@@ -650,3 +650,55 @@ through the HITL gate, at three company sizes.** The harness asserts the job is 
 by the approval; that the worker then succeeds was verified by hand against the live
 provider (above) rather than automated, because the harness deliberately runs on the
 deterministic fake and must not depend on a model's mood.
+
+---
+
+## Follow-up 8 — the other two agent jobs the assistant can start
+
+### Why look
+Follow-up 7 found Agent-1 had never succeeded. The assistant enqueues **three** kinds of
+agent job — `agent1` (review), `career_roadmap`, `agent4` (succession) — and only the
+first had any run history at all. An action that tells the user "requested" and then
+silently never delivers is the same defect whichever agent it is.
+
+Exercised both against the live provider:
+- **`agent4` (succession) → SUCCEEDED.** The token-ceiling fix generalised, as expected.
+- **`career_roadmap` → FAILED `EMPLOYEE_NOT_FOUND`** — a different bug entirely.
+
+### The career agent could never have worked
+The seam is `generate_roadmap(tenant_id, employee_id, target_ref, …)`. The assistant's
+`_execute_career_enrich` enqueued the **roadmap's own id** as the job target and set no
+params at all — so the worker looked up a `User` by a roadmap's id (misses every time)
+and, even given the right employee, would then have skipped with "target not found".
+
+**I fixed this in the wrong place first, and the suite caught it.** I changed the
+dispatcher to translate a roadmap id into an employee — which broke
+`test_enrich_enqueues_job_degraded_and_roadmap_unchanged`, and that failure was the
+useful bit: there is a **second caller**, `RoadmapEnrichView`, which has been sending the
+right shape all along (`target_id=roadmap.employee_id`, `params={"target_ref": …}`). So
+the contract was never ambiguous, and the dispatcher was never wrong — the assistant
+simply did not follow the contract its own comment claims to mirror. Reverted, and fixed
+at the enqueue site instead. One contract, one place.
+
+Live: **SUCCEEDED**, producing a new `source=AI`, `status=DRAFT` roadmap with 3 tiers and
+`advisory=True` — the deterministic baseline untouched, adoption still a human step.
+
+**Why nothing caught it.** The seam's own tests call `generate_roadmap` directly with the
+correct arguments. The two `career_enrich` action tests stopped at "a job was enqueued" —
+and, worse, **asserted the broken shape** (`target_id == rm.id`). So the seam was covered,
+the enqueue was covered, and the join between them was covered by nothing. That is the
+shape of this whole evening twice over: each piece tested in isolation, the join assumed.
+
+The other four seams (`agent1`, `agent3`, `agent4`, `jd_generator`) all take their own
+artifact's id, which is exactly what the dispatcher passes — checked, not assumed.
+
+### Tests
+The two tests that asserted the broken shape now assert the real contract, and a new one
+runs the assistant's own job through the real dispatcher: right employee, DRAFT status,
+`advisory=True`, deterministic baseline untouched. That last one is the check whose
+absence let a total failure sit there — every existing test stopped at "enqueued".
+
+Full suite **1639 passed**.
+
+**RESUME HERE → every agent job the assistant can start now completes.** Remaining
+REPORT.md §7 items 3 and 5 are still deliberate design choices.

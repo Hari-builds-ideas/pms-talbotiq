@@ -358,7 +358,20 @@ def _execute_career_enrich(user, params) -> dict:
     if not role_has_capability(user.role, Capability.MANAGE_CAREER_ROADMAP):
         raise PermissionDenied("You don't have permission to enrich roadmaps.")
     roadmap = services.get_roadmap_in_scope(user, params.get("roadmap_id"))  # raises 404 out-of-scope
-    job = enqueue_agent_job(actor=user, agent_code="career_roadmap", target_type="career_roadmap", target_id=roadmap.id)
+    # Enqueue EXACTLY as RoadmapEnrichView does, which this action claims to mirror: the
+    # seam takes the EMPLOYEE and the target role, so the job's target is the employee
+    # and the role travels in params. Sending the roadmap's own id here (and no params)
+    # made the worker look up a User by a roadmap's id — this action failed
+    # EMPLOYEE_NOT_FOUND every time it was ever used.
+    target_ref = (
+        {"jd": str(roadmap.target_jd_id)}
+        if roadmap.target_jd_id
+        else {"position": str(roadmap.target_position_id)}
+    )
+    job = enqueue_agent_job(
+        actor=user, agent_code="career_roadmap", target_type="career_roadmap",
+        target_id=roadmap.employee_id, params={"target_ref": target_ref},
+    )
     return {
         "action": "career_enrich",
         "ok": True,

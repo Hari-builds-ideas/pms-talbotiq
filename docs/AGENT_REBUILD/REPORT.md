@@ -712,3 +712,59 @@ One honest limit: the harness asserts the job is *queued* by the approval, not t
 worker later succeeds. That last step was verified by hand against the live provider,
 because the harness runs on the deterministic fake on purpose — what it tests is routing
 and retrieval, which must not depend on a model's mood.
+
+---
+
+## 16. Follow-up: the other two agent jobs the assistant can start
+
+Having found that Agent-1 had never once succeeded, the obvious question was what else the
+assistant can start. It enqueues **three** kinds of agent job — `agent1` (review),
+`career_roadmap`, `agent4` (succession) — and only the first had any run history at all.
+An action that says "requested" and never delivers is the same defect whichever agent sits
+behind it.
+
+- **`agent4` (succession)** — SUCCEEDED. The token-ceiling fix generalised, as expected.
+- **`career_roadmap`** — FAILED `EMPLOYEE_NOT_FOUND`. A different bug, and a total one.
+
+### The career agent could never have worked
+
+The seam is `generate_roadmap(tenant_id, employee_id, target_ref, …)`. The assistant's
+`_execute_career_enrich` enqueued the **roadmap's own id** as the job's target and set no
+params at all. So the worker looked up a `User` by a roadmap's id — which misses every
+time — and even given the right employee would then have skipped with "target not found".
+Two mismatches in one call, in the only code path that produces this job from chat.
+
+### I fixed it in the wrong place first, and that was the useful part
+
+My first fix taught the dispatcher to translate a roadmap id into an employee. It broke
+`test_enrich_enqueues_job_degraded_and_roadmap_unchanged`, which revealed a **second
+caller**: `RoadmapEnrichView` has been sending the correct shape all along —
+`target_id=roadmap.employee_id`, with `target_ref` in params. The contract was never
+ambiguous and the dispatcher was never wrong. The assistant simply did not follow the
+contract that its own comment claims to mirror.
+
+Reverted, and fixed at the enqueue site instead: one contract, one place. Had I only run
+the tests I thought were relevant, I would have shipped a dispatcher that quietly accepted
+two incompatible meanings for the same field.
+
+Live result: **SUCCEEDED**, a new `source=AI`, `status=DRAFT` roadmap with 3 tiers and
+`advisory=True`; the deterministic baseline untouched and adoption still a human step.
+
+### Why the suite never caught it
+
+The seam's own tests call `generate_roadmap` directly with the right arguments. The two
+`career_enrich` action tests stopped at "a job was enqueued" — and **asserted the broken
+shape** (`target_id == rm.id`), so the bug had test coverage confirming it. The seam was
+covered, the enqueue was covered, and the join between them was covered by nothing.
+
+That is the shape of both of tonight's product bugs: each piece correct in isolation, the
+join assumed. A settings default and the compose pin that silently overrides it (§15); a
+seam and the caller that feeds it (here). Both were found by extending a test to the next
+link in the chain rather than by reading code.
+
+The two misleading tests now assert the real contract, and a new one runs the assistant's
+own job through the real dispatcher to a finished draft — the check whose absence let a
+total failure sit unnoticed. The other four seams each take their own artifact's id, which
+is what the dispatcher passes; checked rather than assumed.
+
+**Full suite 1639 passed.**

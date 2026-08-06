@@ -24,10 +24,14 @@ of queries** rather than one per person, and every result set is bounded.
 """
 from __future__ import annotations
 
+import logging
 import re
+import uuid
 from dataclasses import dataclass
 
 from apps.rbac.scope import actor_can_access, reporting_subtree_ids
+
+logger = logging.getLogger("pms.ai.tools")
 
 #: A first-person reference passed to :func:`find_people`. Anchored to the WHOLE query,
 #: so a colleague genuinely called "Me" or "Self" is still looked up normally.
@@ -72,10 +76,21 @@ def _no_data(what="that"):
 
 def _person(ctx, person_id):
     """Load a person in the caller's tenant, or None. Tenant scoping comes from the
-    default manager, so a cross-tenant id simply does not resolve."""
+    default manager, so a cross-tenant id simply does not resolve.
+
+    The id is validated as a UUID first. A model that has not called ``find_people``
+    will cheerfully invent one — the live eval produced ``"jamal_whitfield_id"`` — and
+    handing that to the ORM raises a ValidationError out of the middle of a tool call.
+    An invented id is a fact about the request, so it comes back as "no such person"
+    like any other miss.
+    """
     from apps.identity.models import User
 
     if not person_id:
+        return None
+    try:
+        uuid.UUID(str(person_id))
+    except (ValueError, AttributeError, TypeError):
         return None
     return User.objects.filter(id=person_id).first()
 
@@ -638,3 +653,9 @@ def run_tool(ctx, name, arguments):
         return handler(ctx, **kwargs)
     except TypeError as exc:  # the model invented or omitted an argument
         return {"error": f"Bad arguments for {name}: {exc}"}
+    except Exception as exc:  # noqa: BLE001
+        # A malformed value the ORM rejects, a query that fails — the loop still has to
+        # hand the model something, and a traceback is not an answer. Logged loudly,
+        # because a tool that keeps erroring is a bug even when the turn survives it.
+        logger.exception("tool %s failed", name)
+        return {"error": f"{name} could not be completed: {type(exc).__name__}"}

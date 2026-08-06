@@ -272,6 +272,52 @@ def test_the_signed_in_user_is_findable_as_me(org):
 
 
 @override_settings(**FAKE)
+def test_an_invented_person_id_is_a_result_not_a_crash(org, team, script, blind_classifier):
+    """A model that skips find_people invents an id. The live eval produced
+    "jamal_whitfield_id", which the ORM rejects as a UUID — from inside a tool call, in
+    the middle of a turn. It comes back as "no such person" now, so the model can
+    correct itself instead of the request dying."""
+    script += [
+        {"tool_calls": [_call("get_person_overview", person_id="rosa_villalobos_id")]},
+        {"tool_calls": [_call("compute_improvement", order="desc", limit=1)]},
+        {"content": "Rosa Villalobos improved most, by 24.0 points."},
+    ]
+    with tenant_context(org.tenant):
+        out = chat_answer(org.manager, "who improved most since last cycle?",
+                          session=_session(org.manager))
+
+    assert out["tools"] == ["get_person_overview", "compute_improvement"]
+    assert "24" in out["answer"]
+
+    from apps.ai.tools import ToolContext, get_person_overview
+
+    with tenant_context(org.tenant):
+        assert get_person_overview(ToolContext(caller=org.manager),
+                                   "rosa_villalobos_id")["empty"] is True
+
+
+@override_settings(**FAKE)
+def test_a_failing_tool_is_reported_to_the_model_not_raised(org):
+    """Whatever goes wrong inside a tool, the loop still has to hand the model
+    something — a traceback is not an answer."""
+    from apps.ai import tools as tools_mod
+    from apps.ai.tools import ToolContext, run_tool
+
+    def explode(ctx, **kwargs):
+        raise RuntimeError("the database fell over")
+
+    original = tools_mod.TOOLS["get_my_team"]
+    tools_mod.TOOLS["get_my_team"] = (explode, original[1])
+    try:
+        with tenant_context(org.tenant):
+            out = run_tool(ToolContext(caller=org.manager), "get_my_team", {})
+    finally:
+        tools_mod.TOOLS["get_my_team"] = original
+
+    assert out == {"error": "get_my_team could not be completed: RuntimeError"}
+
+
+@override_settings(**FAKE)
 def test_a_colleague_is_not_resolved_to_the_caller_by_accident(org):
     """The self shortcut is anchored to the WHOLE query, so a name that merely contains
     "me" is looked up normally."""

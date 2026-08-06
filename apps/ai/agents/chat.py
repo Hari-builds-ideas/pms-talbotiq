@@ -940,9 +940,35 @@ def chat_answer(caller, query: str, session=None) -> dict:
     talk still gets the deterministic redirect: there is nothing for the tools to fetch.
     """
     out = _deterministic_answer(caller, query, session=session)
-    if not out.pop(_UNANSWERED, False):
-        return out
-    return _agent_answer(caller, query, session) or out
+    if out.pop(_UNANSWERED, False) or _prefers_agent(query, out):
+        return _agent_answer(caller, query, session) or out
+    return out
+
+
+#: Movement between cycles — "did she get better?", "who's declining?", "am I trending
+#: up?". A whole question CLASS, not a phrasing: the deterministic diagnosis reports
+#: where somebody is now and has no concept of how far they moved, so it answers these
+#: with a status and the user never learns the thing they asked. The agent has
+#: compute_improvement, which is the backend subtraction they wanted.
+_TREND_RE = re.compile(
+    r"\b(improv\w*|better|worse|worsen\w*|declin\w*|dropp?\w*|fall\w*|regress\w*|"
+    r"progress\w*|trend\w*|gone\s+backwards?|moved|since\s+last\s+cycle|"
+    r"compared\s+to\s+last)\b",
+    re.I,
+)
+
+
+def _prefers_agent(query, out):
+    """Should the agent get a turn even though the deterministic path answered?
+
+    Only for the trend class, and only over a plain read. A write plan, a budget
+    refusal, the capability blurb and the state machine's replies are never second-
+    guessed — and whatever the deterministic path said stays as the fallback, so this
+    can only improve an answer, never remove one.
+    """
+    return (out.get("status") == "ok"
+            and out.get("intent") in ("performance", "read", "search", "general")
+            and bool(_TREND_RE.search(query or "")))
 
 
 def _agent_answer(caller, query: str, session) -> dict | None:

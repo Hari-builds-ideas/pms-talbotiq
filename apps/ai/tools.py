@@ -24,9 +24,15 @@ of queries** rather than one per person, and every result set is bounded.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from apps.rbac.scope import actor_can_access, reporting_subtree_ids
+
+#: A first-person reference passed to :func:`find_people`. Anchored to the WHOLE query,
+#: so a colleague genuinely called "Me" or "Self" is still looked up normally.
+_SELF_QUERY_RE = re.compile(r"(?:me|myself|i|my ?self|the current user|the signed[- ]in user)",
+                            re.I)
 
 #: Hard ceiling on rows any single tool returns. The model pays for every row in context
 #: and a manager with 400 reports must not blow the window — the aggregate tools exist
@@ -99,6 +105,14 @@ def find_people(ctx, query: str, limit: int = 5):
     only — being findable grants nothing.
     """
     from apps.ai.directory import AMBIGUOUS, resolve_person_in_population, suggest_candidates
+
+    # "me" is a person too. Every other tool takes a person_id, so without this the
+    # agent has no way to ask about the signed-in user at all — "have I improved since
+    # last cycle?" has no name in it to look up. Handled here rather than by giving the
+    # model the caller's id in the prompt: an id it never sees is an id it cannot
+    # substitute for somebody else's.
+    if _SELF_QUERY_RE.fullmatch((query or "").strip()):
+        return {"people": [_identity(ctx.caller)], "ambiguous": False}
 
     hit = resolve_person_in_population(ctx.caller, query or "", exclude_self=False)
     if hit is not None and hit is not AMBIGUOUS:
@@ -538,7 +552,9 @@ TOOLS = {
     "find_people": (find_people, _schema(
         "find_people",
         "Resolve a person's name to their id, company-wide. Use this FIRST whenever the "
-        "user names somebody. Finding a person does not grant access to their data.",
+        "user names somebody. Pass \"me\" to get the signed-in user's own id, which is "
+        "what questions like \"have I improved?\" need. Finding a person does not grant "
+        "access to their data.",
         {"query": {"type": "string", "description": "the name or email as the user wrote it"}},
         ["query"])),
     "get_person_overview": (get_person_overview, _schema(

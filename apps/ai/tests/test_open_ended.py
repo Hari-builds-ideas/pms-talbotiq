@@ -204,6 +204,87 @@ def test_comparing_the_two_weakest_uses_the_backend_ordering(org, team, script, 
     assert out["data"] == ["Wei Chen", "Rosa Villalobos"], "grounded, in the ranked order"
 
 
+# ── the trend class: the one place the agent overrides a real answer ─────────────
+
+
+@override_settings(**FAKE)
+def test_did_one_person_improve_gets_the_delta_not_a_status(org, team, script, blind_classifier):
+    """"Did she get better?" used to come back with where she is now — at risk, behind
+    pace — which is a true sentence and not the question. The deterministic diagnosis
+    has no concept of movement, so trend questions get handed on."""
+    rosa = team["rosa"]
+    script += [
+        {"tool_calls": [_call("find_people", query="Rosa Villalobos")]},
+        {"tool_calls": [_call("compute_improvement", person_id=str(rosa.id))]},
+        {"content": "Yes — Rosa Villalobos went from 38.0 in H1 to 62.0 in H2, up 24.0."},
+    ]
+    with tenant_context(org.tenant):
+        out = chat_answer(org.manager, "did Rosa Villalobos get better this cycle?",
+                          session=_session(org.manager))
+
+    assert out["tools"] == ["find_people", "compute_improvement"]
+    assert "24" in out["answer"]
+
+
+@override_settings(**FAKE)
+def test_the_deterministic_answer_survives_if_the_agent_adds_nothing(
+        org, team, script, blind_classifier):
+    """The override is one-way. When the agent produces nothing tool-grounded, the
+    answer the deterministic path already had is what goes out — asking the agent must
+    never be able to take an answer away."""
+    with tenant_context(org.tenant):
+        out = chat_answer(org.manager, "did Rosa Villalobos get better this cycle?",
+                          session=_session(org.manager))
+
+    assert "Rosa" in out["answer"], out["answer"]
+    assert out["status"] == "ok"
+
+
+@override_settings(**FAKE)
+def test_a_write_is_never_second_guessed_by_the_trend_rule(org, team, script):
+    """"log that Rosa improved" contains a trend word and is still a write."""
+    from apps.ai.agents import chat as chat_mod
+
+    register_fake_output(chat_mod.AGENT_CODE, lambda prompt, model: {"intent": "write"})
+    script += [{"content": "Done."}]
+    try:
+        with tenant_context(org.tenant):
+            out = chat_answer(org.manager, "recognise Rosa Villalobos for improving so much",
+                              session=_session(org.manager))
+    finally:
+        register_fake_output(chat_mod.AGENT_CODE, chat_mod._fake)
+
+    assert out["status"] == "plan"
+    assert script, "the agent never got the turn"
+
+
+@override_settings(**FAKE)
+def test_the_signed_in_user_is_findable_as_me(org):
+    """Every person tool takes a person_id, so without this the agent cannot ask about
+    the caller at all — "have I improved?" has no name in it to look up."""
+    from apps.ai.tools import ToolContext, find_people
+
+    with tenant_context(org.tenant):
+        out = find_people(ToolContext(caller=org.report), "me")
+
+    assert out["people"][0]["person_id"] == str(org.report.id)
+    assert out["ambiguous"] is False
+
+
+@override_settings(**FAKE)
+def test_a_colleague_is_not_resolved_to_the_caller_by_accident(org):
+    """The self shortcut is anchored to the WHOLE query, so a name that merely contains
+    "me" is looked up normally."""
+    from apps.ai.tools import ToolContext, find_people
+
+    with tenant_context(org.tenant):
+        mei = UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name="Mei Tanaka",
+                          email="mei@acme.test", manager=org.manager)
+        out = find_people(ToolContext(caller=org.manager), "Mei Tanaka")
+
+    assert out["people"][0]["person_id"] == str(mei.id)
+
+
 # ── judgement, framed as a suggestion ────────────────────────────────────────────
 
 

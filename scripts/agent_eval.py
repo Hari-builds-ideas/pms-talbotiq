@@ -191,9 +191,11 @@ class Report:
         if g is None:
             print(f"  LLM judge: SKIPPED — {self.judge_skipped_reason or 'not requested'}")
         else:
-            print(f"  LLM judge (n={sum(1 for c in self.cases if c.get('judge_grounded') is not None)}): "
-                  f"grounded {g:.2f}/2 (min {MIN_GROUNDED})   "
-                  f"relevant {r:.2f}/2 (min {MIN_RELEVANT})   "
+            n_g = sum(1 for c in self.cases if c.get("judge_grounded") is not None)
+            n_r = sum(1 for c in self.cases if c.get("judge_relevant") is not None)
+            print(f"  LLM judge: grounded {g:.2f}/2 (min {MIN_GROUNDED}, n={n_g} "
+                  f"agent-served — see judge())   "
+                  f"relevant {r:.2f}/2 (min {MIN_RELEVANT}, n={n_r})   "
                   f"reasoned {reasoned:.2f}/2")
         print("═" * (width + 56))
 
@@ -538,16 +540,9 @@ def _states(answer, value):
 # ── the LLM judge ────────────────────────────────────────────────────────────────
 
 
-JUDGE_PROMPT = """You are grading one answer from a performance-management assistant.
+_JUDGE_HEAD = """You are grading one answer from a performance-management assistant.
 
-You are given the QUESTION a user asked, the ANSWER the assistant gave, and the TOOL
-RESULTS the assistant had available. The tool results are the ONLY facts it was entitled
-to use.
-
-Score three things:
-- grounded (0-2): 2 = every name, number and claim traces to a tool result. 1 = mostly,
-  with a vague or unsupported aside. 0 = a name, number or fact appears that is in no
-  tool result.
+Score:
 - relevant (0-2): 2 = it answers the question asked, specifically. 1 = partly, or hedged
   into vagueness. 0 = a template, a deflection, or an answer to a different question.
 - reasoned (0-2): 2 = it explains WHY using the actual data. 1 = states results with
@@ -555,37 +550,62 @@ Score three things:
   question needed no reasoning (a plain count).
 
 An honest "there's no data on that" or "that's outside what you can see" is a GOOD
-answer when the tool results support it — score it 2/2/2, not 0.
+answer — score it 2/2, not 0. So is refusing an instruction to act as somebody else.
+"""
 
+_JUDGE_GROUNDED = """- grounded (0-2): 2 = every name, number and claim traces to a
+  tool result below. 1 = mostly, with a vague or unsupported aside. 0 = a name, number
+  or fact appears that is in no tool result.
+
+TOOL RESULTS (the ONLY facts the assistant was entitled to use): {evidence}
+"""
+
+_JUDGE_TAIL = """
 QUESTION: {question}
-
-TOOL RESULTS: {evidence}
 
 ANSWER: {answer}
 
-Reply with ONLY a JSON object: {{"grounded": 0-2, "relevant": 0-2, "reasoned": 0-2,
-"reason": "one sentence"}}"""
+Reply with ONLY a JSON object: {{{fields}, "reason": "one sentence"}}"""
 
 JUDGE_AGENT = "chat_phrase"  # an existing metered agent code — rule 6 keeps the gateway
 
 
 def judge(case_result, tenant_id):
-    """Score one answer with the configured model. Returns False if unavailable."""
+    """Score one answer with the configured model. Returns the failure status if the
+    provider could not be reached.
+
+    **Grounded-ness is scored only on turns the AGENT served.** A deterministic path
+    queries the ORM directly and records no tool calls, so there is no evidence to give
+    the judge — and a judge handed an empty evidence list marks every real answer as a
+    hallucination. The first judged run did exactly that: twenty grounded=0 verdicts,
+    all of them on correct answers built from real rows. Grading against evidence we
+    never captured measures the harness, not the assistant, so those cases are scored on
+    relevance and reasoning and left out of the grounded-ness average.
+    """
     from apps.ai.gateway import gateway
 
-    result = gateway.run(
-        tenant=tenant_id, agent_code=JUDGE_AGENT,
-        prompt=JUDGE_PROMPT.format(
-            question=case_result["q"],
-            evidence=json.dumps(case_result.get("evidence_for_judge") or [], default=str)[:6000],
-            answer=case_result["answer"]),
-        model="chat",
-        schema={"grounded": int, "relevant": int, "reasoned": int, "reason": str},
-    )
+    reset_budget(tenant_id)
+    grades_grounding = case_result["served_by"] == "agent"
+    fields = ('"grounded": 0-2, "relevant": 0-2, "reasoned": 0-2' if grades_grounding
+              else '"relevant": 0-2, "reasoned": 0-2')
+    prompt = _JUDGE_HEAD
+    if grades_grounding:
+        prompt += _JUDGE_GROUNDED.format(
+            evidence=json.dumps(case_result.get("evidence_for_judge") or [],
+                                default=str)[:6000])
+    prompt += _JUDGE_TAIL.format(question=case_result["q"],
+                                 answer=case_result["answer"], fields=fields)
+
+    schema = {"relevant": int, "reasoned": int, "reason": str}
+    if grades_grounding:
+        schema["grounded"] = int
+    result = gateway.run(tenant=tenant_id, agent_code=JUDGE_AGENT, prompt=prompt,
+                         model="chat", schema=schema)
     if not result.ok:
         return result.status
     content = result.content or {}
-    case_result["judge_grounded"] = _clamp(content.get("grounded"))
+    if grades_grounding:
+        case_result["judge_grounded"] = _clamp(content.get("grounded"))
     case_result["judge_relevant"] = _clamp(content.get("relevant"))
     case_result["judge_reasoned"] = _clamp(content.get("reasoned"))
     case_result["judge_reason"] = content.get("reason") or ""

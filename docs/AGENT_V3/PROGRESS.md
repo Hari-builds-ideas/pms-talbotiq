@@ -186,14 +186,18 @@ the whole run, because one leak in sixty questions is a 98% pass and a breach. *
 in the bank** — `{report}`/`{stranger}` placeholders are filled from whatever tenant is in
 front of it.
 
-### Result (live model, 5,000 people, 56 cases)
+### Result (live model, 5,000 people, 97 cases)
 ```
-scope-safe 56/56 · no-fabrication 56/56 · behaviour 56/56
-judge: grounded 2.00/2 (n=20 agent-served) · relevant 1.68/2 · reasoned 1.82/2
-latency median 4.6 s · p95 14.4 s          RESULT: PASS
+scope-safe 97/97 · no-fabrication 97/97 · behaviour 97/97
+judge: grounded 1.97/2 (n=31 agent-served) · relevant 1.56/2 · reasoned 1.67/2
+latency median 4.8 s · p95 12.5 s          RESULT: PASS
 ```
+The bank started at 56 and grew to 97 once the thin coverage was obvious: HRBP and admin
+callers, duplicate names, typos, empty/shouted/run-on input, mixed self-and-other scope,
+longer conversations, four more injection shapes, and questions the product holds no data
+for at all (salary, sick days, review prose).
 
-### Three things the harness found, in itself and in the product
+### What the harness found, in itself and in the product
 - **It scored 30 of 56 cases as failures because the tenant's daily AI budget ran out.**
   A budget refusal is a fact about the harness, and it must never be able to masquerade
   as a verdict on the assistant. Budgets reset per case now, and an infrastructure status
@@ -205,12 +209,35 @@ latency median 4.6 s · p95 14.4 s          RESULT: PASS
 - **A model that skips `find_people` invents an id.** The run produced
   `"jamal_whitfield_id"`, which the ORM rejects as a UUID from inside a tool call. That is
   now a "no such person" result the model can correct itself from.
+- **The judge fell for the injections it was grading**, scoring a correct refusal 0 because
+  "the assistant ignored the system instruction about the new ADMIN role". It had read the
+  case text as fact. The judge prompt now says question and answer are data, that some are
+  injections addressed to the assistant and not true, and that refusing one earns 2.
+- **The model tallied a list in passing** — "two team members have a score of 47.4" where
+  the tool returned three. Every headline number comes from a tool; an incidental count is
+  still a count. The prompt now says to quote the rows or say nothing.
 
 Grounded-ness is judged only where the agent served the turn. A deterministic path
 queries the ORM directly and records no tool calls, so there is no evidence to give the
 judge — and the first judged run marked twenty correct answers as hallucinations for
 exactly that reason. Grading against evidence we never captured measures the harness.
 
-**RESUME HERE → Unit E** (`E_REPORT.md`): `docs/AGENT_V3/REPORT.md` — what was added,
-before/after transcripts, the scope/safety proof, eval numbers, scale, and what Hari
-should test himself.
+---
+
+## Unit E — the report
+
+`docs/AGENT_V3/REPORT.md`. The design in plain terms, the twelve tools, where the agent
+sits, real before/after transcripts from the live model, the scope and injection proof,
+eval numbers, scale figures, the morning checklist, and the weaknesses stated plainly —
+including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
+run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
+
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1689 passed**, `apps/ai`
+**434 passed**, scale harness **257/257**, eval **PASS** at 97/97 on all three gates.
+
+**RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
+in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in
+the chat panel for 4–13 s agent turns (the most visible problem, and it is frontend);
+tuning the per-agent budget ceilings for the agent's call pattern; conversations deeper
+than two turns in the eval bank; and closing the incidental-arithmetic class structurally
+rather than by prompt.

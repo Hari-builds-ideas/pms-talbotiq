@@ -702,3 +702,40 @@ Full suite **1639 passed**.
 
 **RESUME HERE → every agent job the assistant can start now completes.** Remaining
 REPORT.md §7 items 3 and 5 are still deliberate design choices.
+
+---
+
+## Follow-up 9 — closing the same gap on the two that happened to be right
+
+Follow-up 8 fixed the career job and left an obvious question: the assistant starts
+**three** kinds of agent job, and the reason the broken one stayed broken was that no
+test joined "the shape we enqueue" to "the shape the seam reads". `draft_review` and
+`succession_enrich` had exactly the same gap — every one of their tests stops at
+"enqueued exactly once". They were unguarded, not proven.
+
+**Checked the shapes first.** `_execute_succession_enrich` sends `target_id=plan.id` with
+no params, identical to `PlanEnrichView`, and the seam takes `plan_id`. `_execute_draft_
+review` sends the review, and `draft_review_with_agent1` takes `review_id`. Both correct —
+so career was the only one actually broken. That is worth stating plainly rather than
+implying a wider fire.
+
+**Then closed the gap anyway**, because "correct today, untested" is how the career one
+got there. Two tests now run the assistant's own job through the real dispatcher to a
+finished artefact:
+- review → `PENDING_HUMAN_REVIEW` with a body (never auto-final);
+- succession plan → `PENDING_HUMAN_REVIEW`.
+
+**Mutation-tested.** Pointing either action's enqueue at the wrong id fails both new tests
+immediately (`NOT_FOUND`) while every enqueue-only test still passes — which is precisely
+the blind spot that let the career bug live.
+
+Also recorded in REPORT §6: approving a review draft in the harness queues **real**
+Agent-1 work in the worker, so a harness run is not free on a metered key. A handful of
+calls per run, not per person — but nobody should discover that from a bill.
+
+No production code changed in this unit. Full suite **1641 passed**.
+
+**RESUME HERE → all three assistant→agent-job paths are now joined end to end and
+mutation-checked.** `agent3` (feedback summary) and `jd_generator` exist but the
+assistant cannot start them — they are reachable only from their own screens, so they sit
+outside this plan's scope; worth the same treatment if that ever changes.

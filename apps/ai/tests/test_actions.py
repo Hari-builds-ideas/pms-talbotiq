@@ -227,6 +227,30 @@ def test_draft_review_enqueues_exactly_once(org):
         assert AIJob.objects.filter(agent_code="agent1", target_id=review.id).count() == 1
 
 
+@override_settings(LLM_PROVIDER="apps.ai.providers.FakeLLMProvider",
+                   REVIEW_ASSISTANT_PROVIDER="apps.ai.agents.review.ReviewAssistantProvider")
+def test_draft_review_job_actually_runs_to_a_pending_draft(org):
+    """"Enqueued" is not "works". The career-enrich action passed its enqueue test for
+    months while being incapable of ever running (see PROGRESS follow-up 8), because
+    nothing joined the shape we enqueue to the shape the seam reads. Each of the three
+    actions that start an agent job now runs one all the way through the real dispatcher.
+    """
+    from apps.ai.tasks import run_agent_job
+    from apps.reviews.models import Review
+
+    with tenant_context(org.tenant):
+        review = ReviewFactory(employee=org.report, cycle=_active_cycle(org), state="DRAFT")
+        out = execute_action(org.manager, "draft_review", {"review_id": str(review.id)})
+
+    result = run_agent_job(str(org.tenant.id), out["job_id"])
+
+    assert result["status"] == AIJob.Status.SUCCEEDED, result
+    with tenant_context(org.tenant):
+        review.refresh_from_db()
+        assert review.state == Review.State.PENDING_HUMAN_REVIEW  # HITL, never auto-final
+        assert review.draft_body
+
+
 def test_draft_review_embedded_instruction_in_param_not_obeyed(org):
     with tenant_context(org.tenant):
         review = ReviewFactory(employee=org.report, cycle=_active_cycle(org), state="DRAFT")
@@ -352,6 +376,27 @@ def test_succession_enrich_enqueues_exactly_once(org):
         out = execute_action(org.hrbp, "succession_enrich", {"plan_id": str(plan.id)})
         assert out["ok"]
         assert AIJob.objects.filter(agent_code="agent4", target_id=plan.id).count() == 1
+
+
+@override_settings(LLM_PROVIDER="apps.ai.providers.FakeLLMProvider",
+                   SUCCESSION_ANALYZER_PROVIDER="apps.ai.agents.succession.SuccessionAnalyzerProvider")
+def test_succession_enrich_job_actually_runs_to_a_pending_plan(org):
+    """The third agent job the assistant can start, joined end to end for the same
+    reason as the other two. Succession is also the one where a leak would be worst, so
+    the name-free rule is re-asserted on the output the job actually produced."""
+    from apps.ai.tasks import run_agent_job
+    from apps.succession.models import SuccessionPlan
+
+    with tenant_context(org.tenant):
+        _, plan = _role_with_plan(org)
+        out = execute_action(org.hrbp, "succession_enrich", {"plan_id": str(plan.id)})
+
+    result = run_agent_job(str(org.tenant.id), out["job_id"])
+
+    assert result["status"] == AIJob.Status.SUCCEEDED, result
+    with tenant_context(org.tenant):
+        plan.refresh_from_db()
+        assert plan.status == SuccessionPlan.Status.PENDING_HUMAN_REVIEW  # HITL preserved
 
 
 def test_succession_enrich_embedded_instruction_in_param_not_obeyed(org):

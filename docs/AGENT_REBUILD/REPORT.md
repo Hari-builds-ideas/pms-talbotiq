@@ -311,6 +311,11 @@ CPU — it inflates the latency numbers and nothing else. And the `ai` throttle 
 *same* tenant will 429 partway through; the failures read exactly like logic bugs. Leave
 a minute between them.
 
+One cost note: the harness approves a few review drafts, and approving one **queues real
+Agent-1 work** that the Celery worker then runs against whatever provider is configured.
+That is the point — it is the seam under test — but on a metered key a harness run is not
+free. It is a handful of calls per run, not per person.
+
 The scale tenant is separate (`scale`), logs in with `Passw0rd!scale`, and the command
 **refuses** to touch `acme`. If you restart the web container, note that gunicorn does
 **not** auto-reload — `docker compose restart web` after any code change, or you'll be
@@ -768,3 +773,28 @@ total failure sit unnoticed. The other four seams each take their own artifact's
 is what the dispatcher passes; checked rather than assumed.
 
 **Full suite 1639 passed.**
+
+### Closing the same gap on the two that happened to be right
+
+The career bug survived because nothing joined "the shape we enqueue" to "the shape the
+seam reads". The assistant starts **three** kinds of agent job, and the other two had
+precisely the same gap — every one of their tests stops at "enqueued exactly once".
+
+I checked their shapes before assuming the worst: `succession_enrich` sends
+`target_id=plan.id` with no params, identical to `PlanEnrichView`, and the seam takes
+`plan_id`; `draft_review` sends the review, and the seam takes `review_id`. **Both
+correct** — career was the only one actually broken, and saying so plainly matters more
+than implying a wider fire.
+
+The gap was closed anyway, because "correct today, untested" is exactly how the career one
+got there. Two tests now run the assistant's own job through the real dispatcher to a
+finished artefact — review to `PENDING_HUMAN_REVIEW` with a body, succession plan to
+`PENDING_HUMAN_REVIEW`. Pointing either action's enqueue at the wrong id fails both
+immediately while every enqueue-only test still passes, which is the blind spot itself,
+demonstrated.
+
+`agent3` (feedback summary) and `jd_generator` have the same seam shape but the assistant
+cannot start them — they are reachable only from their own screens, so they are outside
+this plan's scope. Worth the same treatment if that changes.
+
+No production code changed for this part. **Full suite 1641 passed.**

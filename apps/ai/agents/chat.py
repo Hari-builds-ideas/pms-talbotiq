@@ -981,7 +981,9 @@ def _agent_answer(caller, query: str, session) -> dict | None:
     from apps.ai.agent_loop import run_agent
 
     try:
-        run = run_agent(caller, query, history=_history_for_agent(session, query))
+        run = run_agent(caller, query,
+                        history=_history_for_agent(session, query),
+                        known_people=_known_people(caller, session))
     except Exception:  # a tool bug must not take the whole chat turn down
         logger.exception("chat: the agent fallback raised")
         return None
@@ -1003,6 +1005,26 @@ def _agent_answer(caller, query: str, session) -> dict | None:
         "evidence": run.tool_calls,
         "refs": refs,
     }
+
+
+def _known_people(caller, session, limit=8):
+    """Who this conversation has already been about, newest first, with their ids.
+
+    "Has that person improved since last cycle?" has no name in it, so `find_people` has
+    nothing to resolve and the agent used to come back empty-handed — the deterministic
+    diagnosis then answered with a status instead of a delta. This closes that.
+
+    Deliberately `people_in_order`, the resolver the rest of the chat already uses:
+    a second way of deciding who "that person" is would be the exact drift that split the
+    directory from the data path in the previous run. It re-checks access, so a person
+    the caller may no longer read never appears.
+    """
+    if session is None:
+        return []
+    from apps.ai.sessions import people_in_order
+
+    people = people_in_order(caller, session)
+    return [{"id": str(u.id), "name": u.display} for u in reversed(people)][:limit]
 
 
 def _history_for_agent(session, query: str, limit=6):

@@ -484,27 +484,49 @@ def run_case(case, actors, names, rng):
     question = fill(case["q"], actors)
     session = ChatSession.objects.create(tenant_id=actor.tenant_id, owner=actor)
 
+    # `then` is one follow-up; `turns` is a whole conversation. Both scored on the LAST
+    # reply, because the point of a conversation case is whether the earlier turns are
+    # still doing work by the end — a case that passes on turn two and quietly loses the
+    # thread on turn six is the failure worth catching.
     started = time.perf_counter()
     typed = [question]
     result = say(actor, session, question)
-    if case.get("then"):
-        question = fill(case["then"], actors)
+    # Evidence ACCUMULATES across the conversation, because that is what the contract
+    # says: every number must come from a tool result in *this conversation*, not in this
+    # turn. A five-turn case caught the difference — "his score is 46.2, slightly below
+    # your team average of 46.5" was flagged as fabricated because the 46.2 had been
+    # fetched two turns earlier. Checking only the last turn would push the assistant
+    # toward re-fetching what it already knows, which is slower and no more truthful.
+    evidence = list(result.get("evidence") or []) if result.get("evidence") is not None else None
+    for follow_up in ([case["then"]] if case.get("then") else case.get("turns") or []):
+        question = fill(follow_up, actors)
         typed.append(question)
         result = say(actor, session, question)
+        if result.get("evidence") is not None:
+            evidence = (evidence or []) + list(result["evidence"])
     elapsed = (time.perf_counter() - started) * 1000
 
     answer = result.get("answer") or ""
-    evidence = result.get("evidence")
+    # `served_by` is about the FINAL turn — which mechanism produced the reply being
+    # scored — while `evidence` spans the whole conversation.
+    turn_evidence = result.get("evidence")
     truth = probe(case["probe"], actor, actors) if case.get("probe") else None
 
     scope_ok, scope_detail = check_scope(answer, actor, names, question=" ".join(typed))
-    hard_ok, hard_detail = check_no_fabrication(answer, evidence)
+    # Only when the AGENT produced the reply being scored. A deterministic final turn
+    # builds its sentence from its own ORM queries and records no tool calls, so the
+    # accumulated evidence from earlier agent turns is the wrong yardstick entirely —
+    # it flagged a correct deterministic answer the moment conversations got long enough
+    # to mix the two mechanisms. When the agent did answer, the yardstick is the whole
+    # conversation's evidence, per the contract.
+    hard_ok, hard_detail = check_no_fabrication(
+        answer, evidence if turn_evidence is not None else None)
     behaviour_ok, behaviour_detail = check_behaviour(case, result, answer, truth)
 
     return {
         "id": case["id"], "tags": case["tags"], "q": question, "answer": answer,
         "status": result.get("status"), "tools": result.get("tools") or [],
-        "served_by": "agent" if evidence is not None else "deterministic",
+        "served_by": "agent" if turn_evidence is not None else "deterministic",
         "ms": round(elapsed, 1),
         "truth": truth,
         # What the assistant actually had in front of it. The judge grades against this

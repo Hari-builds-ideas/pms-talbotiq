@@ -174,6 +174,21 @@ class AgentRun:
         return json.dumps([c["result"] for c in self.tool_calls], default=str)
 
 
+def _known_people_block(known_people, limit=8):
+    """The people this conversation has already been about, most recent first.
+
+    A system message, not a user one: it is server-authored fact about who has been
+    discussed, and it must not be confusable with something the user typed. The ids are
+    still only usable through the tools, which re-check access on every call — this
+    shortens the lookup, it does not widen it.
+    """
+    lines = [f"- {p['name']} (person_id: {p['id']})" for p in known_people[:limit]]
+    return ("PEOPLE ALREADY IDENTIFIED IN THIS CONVERSATION, most recent first. Use these "
+            "ids when the user refers back to somebody without naming them (\"that "
+            "person\", \"her\", \"the first one\", \"of those\"). If the user names "
+            "somebody new, call find_people as usual.\n" + "\n".join(lines))
+
+
 def _history_messages(history, limit=6):
     """Recent turns, so pronouns and "the other one" still resolve.
 
@@ -190,14 +205,23 @@ def _history_messages(history, limit=6):
     return out
 
 
-def run_agent(caller, message, *, history=None, max_rounds=MAX_ROUNDS) -> AgentRun:
+def run_agent(caller, message, *, history=None, known_people=None,
+              max_rounds=MAX_ROUNDS) -> AgentRun:
     """Answer ``message`` for ``caller`` by composing scoped tools.
 
     ``caller`` comes from the authenticated session — it is the trusted identity, and the
     only one any tool will ever run as.
+
+    ``known_people`` are the people already identified earlier in this conversation, with
+    their ids. Without it a pronoun follow-up — "has that person improved?" — has nothing
+    to look up: `find_people` needs a name, and "that person" is not one. The list is
+    built server-side from the session's own access-rechecked refs, so it can only ever
+    contain people the caller may already read.
     """
     ctx = ToolContext(caller=caller)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if known_people:
+        messages.append({"role": "system", "content": _known_people_block(known_people)})
     messages += _history_messages(history)
     messages.append({"role": "user", "content": message})
 

@@ -511,6 +511,64 @@ def test_the_agent_sees_the_conversation_and_grounds_who_it_answered_about(
 
 
 @override_settings(**FAKE)
+def test_a_pronoun_follow_up_reaches_the_agent_with_an_id_to_use(
+        org, team, script, blind_classifier):
+    """"Has that person improved?" has no name in it, so find_people has nothing to
+    resolve. The people already discussed are handed to the model as ids — from the
+    session's own access-rechecked refs, not a second resolver."""
+    from apps.ai import sessions
+    from apps.ai.models import ChatTurn
+
+    rosa = team["rosa"]
+    with tenant_context(org.tenant):
+        session = _session(org.manager)
+        sessions.append_turn(session, ChatTurn.Role.USER, "who is my weakest?")
+        sessions.append_turn(
+            session, ChatTurn.Role.ASSISTANT, "Rosa Villalobos.",
+            refs=[{"type": "user", "id": str(rosa.id), "label": "Rosa Villalobos"}])
+
+        known = chat_mod_known(org.manager, session)
+        assert {p["id"] for p in known} == {str(rosa.id)}
+
+        script += [
+            {"tool_calls": [_call("compute_improvement", person_id=str(rosa.id))]},
+            {"content": "Yes — that person went from 38.0 to 62.0, up 24.0."},
+        ]
+        out = chat_answer(org.manager, "has that person improved since last cycle?",
+                          session=session)
+
+    assert out["tools"] == ["compute_improvement"]
+    assert "24" in out["answer"]
+
+
+@override_settings(**FAKE)
+def test_a_person_the_caller_can_no_longer_read_is_not_handed_to_the_model(org, team):
+    """The id list is only a shortcut for LOOKUP. It re-checks access, so somebody who
+    has moved out of the caller's scope since being discussed simply is not in it."""
+    with tenant_context(org.tenant):
+        session = _session(org.manager)
+        moved = team["rosa"]
+        from apps.ai import sessions
+        from apps.ai.models import ChatTurn
+
+        sessions.append_turn(session, ChatTurn.Role.USER, "how is Rosa doing?")
+        sessions.append_turn(
+            session, ChatTurn.Role.ASSISTANT, "Fine.",
+            refs=[{"type": "user", "id": str(moved.id), "label": "Rosa Villalobos"}])
+        assert chat_mod_known(org.manager, session)
+
+        moved.manager = org.hrbp  # reassigned out of this manager's subtree
+        moved.save(update_fields=["manager"])
+        assert chat_mod_known(org.manager, session) == []
+
+
+def chat_mod_known(caller, session):
+    from apps.ai.agents.chat import _known_people
+
+    return _known_people(caller, session)
+
+
+@override_settings(**FAKE)
 def test_the_current_question_is_not_sent_to_the_model_twice(org, team, script, blind_classifier):
     """The view records the user's turn before we run, so the naive history would repeat
     the question the model is already being asked."""

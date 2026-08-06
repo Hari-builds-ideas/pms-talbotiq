@@ -12,6 +12,7 @@ classification step can never widen access.
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from django.conf import settings
@@ -20,8 +21,17 @@ from apps.ai.gateway import gateway
 from apps.ai.providers import register_fake_output
 from apps.rbac.scope import actor_can_access
 
+logger = logging.getLogger("pms.ai.chat")
+
 AGENT_CODE = "chat"
 SCHEMA = {"intent": str}
+
+#: Marks a deterministic reply that is a NON-answer: the general redirect, a name that
+#: didn't resolve, an unmapped search, an empty scope. Those — and only those — are the
+#: turns handed to the function-calling agent (AGENT_V3/C). Every real answer, refusal,
+#: disambiguation and plan is left exactly as it was, so nothing already working can
+#: regress. The marker is stripped in :func:`chat_answer` and never reaches the API.
+_UNANSWERED = "_unanswered"
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 # Destructive intent — deletion/destruction is NOT an agent action; refuse it explicitly.
 # Requires a destructive VERB and a bulk-data OBJECT so incidental phrasing ("dropped the
@@ -136,8 +146,11 @@ def _answer_search(caller, query: str) -> dict:
     if out["status"] != "ok":
         return {"status": "error", "detail": out.get("detail")}
     if out["search"] == "unknown":
+        # Two supported searches, and this was neither — so it is a team question with
+        # no pre-coded path, which is the agent's job (AGENT_V3/C). Marked; if the agent
+        # calls no tool, this honest deflection is still what goes out.
         return {
-            "status": "ok", "intent": "search", "data": [],
+            "status": "ok", "intent": "search", "data": [], _UNANSWERED: True,
             "answer": "I couldn't map that to a supported search. Try: “who's missing "
                       "goals?” or “who hasn't checked in this week?”",
         }
@@ -268,6 +281,21 @@ _GROUP_SUPPORT_RE = re.compile(
     re.I,
 )
 _GROUP_TEAMWORD_RE = re.compile(r"\b(team|reports?|everyone|all\s+of)\b", re.I)
+
+#: A question whose SUBJECT is the caller's team — several people, not one, and not the
+#: caller. "compare my two weakest performers", "summarise my team's biggest risks".
+#:
+#: This exists because "my" otherwise reads as self-reference: the question fell through
+#: to the single-person path, resolved to the caller, and came back describing their own
+#: goals. Those questions now go to the function-calling agent (AGENT_V3/C). Checked
+#: LAST, so the three pre-coded team shapes above keep their deterministic answers.
+_TEAM_SUBJECT_RE = re.compile(
+    r"\bmy\s+(?:\w+\s+){0,2}(?:team|reports?|directs?|people|performers?|employees?|staff)\b|"
+    r"\b(?:the|my)\s+(?:top|best|worst|weakest|strongest)\s+(?:\w+\s+){0,2}"
+    r"(?:performers?|reports?|people|employees?)\b|"
+    r"\beveryone\s+(?:on|in)\s+my\b|\ball\s+(?:of\s+)?my\s+(?:reports?|team)\b",
+    re.I,
+)
 
 #: "the first / second / other one" — a pick from the most recent disambiguation.
 _ORDINAL_ONE_RE = re.compile(
@@ -866,7 +894,7 @@ def _answer_two_people(caller, query, targets, intent="performance", oos_names=(
         facts.append(diag["facts"])
         names.append(t.display)
     if not drafts and not oos_names:
-        return {"status": "ok", "intent": intent, "data": [],
+        return {"status": "ok", "intent": intent, "data": [], _UNANSWERED: True,
                 "answer": "I couldn't pull those people up in your scope."}
     if is_count:
         answer = " ".join(drafts)
@@ -894,6 +922,109 @@ def _latest_score(target):
 
 
 def chat_answer(caller, query: str, session=None) -> dict:
+    """Answer ``query`` for ``caller`` — the pre-coded paths first, then the agent.
+
+    AGENT_V3/C. :func:`_deterministic_answer` below is the whole assistant as it was:
+    the conversation state machine, the approval-gated write plans, scoped person and
+    team reads. It keeps priority, because it is proven and because a state machine that
+    sometimes yields to a model is not a state machine.
+
+    What it *cannot* do is answer a question nobody pre-coded — "who improved most since
+    last cycle", "who's ready for promotion". Those fall out of it as a non-answer today:
+    the capability blurb, or a name lookup for words that were never a name. So exactly
+    those turns go to the function-calling agent, which composes the scoped read tools.
+
+    The agent's reply is used **only when it is tool-grounded**. A turn where the model
+    called no tool has no scoped data behind it — whatever it wrote is its own prose, and
+    prose is what this system exists to not show people. That one rule is also why small
+    talk still gets the deterministic redirect: there is nothing for the tools to fetch.
+    """
+    out = _deterministic_answer(caller, query, session=session)
+    if not out.pop(_UNANSWERED, False):
+        return out
+    return _agent_answer(caller, query, session) or out
+
+
+def _agent_answer(caller, query: str, session) -> dict | None:
+    """Hand an unanswered question to the scoped function-calling agent.
+
+    Returns ``None`` whenever there is nothing trustworthy to say — no tool was called,
+    the provider failed, the budget is gone — and the caller then falls back to the
+    deterministic reply. Failure here must never be worse than not having tried.
+    """
+    from apps.ai.agent_loop import run_agent
+
+    try:
+        run = run_agent(caller, query, history=_history_for_agent(session, query))
+    except Exception:  # a tool bug must not take the whole chat turn down
+        logger.exception("chat: the agent fallback raised")
+        return None
+    if not run.ok or not run.used_a_tool or not run.answer.strip():
+        return None
+    refs = _agent_refs(run)
+    return {
+        "status": "ok",
+        "intent": "performance",
+        "answer": run.answer.strip(),
+        "data": [r["label"] for r in refs],
+        # The evidence for the answer. `tools` is the composition, and rides out to the
+        # client. `evidence` is every tool RESULT, and does not: the HTTP layer drops it
+        # (`ChatView`). It exists so the eval harness can check the hard property — that
+        # every number in the answer had a tool result to come from — against the real
+        # product path rather than against a second, parallel run of the agent that
+        # might not have done the same thing.
+        "tools": run.tool_names,
+        "evidence": run.tool_calls,
+        "refs": refs,
+    }
+
+
+def _history_for_agent(session, query: str, limit=6):
+    """Recent turns as ``{role, text}``, minus the question being asked right now."""
+    if session is None:
+        return []
+    from apps.ai.sessions import recent_turns
+
+    turns = list(recent_turns(session, limit + 1))
+    if turns and turns[-1].role == "user" and (turns[-1].text or "").strip() == (query or "").strip():
+        turns = turns[:-1]
+    return [{"role": t.role, "text": t.text} for t in turns[-limit:]]
+
+
+#: Tool-result keys that hold lists of people. Grounding whoever the answer was about
+#: keeps the existing reference resolution working across the agent ("and her reviews?").
+_PEOPLE_KEYS = ("ranked", "members", "people")
+
+
+def _agent_refs(run, limit=5):
+    """The people this answer was about, as session refs.
+
+    Access is re-checked wherever a ref is later *used* (``sessions._reaccess``), so a
+    ref grants nothing — it only keeps a pronoun pointing at the right person, including
+    when that person is one the caller was refused.
+    """
+    refs, seen = [], set()
+
+    def add(row):
+        pid, name = row.get("person_id"), row.get("name")
+        if not pid or not name or pid in seen:
+            return
+        seen.add(pid)
+        refs.append({"type": "user", "id": str(pid), "label": name})
+
+    for call in run.tool_calls:
+        result = call.get("result")
+        if not isinstance(result, dict):
+            continue
+        add(result)
+        for key in _PEOPLE_KEYS:
+            for row in (result.get(key) or [])[:limit]:
+                if isinstance(row, dict):
+                    add(row)
+    return refs[:limit]
+
+
+def _deterministic_answer(caller, query: str, session=None) -> dict:
     """Answer ``query`` for ``caller`` (RBAC-bound). Returns a dict with a ``status``
     the view maps to HTTP: ok | plan | not_configured | budget | blocked | error.
 
@@ -1074,7 +1205,11 @@ def chat_answer(caller, query: str, session=None) -> dict:
     _is_compare = bool(_COMPARE_RE.search(_tq))
     _is_agg = bool(_AGG_RE.search(_tq))
     _is_scan = bool(_TEAM_SCAN_RE.search(_tq))
-    if _is_compare or _is_agg or _is_scan:
+    # Yields to `search`: "who on my team is missing goals?" is a supported, scope-bound
+    # NL search, and it also says "my team". The search branch below owns it — and when
+    # the search comes back unmapped, THAT reply is marked for the agent instead.
+    _is_team_open = bool(_TEAM_SUBJECT_RE.search(_tq)) and intent != "search"
+    if _is_compare or _is_agg or _is_scan or _is_team_open:
         from apps.rbac.matrix import Capability, role_has_capability
 
         if not role_has_capability(caller.role, Capability.VIEW_TEAM_SCORES):
@@ -1089,18 +1224,29 @@ def chat_answer(caller, query: str, session=None) -> dict:
             return _answer_team_ranking(caller, best=not worst)
         if _is_agg:
             return _answer_team_counts(caller)
-        # A scan: pick the mode from the phrasing.
-        low = _tq.lower()
-        mode = "at_risk" if ("at risk" in low and "behind" not in low) else (
-            "behind" if "behind" in low else "all")
-        # "the OTHER engineer who's behind" / "who ELSE is behind?" → drop the person
-        # just discussed from the list so it reads as "aside from them, …".
-        exclude = None
-        if session is not None and re.search(r"\b(other|else|another)\b", low):
-            from apps.ai.sessions import last_referenced_person_any_scope
+        if _is_scan:
+            # A scan: pick the mode from the phrasing.
+            low = _tq.lower()
+            mode = "at_risk" if ("at risk" in low and "behind" not in low) else (
+                "behind" if "behind" in low else "all")
+            # "the OTHER engineer who's behind" / "who ELSE is behind?" → drop the
+            # person just discussed so it reads as "aside from them, …".
+            exclude = None
+            if session is not None and re.search(r"\b(other|else|another)\b", low):
+                from apps.ai.sessions import last_referenced_person_any_scope
 
-            exclude = last_referenced_person_any_scope(caller, session)
-        return _answer_team_risk(caller, mode=mode, exclude=exclude)
+                exclude = last_referenced_person_any_scope(caller, session)
+            return _answer_team_risk(caller, mode=mode, exclude=exclude)
+        # A question about the caller's TEAM in a shape none of the three above match
+        # ("compare my two weakest performers"). It must not fall through to the
+        # single-person path below, where the "my" reads as self-reference and the
+        # reply comes back about the CALLER's own goals — a confidently wrong answer
+        # is worse than a missing one. Marked, so the agent composes it instead.
+        return {
+            "status": "ok", "intent": "performance", "data": [], _UNANSWERED: True,
+            "answer": "I couldn't work that one out across your team — try “who's "
+                      "behind?”, “who's doing best?”, or name the person.",
+        }
     if intent == "search":
         # Team "find people" search is a manager/HR capability (VIEW_TEAM_SCORES). An
         # employee's search-shaped query falls through to the general redirect — the
@@ -1130,7 +1276,13 @@ def chat_answer(caller, query: str, session=None) -> dict:
         else:
             # General / conversational / out-of-domain ("what day is today?", "I feel
             # lonely"). Decline politely + redirect — NEVER a performance-metrics dump.
-            return {"status": "ok", "intent": "general", "answer": _GENERAL_ANSWER, "data": []}
+            #
+            # AGENT_V3/C — but this is also where an open-ended question we never coded
+            # a path for lands ("who improved most since last cycle?"). Marked, so the
+            # function-calling agent gets a turn at it; if the agent calls no tool —
+            # which is what small talk produces — this redirect is still the answer.
+            return {"status": "ok", "intent": "general", "answer": _GENERAL_ANSWER,
+                    "data": [], _UNANSWERED: True}
 
     # PERFORMANCE intent. Resolve a target person: an explicit email → a remembered
     # person from THIS conversation ("she", "her" — session refs, access re-checked)
@@ -1273,8 +1425,14 @@ def chat_answer(caller, query: str, session=None) -> dict:
             # person doesn't exist would be a claim we haven't checked.
             typed_words = name_text.split()
             typed = " ".join(w.capitalize() for w in typed_words) if 1 <= len(typed_words) <= 3 else ""
+            #
+            # Marked for the agent (AGENT_V3/C): "who's ready for promotion?" has no
+            # name in it, but the heuristic above reads "ready promotion" as one and
+            # dead-ends here. If the agent can compose an answer it should; if the user
+            # really did mistype a name, find_people comes back empty and the honest
+            # message below still stands.
             return {
-                "status": "ok", "intent": intent, "data": [],
+                "status": "ok", "intent": intent, "data": [], _UNANSWERED: True,
                 "answer": (f"I couldn't find anyone named {typed} — " if typed
                            else "I couldn't find anyone by that name — ")
                           + "try their full name or their email address.",
@@ -1303,7 +1461,8 @@ def chat_answer(caller, query: str, session=None) -> dict:
         # else: no name, no pronoun → answer about the caller (self).
 
     if target is None:
-        return {"status": "ok", "intent": intent, "answer": "No matching person in your scope.", "data": []}
+        return {"status": "ok", "intent": intent, "data": [], _UNANSWERED: True,
+                "answer": "No matching person in your scope."}
 
     # "his/her/their OTHER goal" / "the first/second/last goal" — isolate ONE goal of
     # the resolved person (spec §0 Example B), never a list of all. "other" = the goals

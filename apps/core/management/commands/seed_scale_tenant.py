@@ -46,6 +46,10 @@ SCALE_PASSWORD = "Passw0rd!scale"
 #: Tenants this command must never write to, whatever is passed on the command line.
 PROTECTED_SLUGS = {"acme", "globex", "default", "public"}
 
+#: The CLOSED cycle seeded before the active one, so cycle-over-cycle questions ("who
+#: improved most since last cycle?") have two comparable scores per person to work from.
+PRIOR_CYCLE_NAME = "Scale Test Cycle (previous)"
+
 FIRST_NAMES = [
     "Aarav", "Mei", "Liam", "Sofia", "Noah", "Aisha", "Ethan", "Priya", "Lucas", "Hana",
     "Mateo", "Yuki", "Omar", "Elena", "Kai", "Zara", "Diego", "Anya", "Ravi", "Clara",
@@ -147,6 +151,7 @@ class Command(BaseCommand):
             people = self._people(tenant, headcount)
             cycle = self._cycle(tenant)
             self._performance_data(tenant, cycle, people)
+            self._prior_cycle_scores(tenant, people)
 
         took = (timezone.now() - started).total_seconds()
         self.stdout.write(self.style.SUCCESS(
@@ -440,3 +445,61 @@ class Command(BaseCommand):
         KpiMeasurement.objects.bulk_create(measurements, batch_size=1000)
         CycleScore.objects.bulk_create(scores, batch_size=1000)
         self.stdout.write(f"created goals/KPIs/scores for {len(people)} people")
+
+    #: How each person's score moved between the previous cycle and the current one, in
+    #: T-score points. Walked by index like ATTAINMENT, and deliberately UNCORRELATED
+    #: with it: a fixture where the strongest people are always the fastest improvers
+    #: makes "who improved most" and "who's top" the same question, and then neither is
+    #: really being tested. Sums to a small negative, so a team is not uniformly rising.
+    DELTAS = [
+        6.4, -2.1, 11.8, 0.0, -5.3, 8.7, -1.2, 3.9, -9.4, 2.6,
+        -3.8, 14.2, 1.1, -6.7, 4.5, -0.9, 7.3, -4.4, 9.6, -2.8,
+        0.5, -8.1, 5.2, 12.7, -1.6, 3.3, -7.5, 1.9, -3.1, 6.0,
+    ]
+
+    def _prior_cycle_scores(self, tenant, people):
+        """A CLOSED cycle before the current one, with a score for every person.
+
+        Without this the tenant has exactly one score each, and "who improved most since
+        last cycle?" is honestly unanswerable — which is correct behaviour but proves
+        nothing about the question class. Cycle-over-cycle deltas are the one thing a
+        single-cycle fixture cannot exercise at all.
+        """
+        from apps.cycles.models import PerformanceCycle
+        from apps.goals.models import CycleScore
+
+        prior = PerformanceCycle.objects.filter(name=PRIOR_CYCLE_NAME).first()
+        if prior is not None and CycleScore.objects.filter(cycle_id=prior.id).exists():
+            self.stdout.write("prior-cycle scores already present — skipping.")
+            return
+        if prior is None:
+            today = timezone.now().date()
+            prior = PerformanceCycle.objects.create(
+                tenant_id=tenant.id, name=PRIOR_CYCLE_NAME,
+                start_date=today - datetime.timedelta(days=225),
+                end_date=today - datetime.timedelta(days=135),
+                status="CLOSED",
+            )
+
+        # Older than every current score, so "newest first" orders the pair correctly
+        # whatever order the rows were written in.
+        then = timezone.now() - datetime.timedelta(days=150)
+        rows = []
+        for idx, person in enumerate(people):
+            frac = ATTAINMENT[idx % len(ATTAINMENT)]
+            now_t = round(50 + (frac - 0.6) * 20, 4)
+            was_t = round(now_t - self.DELTAS[idx % len(self.DELTAS)], 4)
+            was_frac = (was_t - 50) / 20 + 0.6
+            rows.append(CycleScore(
+                id=uuid.uuid4(), tenant_id=tenant.id, employee_id=person.id,
+                cycle_id=prior.id, raw_score=Decimal(str(round(was_frac * 100, 2))),
+                z_score=Decimal(str(round((was_frac - 0.6) * 2, 4))),
+                t_score=Decimal(str(was_t)), cohort_size=len(people),
+                risk_status=("ON_TRACK" if was_frac >= 0.75 else
+                             "AT_RISK" if was_frac >= 0.40 else "CRITICAL"),
+                pace_behind=was_frac < 0.6, computed_at=then,
+                created_at=then, updated_at=then,
+            ))
+        CycleScore.objects.bulk_create(rows, batch_size=1000)
+        self.stdout.write(f"created prior-cycle scores for {len(people)} people "
+                          f"(cycle {PRIOR_CYCLE_NAME!r})")

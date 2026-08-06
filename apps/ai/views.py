@@ -89,6 +89,9 @@ class ChatView(RBACMixin, APIView):
             session, ChatTurn.Role.ASSISTANT, result.get("answer", ""),
             refs=result.pop("refs", None),
         )
+        # The agent's raw tool RESULTS are for the eval harness, not for the wire — they
+        # are the same scoped rows the answer already states, at ten times the size.
+        result.pop("evidence", None)
         return Response({**result, "session_id": str(session.id)})
 
 

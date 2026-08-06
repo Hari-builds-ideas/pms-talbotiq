@@ -575,3 +575,78 @@ Full suite **1635 passed**, 7 deselected. Harness **239/239 at 5,000, 25,000 AND
 remain deliberate design choices. The 50,000-person tenant is now a standing artefact
 (`SCALE_HARNESS_RESULTS_50000.txt`, `LIVE_TRANSCRIPT_50000.txt`) if a future change needs
 re-proving at that size.
+
+---
+
+## Follow-up 7 — the other two actions, end to end, and the bug that fell out
+
+### The gap
+AGENT_MASTER's definition of done names four actions. Recognition and the check-in were
+proven all the way to a created row; **`draft_review` and `initiate_360` were only ever
+proven at the ROUTING level** — that "start a 360 for X" is *recognised* as a 360. That
+is the easy half. It says nothing about whether the right person ends up on it, whether
+the human gate holds, or whether the scope check survives at 50,000 people.
+
+### What was added to the harness
+- **360, end to end**: prepared for a team member → the confirm step carries that
+  person's `subject_id` → **proposing creates nothing** → approving creates a DRAFT cycle
+  with `opened_by` set server-side. Asserting only the last of those would pass equally
+  well if the plan had already written the row, which is the failure worth catching.
+- **The scope half**: unlike recognition, a 360 is DATA-scoped — you may recognise
+  anyone in the company but not open a cycle on someone you cannot see. A person outside
+  the manager's whole reporting **subtree** (not merely not a direct report — a
+  report-of-a-report is in scope, and using one would assert the opposite of what is
+  meant) must never produce an armed confirm step.
+- **Review draft, end to end**: every draft is created *before* the first question, so
+  each turn must pick one person's review out of several. Building them as it went made
+  the first iteration a one-candidate walkover that would pass even if the name were
+  ignored entirely.
+
+**Mutation-tested rather than trusted.** A new check that passes first time has not been
+shown to work. Sabotaged to ask about the wrong person, "the 360 names the right subject"
+went 6/6 → **0/6** and "the draft picks the named person's review" → **1/3** (the one pass
+being the case where the wrong person *is* the right person). Then reverted.
+
+### The bug it found: Agent-1 had never once succeeded
+Extending coverage to the execute seam meant real Agent-1 jobs were queued — and every
+one **FAILED with PROVIDER_ERROR**. Not a new break: the demo tenant showed 2/2 failed
+from long before tonight. A user could ask for a review draft, approve it, and get
+nothing, with the review stranded in `AI_DRAFTING`.
+
+The chain, which is worth reading in order:
+1. `config/settings/base.py` sets `LLM_MAX_TOKENS = 4096` **with a comment explaining
+   that 900 truncates a Gemini "thinking" model**, which spends output tokens reasoning
+   before it emits the JSON. So this was known and fixed.
+2. `docker-compose.yml`, `docker-compose.prod.yml` and `.env` all pinned **900**. The fix
+   was overridden by the deployment — in prod as well as dev.
+3. The provider reported the result as **"Gemini returned non-JSON content."** It reads
+   `finish_reason` already, but only to lower confidence, and the JSON parse throws
+   first. So the one message anybody saw pointed at the model and the prompt, when the
+   cause was our own ceiling cutting a valid response mid-string.
+
+Fixed all three: compose defaults raised to match settings, and both providers (the
+OpenAI sibling had the identical defect — two copies of one behaviour, the drift this log
+has already recorded twice) now say "cut off at the N-token ceiling … raise
+LLM_MAX_TOKENS" when `finish_reason == "length"`.
+
+**Verified for real, not just in a mock.** One Agent-1 job against the 5,000-person
+tenant with the live Gemini provider: `JOB SUCCEEDED`, review moved to
+**`PENDING_HUMAN_REVIEW`** (the HITL gate intact — not auto-applied), 957 characters of
+grounded prose citing that person's actual 74% attainment and AT_RISK band.
+
+### The guard that matters more than the fix
+A settings fix a deployment silently overrides is not a fix, and nothing compared the
+two. `test_compose_never_pins_the_token_budget_below_the_settings_default` parses both
+compose files and fails if either pins below `settings.LLM_MAX_TOKENS`. Verified by
+re-pinning 900 and watching it fail (`assert 900 >= 4096`), then reverting.
+
+### Tests
+3 added: the truncation diagnosis in each provider, and the compose-pin guard.
+
+Harness **276/276 at 5,000, 25,000 and 50,000**. Full suite **1638 passed**.
+
+**RESUME HERE → all four actions in the definition of done are now proven end to end,
+through the HITL gate, at three company sizes.** The harness asserts the job is *queued*
+by the approval; that the worker then succeeds was verified by hand against the live
+provider (above) rather than automated, because the harness deliberately runs on the
+deterministic fake and must not depend on a model's mood.

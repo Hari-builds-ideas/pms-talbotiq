@@ -30,6 +30,10 @@ What it checks, per category
   * edge names — accents, non-Latin script, apostrophes, very long names
   * recognition — including for people OUTSIDE the actor's team
   * check-in — the follow-up question is ANSWERED and the check-in is created
+  * 360 cycle — prepared for a team member and created only on approve; NOT armed for
+    somebody outside the caller's scope (unlike recognition, this one is data-scoped)
+  * review draft — the named person's draft is picked out of several, and the Agent-1
+    job is queued only by the approval
   * "do the same for <someone else>" — repeats the ACTION, not the last topic
   * data answers — grounded in that person's real rows, and different per person
   * scope refusals — an out-of-scope person's data is refused, honestly, no leak
@@ -415,6 +419,129 @@ def check_checkin_followup(report, people):
                      f"{person.display_name!r} → {created!r}")
 
 
+def check_initiate_360(report, manager, reports, outsider):
+    """A 360 cycle, end to end, for arbitrary people at scale.
+
+    Recognition and the check-in were already proven all the way to a created row; the
+    other two actions in the definition of done were only ever proven at the ROUTING
+    level — that "start a 360 for X" is recognised as a 360. That is the easy half. It
+    says nothing about whether the right person is on it, whether the human gate holds,
+    or whether the scope check survives at 50,000 people, which is where a resolver that
+    reaches too far would show up.
+
+    Unlike recognition, this is a DATA-scoped action: you may recognise anyone in the
+    company, but you may not open a feedback cycle on someone you can't see. Both halves
+    are asserted — the team member works, the outsider does not.
+    """
+    from apps.feedback.models import FeedbackCycle
+
+    cycles_for = lambda p: FeedbackCycle.objects.filter(subject_id=p.id).count()  # noqa: E731
+
+    for person in reports:
+        before = cycles_for(person)
+        session = fresh_session(manager)
+        out = say(manager, session, f"start a 360 for {person.display_name}")
+        if not report.check("a 360 is prepared for a team member",
+                            action_of(out) == ["initiate_360"],
+                            f"{person.display_name!r} → {action_of(out)}: {out['answer'][:90]!r}"):
+            continue
+        step = steps_of(out)[0]
+        if not report.check("the 360 names the right subject",
+                            step.feel == "confirm" and step.params.get("subject_id") == str(person.id),
+                            f"{person.display_name!r} → {step.feel} {step.params.get('subject_id')}"):
+            continue
+
+        # HITL, both halves: the proposal alone must change nothing, and the approval
+        # must be what creates the cycle. Asserting only the second half would pass just
+        # as well if the plan had already written the row.
+        report.check("proposing a 360 creates nothing", cycles_for(person) == before,
+                     f"{person.display_name!r}: {before} → {cycles_for(person)} before approval")
+        approve_step(manager, out["plan"].id, step.id)
+        created = (FeedbackCycle.objects.filter(subject_id=person.id)
+                   .order_by("-created_at").first())
+        report.check("the 360 cycle is created on approve",
+                     cycles_for(person) == before + 1 and created is not None
+                     and created.status == FeedbackCycle.Status.DRAFT
+                     and str(created.opened_by_id) == str(manager.id),
+                     f"{person.display_name!r}: {before} → {cycles_for(person)}, {created!r}")
+
+    if outsider is not None:
+        session = fresh_session(manager)
+        out = say(manager, session, f"start a 360 for {outsider.display_name}")
+        armed = [s for s in steps_of(out)
+                 if s.feel == "confirm" and s.params.get("subject_id") == str(outsider.id)]
+        report.check("a 360 is NOT armed for someone out of scope", not armed,
+                     f"{outsider.display_name!r} → {[(s.feel, s.params) for s in steps_of(out)]}")
+
+
+def check_draft_review(report, manager, reports):
+    """An AI review draft, end to end — the fourth action in the definition of done, and
+    the only one whose execute step hands off to the async Agent-1 seam.
+
+    The tenant is seeded with goals and scores but no reviews, so a DRAFT review is
+    created here for the people under test. That is fixture setup, not the thing being
+    tested: what is asserted is that the assistant finds the right one BY NAME out of
+    every draft in the manager's subtree, and that the job is only enqueued after the
+    human approves.
+
+    Deliberately a small sample — each approval queues real work for the Agent-1 worker,
+    and the seam is the same one for every person.
+    """
+    from apps.ai.models import AIJob
+    from apps.cycles.models import PerformanceCycle
+    from apps.reviews.models import Review
+
+    cycle = PerformanceCycle.objects.filter(status="ACTIVE").order_by("-start_date").first()
+    if cycle is None:
+        report.check("a review draft is prepared for a team member", False,
+                     "no ACTIVE performance cycle in this tenant — seed data problem")
+        return
+
+    # Every draft is created BEFORE the first question, so each turn has to pick one
+    # person's review out of several. Creating them as we went made the first iteration
+    # a one-candidate walkover, which would pass even if the name were ignored entirely.
+    drafts = {}
+    for person in reports:
+        review, _ = Review.objects.get_or_create(
+            employee_id=person.id, cycle_id=cycle.id,
+            defaults={"tenant_id": manager.tenant_id, "reviewer_id": manager.id,
+                      "state": Review.State.DRAFT},
+        )
+        if review.state != Review.State.DRAFT:  # a previous run already drafted it
+            review.state = Review.State.DRAFT
+            review.save(update_fields=["state"])
+        drafts[person.id] = review
+
+    for person in reports:
+        review = drafts[person.id]
+        before = AIJob.objects.filter(target_type="review", target_id=review.id).count()
+        session = fresh_session(manager)
+        out = say(manager, session, f"draft a review for {person.display_name}")
+        if not report.check("a review draft is prepared for a team member",
+                            action_of(out) == ["draft_review"],
+                            f"{person.display_name!r} → {action_of(out)}: {out['answer'][:90]!r}"):
+            continue
+        step = steps_of(out)[0]
+        # The manager's whole subtree has a draft review by now, so picking the right
+        # one out of many is the actual test — "several drafts, name the person" is the
+        # failure this catches.
+        if not report.check("the draft picks the named person's review",
+                            step.feel == "confirm" and step.params.get("review_id") == str(review.id),
+                            f"{person.display_name!r} → {step.feel} {step.params.get('review_id')}"):
+            continue
+
+        # HITL, both halves: proposing must not queue anything; approving must.
+        jobs = AIJob.objects.filter(target_type="review", target_id=review.id)
+        report.check("proposing a draft queues nothing", jobs.count() == before,
+                     f"{person.display_name!r}: {before} → {jobs.count()} before approval")
+        approve_step(manager, out["plan"].id, step.id)
+        queued = jobs.order_by("-created_at").first()
+        report.check("the AI draft job is queued on approve",
+                     jobs.count() == before + 1 and queued is not None
+                     and str(queued.requested_by_id) == str(manager.id),
+                     f"{person.display_name!r}: {before} → {jobs.count()}")
+
+
 def check_do_the_same(report, manager, pairs):
     """"Do the same for <someone else>" repeats the ACTION. It used to start a
     check-in, which is how you know it had lost the action entirely."""
@@ -738,6 +865,24 @@ def main() -> int:
         check_do_the_same(report, manager, list(zip(pick(6), pick(6))))
         check_checkin_followup(report, pick(min(args.people, 10)))
         check_escape_hatches(report, employee)
+
+        # The other two actions in the definition of done, end to end. Both are
+        # DATA-scoped, so they run against the manager's own reports — and the 360 also
+        # asserts the refusal for somebody outside that scope.
+        reset_budget(tenant.id)
+        if my_reports:
+            # Outside the whole reporting SUBTREE, not merely not a direct report — a
+            # report-of-a-report is in scope, so using them would assert the opposite of
+            # what this check means.
+            from apps.rbac.scope import reporting_subtree_ids
+
+            visible = set(reporting_subtree_ids(manager)) | {manager.id}
+            outsider = next((u for u in pick(12) if u.id not in visible), None)
+            check_initiate_360(report, manager, my_reports[:6], outsider)
+            check_draft_review(report, manager, my_reports[:3])
+        else:
+            report.check("a 360 is prepared for a team member", False,
+                         "the chosen manager has no reports — seed data problem")
 
         # Reasoning over real data, in scope.
         reset_budget(tenant.id)

@@ -1,10 +1,11 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed, plus follow-ups (§9–§14). Backend
-suite **1635 passed**, scale harness **239/239 at 5,000, 25,000 AND 50,000** people, live
+**Status:** all five build files executed, plus follow-ups (§9–§15). Backend
+suite **1638 passed**, scale harness **276/276 at 5,000, 25,000 AND 50,000** people, live
 HTTP transcript **15/15 on all four tenants** (demo, 5,000, 25,000, 50,000) with the real
-Gemini provider.
+Gemini provider. All four actions in the definition of done are proven end to end through
+the human-approval gate (§15).
 
 Evidence files next to this one:
 - `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` / `_50000.txt` — real conversations
@@ -287,12 +288,12 @@ first (the transcript script does this automatically).
 
 ```bash
 # unit + integration
-docker compose exec web pytest -q                      # expect 1635 passed
+docker compose exec web pytest -q                      # expect 1638 passed
 
 # 5,000-person behavioural harness
 docker compose exec web python manage.py seed_scale_tenant --headcount 5000 --reset
 docker compose exec web python scripts/agent_scale_harness.py --tenant scale
-                                                       # expect 239/239, exit 0
+                                                       # expect 276/276, exit 0
 
 # the same, at 25,000 and 50,000 (already seeded as 'scale25' / 'scale50')
 docker compose exec web python scripts/agent_scale_harness.py --tenant scale25
@@ -639,3 +640,75 @@ measuring; §13 records the same lesson about a corrupt reused test database.
 25,000 AND 50,000** — 1 query per lookup, 0.5 ms median, no unbounded SELECT at any size,
 typo tolerance 17/17 with none skipped. **Live 15/15 on all four tenants** with the real
 LLM. **Full suite 1635 passed**, 7 deselected.
+
+---
+
+## 15. Follow-up: the other two actions end to end — and Agent-1 had never worked
+
+### The gap in my own proof
+
+The definition of done names four actions. Two of them — recognition and the check-in —
+were proven all the way to a created row. The other two were proven only at the **routing
+level**: that "start a 360 for X" is *recognised* as a 360. That is the easy half, and I
+had been reporting it as coverage. It says nothing about whether the right person ends up
+on the cycle, whether the human gate holds, or whether the scope check survives at 50,000
+people.
+
+Both are now end to end, and both assert **each half of the HITL gate separately** —
+proposing must create nothing, approving must create exactly one thing. Checking only the
+second half would pass just as well if the plan had already written the row.
+
+The 360 also asserts the refusal, because unlike recognition it is **data-scoped**: you
+may recognise anyone in the company, but you may not open a feedback cycle on somebody
+you cannot see. The person used for that check is outside the manager's whole reporting
+*subtree* — a report-of-a-report is in scope, so using one would have asserted the
+opposite of what the check means.
+
+**The new checks were mutation-tested.** A check that passes the first time has not been
+shown to work. Sabotaged to ask about the wrong person, "the 360 names the right subject"
+went 6/6 → **0/6** and "the draft picks the named person's review" → **1/3** — the single
+pass being the case where the wrong person happens to be the right one.
+
+### What it found within minutes: Agent-1 had never once succeeded
+
+Covering the execute seam meant real Agent-1 jobs got queued, and **every one failed**
+with `PROVIDER_ERROR`. Not something tonight broke: the demo tenant showed 2/2 failed from
+well before. In product terms — a manager asks for a review draft, approves it, and
+nothing ever lands; the review sits in `AI_DRAFTING` indefinitely.
+
+The chain is worth reading in order, because each link individually looks fine:
+
+1. `config/settings/base.py` sets `LLM_MAX_TOKENS = 4096`, with a comment explaining that
+   900 truncates a Gemini "thinking" model — it spends output tokens reasoning before it
+   emits the JSON. **So this was already known and already fixed.**
+2. `docker-compose.yml`, `docker-compose.prod.yml` and `.env` all pinned **900**. The fix
+   was silently overridden by the deployment — in the production compose too.
+3. The provider called the result **"Gemini returned non-JSON content."** It reads
+   `finish_reason` already, but only to lower a confidence score, and the JSON parse
+   throws before that. So the only message anyone ever saw blamed the model and the
+   prompt, when the cause was our own ceiling cutting a valid response mid-string.
+
+Step 3 is why steps 1–2 survived. A wrong diagnosis is more expensive than no diagnosis:
+the two causes need opposite fixes, and the message pointed firmly at the wrong one.
+
+All three are fixed — compose defaults raised to match settings, and both providers (the
+OpenAI sibling had the identical defect) now distinguish truncation from a broken model.
+
+**Verified against the live provider, not a mock:** one Agent-1 job on the 5,000-person
+tenant returned `JOB SUCCEEDED`, moved the review to **`PENDING_HUMAN_REVIEW`** — the HITL
+gate intact, nothing auto-applied — and wrote 957 characters of grounded prose citing that
+person's real 74% attainment and AT_RISK band.
+
+### The guard matters more than the fix
+
+A settings fix that a deployment overrides is not a fix, and nothing in the suite compared
+the two numbers. `test_compose_never_pins_the_token_budget_below_the_settings_default`
+parses both compose files and fails if either pins below `settings.LLM_MAX_TOKENS`.
+Confirmed by re-pinning 900 and watching it fail (`assert 900 >= 4096`) before reverting.
+
+3 tests added. **Harness 276/276 at 5,000, 25,000 and 50,000. Full suite 1638 passed.**
+
+One honest limit: the harness asserts the job is *queued* by the approval, not that the
+worker later succeeds. That last step was verified by hand against the live provider,
+because the harness runs on the deterministic fake on purpose — what it tests is routing
+and retrieval, which must not depend on a model's mood.

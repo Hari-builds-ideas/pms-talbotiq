@@ -32,6 +32,15 @@ AGENT SCALE HARNESS — results
   [PASS] cancel clears a pending question                      1/1
   [PASS] an invalid answer explains the expected format        1/1
   [PASS] a second bad answer does not loop forever             1/1
+  [PASS] a 360 is prepared for a team member                   6/6
+  [PASS] the 360 names the right subject                       6/6
+  [PASS] proposing a 360 creates nothing                       6/6
+  [PASS] the 360 cycle is created on approve                   6/6
+  [PASS] a 360 is NOT armed for someone out of scope           1/1
+  [PASS] a review draft is prepared for a team member          3/3
+  [PASS] the draft picks the named person's review             3/3
+  [PASS] proposing a draft queues nothing                      3/3
+  [PASS] the AI draft job is queued on approve                 3/3
   [PASS] a data question is answered, not deflected            6/6
   [PASS] the answer names the person asked about               6/6
   [PASS] answers differ between people (not a template)        1/1
@@ -43,10 +52,10 @@ AGENT SCALE HARNESS — results
   [PASS] an employee is still refused what an HRBP can see     2/2
   [PASS] admin gets a real answer for someone company-wide     1/1
 ──────────────────────────────────────────────────────────────────────────────────
-  · resolution latency over 25 lookups: median 0.5 ms, p95 0.5 ms, max 0.7 ms
+  · resolution latency over 25 lookups: median 0.5 ms, p95 1.7 ms, max 2.8 ms
   · typo tolerance exercised on 17 name(s); 0 skipped as near-duplicates
   · resolution cost at 5,000 people: 1–1 queries per lookup
 ──────────────────────────────────────────────────────────────────────────────────
-  TOTAL 239/239 checks passed
+  TOTAL 276/276 checks passed
 ══════════════════════════════════════════════════════════════════════════════════
 

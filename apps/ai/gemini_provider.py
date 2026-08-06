@@ -144,6 +144,15 @@ class GeminiProvider(LLMProvider):
         try:
             content = json.loads(raw_content)
         except (json.JSONDecodeError, TypeError):
+            # Blame the right thing. A completion we cut off at max_tokens is
+            # unterminated JSON, and reporting that as "the model broke JSON mode"
+            # sends the reader to the prompt when the fix is the budget. Agent-1
+            # failed 100% of the time behind this message for exactly that reason.
+            if finish == "length":
+                raise LLMProviderError(
+                    f"Gemini response was cut off at the {self.max_tokens}-token ceiling, "
+                    "so the JSON is unterminated — raise LLM_MAX_TOKENS."
+                )
             raise LLMProviderError("Gemini returned non-JSON content.")
 
         usage = data.get("usage") or {}

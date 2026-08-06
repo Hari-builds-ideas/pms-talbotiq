@@ -90,6 +90,20 @@ def test_non_json_content_raises_provider_error_not_fabrication():
 
 
 @override_settings(**FAKE)
+def test_a_truncated_completion_blames_the_token_ceiling_not_the_model():
+    """Unterminated JSON caused by OUR max_tokens pin is not the model breaking JSON
+    mode, and the two need opposite fixes. Same defect as the Gemini sibling, where it
+    made Agent-1 fail 100% of the time behind a message pointing at the prompt."""
+    cut = {"choices": [{"finish_reason": "length",
+                        "message": {"content": '{"draft_body": "It was the best of ti'}}],
+           "usage": {}}
+    with patch("apps.ai.openai_provider.requests.post", return_value=_resp(200, cut)):
+        with pytest.raises(LLMProviderError) as exc:
+            OpenAIProvider().generate(agent_code="review", prompt="x", model="review")
+    assert "cut off" in str(exc.value) and "LLM_MAX_TOKENS" in str(exc.value)
+
+
+@override_settings(**FAKE)
 def test_truncated_completion_lowers_confidence():
     body = _completion({"sections": {}}, finish="length")
     with patch("apps.ai.openai_provider.requests.post", return_value=_resp(200, body)):

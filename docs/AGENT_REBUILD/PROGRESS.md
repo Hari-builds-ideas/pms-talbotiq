@@ -739,3 +739,16 @@ No production code changed in this unit. Full suite **1641 passed**.
 mutation-checked.** `agent3` (feedback summary) and `jd_generator` exist but the
 assistant cannot start them — they are reachable only from their own screens, so they sit
 outside this plan's scope; worth the same treatment if that ever changes.
+
+### Closing verification at the final commit
+Raising `LLM_MAX_TOKENS` from 900 to 4096 changes what the **live** model is allowed to
+emit, and every transcript in this folder had been captured before it. Re-running was not
+optional — a claim measured against a different configuration is not a claim about this
+one. All four re-run green, and every artefact in `docs/AGENT_REBUILD/` is now from the
+final code:
+
+| Proof | Result |
+|---|---|
+| Backend suite | **1641 passed**, 7 deselected |
+| Harness @ 5,000 / 25,000 / 50,000 | **276/276** each, 1 query per lookup, ~0.5 ms median |
+| Live HTTP, real LLM × 4 tenants | **15/15** each |

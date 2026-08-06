@@ -7,112 +7,112 @@ SCENARIO: a check-in follow-up question actually gets answered
   (before: replying '5' re-asked the same question, forever)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › start my check-in
-  assistant ‹ Open your check-in.
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
-  [OK  ] the assistant asks for a mood
+  [[32mOK  [0m] the assistant asks for a mood
 
-  user  › 5
-  assistant ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
+  [1muser[0m  › 5
+  [36massistant[0m ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
-  [OK  ] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      approve → {"plan_id": "bcf94790-07ce-4924-a833-31057778494d", "step_id": "c702d1ff-80bd-442c-b272-e4698bc8aa4e", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+  [[32mOK  [0m] a bare "5" fills the slot and completes the check-in — action=open_checkin
+      [32mapprove[0m → {"plan_id": "79cd1bad-1209-4336-bcad-28cca5bd5bdb", "step_id": "8a5d41df-8b7f-4cd9-b444-3dfcc355886f", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
   (before: both were ignored and the question was re-asked)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › start my check-in
-  assistant ‹ Open your check-in.
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
-  user  › give recognition to Avery Stone for her excellent work
-  assistant ‹ Recognize Avery Stone for her excellent work.
+  [1muser[0m  › give recognition to Avery Stone for her excellent work
+  [36massistant[0m ‹ Plan to give recognition to Avery Stone.
       · step: action=give_recognition feel=confirm | Give Avery Stone recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note f
-  [OK  ] a new command abandons the pending question — action=give_recognition
+  [[32mOK  [0m] a new command abandons the pending question — action=give_recognition
 
-  user  › start my check-in
-  assistant ‹ Open your check-in.
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open your check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
-  user  › never mind
-  assistant ‹ Okay — I've cancelled that. What would you like to do instead?
-  [OK  ] cancel clears the pending question
+  [1muser[0m  › never mind
+  [36massistant[0m ‹ Okay — I've cancelled that. What would you like to do instead?
+  [[32mOK  [0m] cancel clears the pending question
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a nonsense answer is explained once, then let go
   (before: the same question came back forever)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › start my check-in
-  assistant ‹ Open your check-in.
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
-  user  › banana
-  assistant ‹ I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.)
+  [1muser[0m  › banana
+  [36massistant[0m ‹ I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.)
       · step: action=clarify feel=clarify | I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my chec
-  [OK  ] says what it expects
+  [[32mOK  [0m] says what it expects
 
-  user  › banana
-  assistant ‹ I still didn't catch that, so I've dropped the question. I need a number from 1 to 5 for how this week felt — e.g. “4”. Or tell me something else you'd like to do.
-  [OK  ] does not ask a third time
+  [1muser[0m  › banana
+  [36massistant[0m ‹ I still didn't catch that, so I've dropped the question. I need a number from 1 to 5 for how this week felt — e.g. “4”. Or tell me something else you'd like to do.
+  [[32mOK  [0m] does not ask a third time
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a manager recognises a colleague OUTSIDE their team
   (before: 'not found' — lookup was team-scoped)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › make a recognition for Avery Stone
-  assistant ‹ Plan to give recognition to Avery Stone.
+  [1muser[0m  › make a recognition for Avery Stone
+  [36massistant[0m ‹ Plan to give recognition to Avery Stone.
       · step: action=give_recognition feel=confirm | Give Avery Stone recognition for Teamwork? It posts to your team feed — edit the note first if you like.
-  [OK  ] recognition for an out-of-team person is prepared
-      approve → {"plan_id": "b992ad26-1a8a-4fb0-9964-9c812276702d", "step_id": "6c6f4190-81f7-483b-94c4-5d6e6f4d9658", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+  [[32mOK  [0m] recognition for an out-of-team person is prepared
+      [32mapprove[0m → {"plan_id": "dc2e3a28-7122-4b21-866c-2cfbb07aee77", "step_id": "07548297-c0cf-40b0-9ad5-0a195e9ae62c", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
   (before: it started a check-in)
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › give recognition to Avery Stone for mentoring the new joiners
-  assistant ‹ Give recognition to Avery Stone for mentoring new joiners.
+  [1muser[0m  › give recognition to Avery Stone for mentoring the new joiners
+  [36massistant[0m ‹ Recognize Avery Stone for her mentorship.
       · step: action=give_recognition feel=confirm | Give Avery Stone recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit the
 
-  user  › do the same for Daniel Cohen
-  assistant ‹ Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  [1muser[0m  › do the same for Daniel Cohen
+  [36massistant[0m ‹ Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
       · step: action=give_recognition feel=confirm | Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
-  [OK  ] "do the same" repeats the recognition — action=give_recognition
-  [OK  ] …for the NEW person, not the previous one — Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note fir
+  [[32mOK  [0m] "do the same" repeats the recognition — action=give_recognition
+  [[32mOK  [0m] …for the NEW person, not the previous one — Give Daniel Cohen recognition for Teamwork? It posts to your team feed — edit the note fir
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Akhil Menon doing this cycle?
-  assistant ‹ Akhil Menon is doing well this cycle and is currently on track, keeping pace with expectations. The primary area for focus is the 'Roadmap features delivered' KPI for 'Ship the H1 platform roadmap,' which is at 90% of its target. Overall, Akhil is performing strongly, and no additional support appears necessary at this time.
-  [OK  ] not the capability blurb
-  [OK  ] names the person asked about
+  [1muser[0m  › how is Akhil Menon doing this cycle?
+  [36massistant[0m ‹ Akhil Menon is doing well this cycle, currently on track and keeping pace with his goals. While he's performing strongly overall, the 'Roadmap features delivered' KPI for 'Ship the H1 platform roadmap' is at 90% attainment, indicating a slight area for focus. This is a minor point, and no immediate extra help appears to be needed at this time.
+  [[32mOK  [0m] not the capability blurb
+  [[32mOK  [0m] names the person asked about
 
-  user  › compare Akhil Menon and Aarav Rossi
-  assistant ‹ Akhil Menon is currently on track and maintaining a good pace, with his "Roadmap features delivered" at 90% and strong performance across other goals. In contrast, Aarav Rossi is also rated on track but is behind pace, with his "Roadmap features delivered" at 49%. While Akhil doesn't appear to need immediate support, Aarav would likely benefit from attention, especially on the "Ship the H1 platform roadmap" goal.
-  [OK  ] a comparison covers both people
+  [1muser[0m  › compare Akhil Menon and Aarav Rossi
+  [36massistant[0m ‹ Akhil Menon is currently on track and maintaining a good pace, with no immediate concerns. While his "Roadmap features delivered" for "Ship the H1 platform roadmap" is at 90% of target, no additional support appears necessary. In contrast, Aarav Rossi is also rated on track but is behind pace, with the same "Roadmap features delivered" KPI at 49% of target, suggesting support would be beneficial to prevent a potential slip.
+  [[32mOK  [0m] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: directory-wide actions, but data stays permission-scoped
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Avery Stone doing?
-  assistant ‹ You don't have access to Avery Stone's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Aarav Rossi, Aisha Walsh, Akhil Menon, Ethan Nguyen, Hana O'Brien, Liam Costa, Lucas Reyes, Mateo Santos, Mei Patel, Noah Cohen, Priya Silva, Sofia Menon, and 2 more.
-  [OK  ] out-of-scope performance data is refused — honest refusal
+  [1muser[0m  › how is Avery Stone doing?
+  [36massistant[0m ‹ You don't have access to Avery Stone's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Aarav Rossi, Aisha Walsh, Akhil Menon, Ethan Nguyen, Hana O'Brien, Liam Costa, Lucas Reyes, Mateo Santos, Mei Patel, Noah Cohen, Priya Silva, Sofia Menon, and 2 more.
+  [[32mOK  [0m] out-of-scope performance data is refused — honest refusal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a name that doesn't exist is reported as such
 ══════════════════════════════════════════════════════════════════════════════
 
-  user  › how is Zebediah Quartermain doing?
-  assistant ‹ I couldn't find anyone named Zebediah Quartermain — try their full name or their email address.
-  [OK  ] says it couldn't find the name
-  [OK  ] not the capability blurb
+  [1muser[0m  › how is Zebediah Quartermain doing?
+  [36massistant[0m ‹ I couldn't find anyone named Zebediah Quartermain — try their full name or their email address.
+  [[32mOK  [0m] says it couldn't find the name
+  [[32mOK  [0m] not the capability blurb
 
 ══════════════════════════════════════════════════════════════════════════════
 LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'acme')

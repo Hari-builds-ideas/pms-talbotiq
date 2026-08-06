@@ -1,11 +1,16 @@
 # AGENT_REBUILD — report
 
 **Branch:** `hari/agent-intelligence-v2` (nothing merged to `main` or `hari/agent-ui-v2`)
-**Status:** all five build files executed, plus follow-ups (§9–§15). Backend
-suite **1638 passed**, scale harness **276/276 at 5,000, 25,000 AND 50,000** people, live
+**Status:** all five build files executed, plus follow-ups (§9–§16). Backend
+suite **1641 passed**, scale harness **276/276 at 5,000, 25,000 AND 50,000** people, live
 HTTP transcript **15/15 on all four tenants** (demo, 5,000, 25,000, 50,000) with the real
 Gemini provider. All four actions in the definition of done are proven end to end through
-the human-approval gate (§15).
+the human-approval gate (§15), and every agent job the assistant can start now completes
+(§16).
+
+Every artefact in this folder was re-captured against the final commit. That mattered
+more than it sounds: raising `LLM_MAX_TOKENS` (§15) changes what the live model may emit,
+so transcripts recorded before it were measurements of a different configuration.
 
 Evidence files next to this one:
 - `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` / `_50000.txt` — real conversations

@@ -8,7 +8,7 @@ SCENARIO: a check-in follow-up question actually gets answered
 ══════════════════════════════════════════════════════════════════════════════
 
   [1muser[0m  › start my check-in
-  [36massistant[0m ‹ Open your check-in.
+  [36massistant[0m ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
   [[32mOK  [0m] the assistant asks for a mood
 
@@ -16,7 +16,7 @@ SCENARIO: a check-in follow-up question actually gets answered
   [36massistant[0m ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
       · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
   [[32mOK  [0m] a bare "5" fills the slot and completes the check-in — action=open_checkin
-      [32mapprove[0m → {"plan_id": "dd96a5d1-2365-488e-96a0-3c2655c6c85e", "step_id": "fe401c65-db30-4ab2-9269-6fa61f244401", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+      [32mapprove[0m → {"plan_id": "07b7c26b-fe51-43c7-9344-f838254cdb7b", "step_id": "cbc3ce33-2acf-49c1-9bdb-002744119aec", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: a new command mid-question is obeyed, and cancel works
@@ -24,11 +24,11 @@ SCENARIO: a new command mid-question is obeyed, and cancel works
 ══════════════════════════════════════════════════════════════════════════════
 
   [1muser[0m  › start my check-in
-  [36massistant[0m ‹ Open your check-in.
+  [36massistant[0m ‹ Open the user's check-in.
       · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
 
   [1muser[0m  › give recognition to Aarav Sharma for her excellent work
-  [36massistant[0m ‹ Give recognition to Aarav Sharma.
+  [36massistant[0m ‹ Plan to give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note 
   [[32mOK  [0m] a new command abandons the pending question — action=give_recognition
 
@@ -67,7 +67,7 @@ SCENARIO: a manager recognises a colleague OUTSIDE their team
   [36massistant[0m ‹ Plan to give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for Teamwork? It posts to your team feed — edit the note first if you like.
   [[32mOK  [0m] recognition for an out-of-team person is prepared
-      [32mapprove[0m → {"plan_id": "6093d171-31d5-4c35-9528-72e62f7e1759", "step_id": "f1c417f9-1f1d-4563-b2ec-7e9e1a29c821", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+      [32mapprove[0m → {"plan_id": "1a018c71-6cc4-4103-9ec4-b71b9ae586af", "step_id": "ac62a725-1075-4ec0-a7e9-e5624a8b0b42", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
 
 ══════════════════════════════════════════════════════════════════════════════
 SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
@@ -75,7 +75,7 @@ SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
 ══════════════════════════════════════════════════════════════════════════════
 
   [1muser[0m  › give recognition to Aarav Sharma for mentoring the new joiners
-  [36massistant[0m ‹ Plan to give recognition to Aarav Sharma.
+  [36massistant[0m ‹ Give recognition to Aarav Sharma.
       · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit th
 
   [1muser[0m  › do the same for Mei Chen
@@ -89,12 +89,12 @@ SCENARIO: a real question gets a real answer, not the capability blurb
 ══════════════════════════════════════════════════════════════════════════════
 
   [1muser[0m  › how is Saanvi Menon-Vidal doing this cycle?
-  [36massistant[0m ‹ Saanvi Menon-Vidal is currently flagged as 'At risk' and is behind pace this cycle. Her 'Operations objective 1' is showing the weakest signal, with 'Attainment' at 55% of its 100% target. This indicates a key area for focus, and Saanvi would likely benefit from some support here.
+  [36massistant[0m ‹ Saanvi Menon-Vidal is currently flagged as 'At risk' and is behind pace this cycle. Her 'Operations objective 1' goal, weighted at 100%, shows 'Attainment' at 55% of its 100% target, indicating it's the primary area needing attention. It appears Saanvi would benefit from some support to help improve this key metric.
   [[32mOK  [0m] not the capability blurb
   [[32mOK  [0m] names the person asked about
 
   [1muser[0m  › compare Saanvi Menon-Vidal and Saanvi Patel-Silva
-  [36massistant[0m ‹ Saanvi Menon-Vidal is flagged at risk and behind pace. The weakest signal is “Attainment” on “Operations objective 1”, at 55% of target — that's the goal to focus on. Yes — Saanvi Menon-Vidal likely needs support here. Saanvi Patel-Silva is on track this cycle and keeping pace — no red flags. The weakest signal is “Attainment” on “Operations objective 3”, at 80% of target — that's the goal to focus on. Overall, no extra help looks needed right now.
+  [36massistant[0m ‹ Saanvi Menon-Vidal is currently flagged as at risk and behind pace, with her "Attainment" for "Operations objective 1" at 55% of target, suggesting she could benefit from some support. Meanwhile, Saanvi Patel-Silva is on track and keeping pace, having achieved 80% attainment on "Operations objective 3," so no additional help appears necessary for her at this time.
   [[32mOK  [0m] a comparison covers both people
 
 ══════════════════════════════════════════════════════════════════════════════

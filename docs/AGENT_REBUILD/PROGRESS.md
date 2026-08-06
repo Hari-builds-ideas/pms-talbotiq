@@ -752,3 +752,47 @@ final code:
 | Backend suite | **1641 passed**, 7 deselected |
 | Harness @ 5,000 / 25,000 / 50,000 | **276/276** each, 1 query per lookup, ~0.5 ms median |
 | Live HTTP, real LLM × 4 tenants | **15/15** each |
+
+---
+
+## Follow-up 10 — a category that tests nothing can no longer pass
+
+### Why
+The 360 and review-draft checks had only ever run on seed 1337. Ran them on four more
+casts (99 / 4242 / 7 / 20260807): **all green, all at full count** — the checks are robust
+to whichever manager and people the RNG picks, not tuned to one.
+
+But confirming they *ran* is only possible because I went and looked. Follow-up 4 records
+this harness shipping a category that covered **zero** names and still showed green, and
+checking the seeds turned up two more places where the same thing could happen:
+
+- `a 360 is NOT armed for someone out of scope` — if no out-of-scope person could be
+  chosen, the whole scope assertion silently disappeared;
+- `out-of-scope data is refused` — a loop over an empty sample prints no line at all, and
+  this is the most important safety claim in the file.
+
+Both now fail loudly and say "fixture problem, not a pass".
+
+### The systemic fix
+Patching each site by hand is how the first one was missed, so `Report.require()` +
+a `_MUST_RUN` manifest names the nineteen categories that must produce at least one check
+on **every** run, whatever the cast. Absence has to be louder than failure, because
+failure at least prints something.
+
+It is self-validating in both directions: a misspelt entry in the manifest matches no
+category and fails, so the list cannot drift away from the code; and deleting a category's
+checks turns it into `[FAIL] … 0/1` instead of a shorter report. Verified by sabotaging
+`check_edge_names` to return immediately — **`[FAIL] edge-case names 0/1`**, non-zero exit,
+where before it would simply have vanished from the output.
+
+Parametrised categories (the per-action phrasing lines) are deliberately excluded — their
+names vary by design.
+
+### Result
+Harness **276/276 at 5,000, 25,000 and 50,000**; 275 / 272 / 274 on seeds 99 / 4242 / 7
+(counts vary because typo checks skip near-duplicates). No production code touched;
+`apps/ai` + `apps/core` re-run, **470 passed**.
+
+**RESUME HERE → nothing outstanding.** §7 item 3 (retired audit-referenced users) is a
+consequence of the INSERT-only audit rule, not a defect to fix; item 5 (one re-ask) is the
+deliberate cure for the original infinite loop.

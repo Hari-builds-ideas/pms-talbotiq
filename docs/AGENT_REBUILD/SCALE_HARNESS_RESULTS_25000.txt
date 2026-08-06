@@ -52,7 +52,7 @@ AGENT SCALE HARNESS — results
   [PASS] an employee is still refused what an HRBP can see     2/2
   [PASS] admin gets a real answer for someone company-wide     1/1
 ──────────────────────────────────────────────────────────────────────────────────
-  · resolution latency over 25 lookups: median 0.6 ms, p95 1.1 ms, max 1.5 ms
+  · resolution latency over 25 lookups: median 0.5 ms, p95 0.5 ms, max 0.8 ms
   · typo tolerance exercised on 17 name(s); 0 skipped as near-duplicates
   · resolution cost at 25,000 people: 1–1 queries per lookup
 ──────────────────────────────────────────────────────────────────────────────────

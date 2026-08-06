@@ -344,8 +344,12 @@ testing the old build (this cost me a confusing half hour).
    would be a great deal of quota for no extra signal.)
 3. **`--reset` on the scale tenant cannot delete audit-referenced users.** The
    append-only audit log PROTECTs its actors, so a few dozen users per run are *retired*
-   (deactivated and renamed out of the way) rather than deleted. Correct, but the table
-   grows slowly across resets.
+   (deactivated and renamed out of the way) rather than deleted. Listed as a weakness in
+   the first draft; on reflection it is **not one, and should not be "fixed"** — deleting
+   them would mean either deleting audit rows or dropping the PROTECT, and architecture
+   rule 5 forbids both. Retirement is the correct behaviour. The only real cost is that a
+   synthetic tenant's user table grows slowly across resets, and the retired rows are
+   inactive, so nothing in the assistant path can resolve or read them.
 4. ~~**Near-duplicate names are resolved by closeness, not by asking.**~~ **Fixed** —
    see §10. A fuzzy winner must now beat the runner-up by a clear margin; a genuine
    coin toss between "Jon Smith" and "Jon Smyth" is offered as a choice instead of
@@ -807,3 +811,34 @@ cannot start them — they are reachable only from their own screens, so they ar
 this plan's scope. Worth the same treatment if that changes.
 
 No production code changed for this part. **Full suite 1641 passed.**
+
+---
+
+## 17. Follow-up: a category that tests nothing can no longer pass
+
+The 360 and review-draft checks had only ever run on one seed. Across four more casts
+(99 / 4242 / 7 / 20260807) they are **green at full count** — robust to whichever manager
+and people the RNG picks, not tuned to one.
+
+Confirming they *ran*, though, required going and looking. §12 records this harness
+shipping a category that covered **zero** names and still showed green, and checking the
+seeds turned up two more places the same thing could happen: the 360's out-of-scope
+assertion vanished entirely if no out-of-scope person could be chosen, and
+`out-of-scope data is refused` — the most important safety claim in the file — prints
+nothing at all when its sample comes back empty.
+
+Patching each site by hand is exactly how the first one was missed, so the fix is
+systemic: `Report.require()` and a `_MUST_RUN` manifest naming the nineteen categories
+that must produce at least one check on every run, whatever the cast.
+
+**Absence has to be louder than failure, because failure at least prints.**
+
+The manifest is self-validating in both directions. A misspelt entry matches no category
+and fails, so it cannot drift away from the code; and a category whose checks disappear
+becomes `[FAIL] … 0/1` rather than a quietly shorter report. Verified by sabotaging
+`check_edge_names` to return immediately — `[FAIL] edge-case names 0/1` and a non-zero
+exit, where before it would simply have gone missing from the output.
+
+Harness **276/276 at 5,000 / 25,000 / 50,000**, and 275 / 272 / 274 on seeds 99 / 4242 / 7
+(the count varies because typo checks skip near-duplicates by design). No production code
+changed.

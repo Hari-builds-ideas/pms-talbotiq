@@ -12,6 +12,10 @@ Every artefact in this folder was re-captured against the final commit. That mat
 more than it sounds: raising `LLM_MAX_TOKENS` (§15) changes what the live model may emit,
 so transcripts recorded before it were measurements of a different configuration.
 
+The frontend is untouched by this run and confirmed green anyway — **135 vitest tests
+across 25 files, and `tsc --noEmit` clean** — because the plan asks for backend *and*
+frontend green, and "I didn't touch it" is an assumption, not a check.
+
 Evidence files next to this one:
 - `LIVE_TRANSCRIPT.txt` / `_5000.txt` / `_25000.txt` / `_50000.txt` — real conversations
   over HTTP, real LLM, at four company sizes

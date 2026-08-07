@@ -237,6 +237,49 @@ run did not rewrite the assistant; it gave the questions nobody coded somewhere 
 **ALL FIVE UNITS COMPLETE.** Final state: full backend **1691 passed**, `apps/ai`
 **436 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates.
 
+---
+
+## After the plan — improvements the eval kept finding
+
+### A team answer forgot everyone it named
+The worst case in the 103-run: "who is my top performer?" then "and how many goals do
+they have?" The agent called `find_people` **five times** — burning its whole tool
+budget on names it had read out of the previous turn's prose — and gave up with "please
+specify which of the top performers you'd like to know about".
+
+The cause was upstream of the agent entirely. `_answer_team_ranking` and
+`_answer_team_risk` returned their people as a list of *strings*: `data` had the names,
+`refs` had nothing. So the conversation forgot every one of them the moment the answer
+was sent — not just for the agent, but for the pronoun and ordinal resolvers that have
+been there all along. "Who's my top performer?" → "how is she doing?" could not work.
+
+`team_ranking` now returns ids (`team_scan` already did) and both answers ground the
+people they NAMED — only those, because "…and 4 more" were never shown and grounding
+them would let "the last one" resolve to somebody the user has not seen.
+
+Two things fall out. The agent gets the ids, so the follow-up costs one tool call
+instead of five. And "the first one" after a ranking resolves, because a ranked list is
+an offered set — which it always should have been.
+
+One thing deliberately NOT changed: within a turn the session binds a pronoun to the
+LAST ref, so "they" after a three-person ranking lands on rank 3. That is right for a
+narrative answer and arbitrary for a ranking, but it is a pre-existing choice with other
+conversations depending on it, and "they" after a list of three is genuinely ambiguous
+anyway. The test asserts what the fix guarantees — somebody who was actually named,
+rather than a dead end — and says so.
+
+### The budget counted calls where it meant answers
+The budget unit is one LLM call, which is correct: a call is what costs money. But the
+caps were sized when every agent spent exactly one call per answer, so a tenant's daily
+allowance also read as "questions you may ask". The function-calling assistant spends one
+call per tool ROUND, so a STARTER tenant's 50 calls bought about eight questions.
+
+`AGENT_CALL_MULTIPLIERS` scales the DEFAULT for `chat_agent` by `MAX_ROUNDS`, so the
+number of *answers* is comparable across agents while every call is still metered. An
+explicit `AgentBudget` row still wins outright — scaling somebody's chosen ceiling behind
+their back is the opposite of what an explicit row is for. `apps/billing` does not import
+`apps/ai`, so the number is stated twice; a test fails if the two drift.
+
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
 in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in
 the chat panel for 4–13 s agent turns (the most visible problem, and it is frontend);

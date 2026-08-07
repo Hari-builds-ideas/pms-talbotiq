@@ -542,6 +542,94 @@ def test_a_pronoun_follow_up_reaches_the_agent_with_an_id_to_use(
 
 
 @override_settings(**FAKE)
+def test_a_team_answer_grounds_the_people_it_named(org, team):
+    """A ranking used to hand back a list of strings, so the conversation forgot
+    everyone in it the moment it was sent. The live eval caught the cost: asked "who is
+    my top performer?" and then "how many goals do they have?", the agent had no ids,
+    spent all five tool calls on find_people against names it had read out of the
+    previous turn's prose, and gave up asking the user to be more specific."""
+    with tenant_context(org.tenant):
+        out = chat_answer(org.manager, "who's my top performer?",
+                          session=_session(org.manager))
+
+    labels = [r["label"] for r in out["refs"]]
+    assert labels == out["data"], "grounded in the order the answer named them"
+    assert "Bram de Vries" in labels
+    assert all(r["type"] == "user" and r["id"] for r in out["refs"])
+
+
+@override_settings(**FAKE)
+def test_a_ranking_then_a_follow_up_reaches_the_agent_with_ids(org, team, script,
+                                                              blind_classifier):
+    """The whole chain, as the eval ran it. Turn one is a deterministic ranking; turn
+    two — "and how many goals do they have?" — has no name in it at all.
+
+    Before the ranking grounded anybody, the conversation had forgotten every one of
+    them: the agent got an empty id list, spent all five tool calls on find_people
+    against names it had read out of the previous turn's prose, and answered "please
+    specify which of the top performers you'd like to know about".
+
+    What fixes it also means the AGENT is no longer needed here — with the people
+    grounded, the existing pronoun path resolves "they" and answers directly. That is
+    the better outcome, and it is what this asserts: the right person, by name, from
+    whichever mechanism got there first."""
+    from apps.ai import sessions
+    from apps.ai.models import ChatTurn
+
+    with tenant_context(org.tenant):
+        session = _session(org.manager)
+        sessions.append_turn(session, ChatTurn.Role.USER, "who's my top performer?")
+        first = chat_answer(org.manager, "who's my top performer?", session=session)
+        sessions.append_turn(session, ChatTurn.Role.ASSISTANT, first["answer"],
+                             refs=first["refs"])
+
+        known = chat_mod_known(org.manager, session)
+        assert known, "the ranking's people must survive into the next turn"
+        top = first["refs"][0]["label"]
+
+        ranked = [r["label"] for r in first["refs"]]
+        second = chat_answer(org.manager, "and how many goals do they have?",
+                             session=session)
+        third = chat_answer(org.manager, "how is the first one doing?", session=session)
+
+    # "they" after a three-person list is genuinely ambiguous, and which of them the
+    # session binds it to is a pre-existing choice (within a turn, the last ref wins —
+    # right for a narrative answer, arbitrary for a ranking). What the grounding
+    # guarantees is that it lands on somebody who was actually named, instead of a dead
+    # end.
+    assert any(name in second["answer"] for name in ranked), second["answer"]
+    assert "specify" not in second["answer"].lower()
+
+    # "the first one" is not ambiguous, and it now resolves — a ranked list is an
+    # offered set, and before this it was three strings the conversation had forgotten.
+    assert ranked[0] in third["answer"], f"{ranked[0]!r} not in {third['answer']!r}"
+
+
+@override_settings(**FAKE)
+def test_a_risk_scan_grounds_only_the_people_it_showed(org, org_big_team=None):
+    """"…and 4 more" were never shown, so grounding them would let "the last one"
+    resolve to somebody the user has not seen."""
+    from apps.ai.agents import chat as chat_mod
+
+    with tenant_context(org.tenant):
+        cycle = CycleFactory(tenant=org.tenant, status="ACTIVE")
+        for i in range(7):
+            person = UserFactory(tenant=org.tenant, role="EMPLOYEE",
+                                 display_name=f"Risky Person{i}",
+                                 email=f"risky{i}@acme.test", manager=org.manager)
+            _score(org.tenant, person, cycle, "30", risk="AT_RISK", behind=True)
+
+        out = chat_answer(org.manager, "who on my team is at risk?",
+                          session=_session(org.manager))
+
+    shown = len(out["refs"])
+    assert 0 < shown <= chat_mod._TEAM_LIST_CAP
+    assert shown < len(out["data"]), "more were flagged than were named"
+    for ref in out["refs"]:
+        assert ref["label"] in out["answer"], f"{ref['label']} was grounded but not shown"
+
+
+@override_settings(**FAKE)
 def test_a_person_the_caller_can_no_longer_read_is_not_handed_to_the_model(org, team):
     """The id list is only a shortcut for LOOKUP. It re-checks access, so somebody who
     has moved out of the caller's scope since being discussed simply is not in it."""

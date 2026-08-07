@@ -137,12 +137,35 @@ DEFAULT_AGENT_BUDGETS: dict[str, dict[str, int]] = {
 }
 
 
-def default_budget_limit(window: str, has_full_ai: bool) -> int:
+#: Agents whose default ceiling is scaled, because one user-visible ANSWER costs them
+#: more than one LLM call.
+#:
+#: The budget unit is a call, and that is correct — a call is what costs money. But the
+#: caps were sized when every agent spent exactly one call per answer, so a tenant's
+#: daily allowance also read as "questions you may ask". The function-calling assistant
+#: broke that: it spends one call per tool ROUND, up to the ceiling in
+#: ``apps.ai.agent_loop.MAX_ROUNDS``, so a STARTER tenant's 50 calls bought about eight
+#: questions instead of fifty. Scaling the default here keeps the number of ANSWERS
+#: comparable across agents while still metering every call. An explicit ``AgentBudget``
+#: row overrides this, as it overrides every default.
+#:
+#: Not imported from ``apps.ai``: billing must not depend on the AI app, and a number
+#: that has to be kept in step is better as a stated fact than a hidden import cycle.
+#: If MAX_ROUNDS changes, this changes with it — there is a test that says so.
+AGENT_CALL_MULTIPLIERS: dict[str, int] = {"chat_agent": 6}
+
+
+def default_budget_limit(window: str, has_full_ai: bool, agent_code: str = "") -> int:
     """The entitlement-derived default budget limit for ``window`` (DAILY/MONTHLY),
     choosing the FULL_AI cap when the tenant holds that pack, else the STARTER cap.
-    An unknown window falls back to the DAILY caps (never raises)."""
+    An unknown window falls back to the DAILY caps (never raises).
+
+    ``agent_code`` scales the cap for the multi-call agents in
+    :data:`AGENT_CALL_MULTIPLIERS`; anything else is unaffected.
+    """
     tier = FULL_AI if has_full_ai else STARTER
-    return DEFAULT_AGENT_BUDGETS.get(window, DEFAULT_AGENT_BUDGETS["DAILY"])[tier]
+    base = DEFAULT_AGENT_BUDGETS.get(window, DEFAULT_AGENT_BUDGETS["DAILY"])[tier]
+    return base * AGENT_CALL_MULTIPLIERS.get(agent_code, 1)
 
 
 def tier_label(pack_codes) -> str:

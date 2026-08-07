@@ -92,6 +92,39 @@ def test_default_limit_is_higher_after_upgrade(tenant):
     assert full_daily > starter_daily  # an upgrade lifts budgets too
 
 
+def test_the_tool_calling_agent_gets_room_for_the_same_number_of_ANSWERS(tenant):
+    """The budget unit is a CALL, and that is right — a call is what costs money. But
+    the caps were sized when every agent spent one call per answer, so the daily
+    allowance also read as "questions you may ask". The function-calling assistant spends
+    one call per tool ROUND, so on the flat cap a STARTER tenant's fifty calls bought
+    about eight questions. Its default is scaled to match."""
+    get_or_create_entitlement(tenant)
+    ordinary = resolve_budget_limit(tenant, "chat", "DAILY")
+    agentic = resolve_budget_limit(tenant, "chat_agent", "DAILY")
+
+    assert agentic == ordinary * packs.AGENT_CALL_MULTIPLIERS["chat_agent"]
+    assert agentic > ordinary
+
+
+def test_the_multiplier_still_matches_the_loops_round_ceiling():
+    """`packs` deliberately does NOT import from `apps.ai` — billing must not depend on
+    the AI app. The cost of stating the number twice is that they can drift, so this is
+    the thing that notices."""
+    from apps.ai.agent_loop import MAX_ROUNDS
+
+    assert packs.AGENT_CALL_MULTIPLIERS["chat_agent"] == MAX_ROUNDS
+
+
+def test_an_explicit_budget_row_still_overrides_the_scaled_default(tenant):
+    """The multiplier is a DEFAULT. A tenant that has been given an explicit ceiling
+    keeps exactly that ceiling — scaling it behind their back would be the opposite of
+    what an explicit row is for."""
+    get_or_create_entitlement(tenant)
+    _budget(tenant, agent_code="chat_agent", limit=7)
+
+    assert resolve_budget_limit(tenant, "chat_agent", "DAILY") == 7
+
+
 # ── usage metering ──────────────────────────────────────────────────────────────
 
 

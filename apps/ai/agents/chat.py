@@ -671,7 +671,25 @@ def _answer_team_risk(caller, intent="performance", mode="all", exclude=None):
         "status": "ok", "intent": intent,
         "answer": f"{lead}{'; '.join(lines)}{tail}. Ask me about any of them for detail.",
         "data": [f["name"] for f in flagged],
+        # Only the people actually NAMED in the answer. "and 4 more" were not shown, so
+        # grounding them would let "the last one" resolve to somebody the user never saw.
+        "refs": _people_refs(shown),
     }
+
+
+def _people_refs(rows, limit=5):
+    """Session refs for the people an answer NAMED, in the order it named them.
+
+    A team answer used to hand back a list of strings, so the conversation forgot
+    everyone in it the moment it was sent: "who's my top performer?" then "how is she
+    doing?" had nothing to resolve, and the function-calling agent — which is given the
+    people already identified — got an empty list and spent its whole tool budget
+    calling find_people on names it had read out of the previous turn's prose.
+
+    Grounding grants nothing on its own: every ref is access-rechecked where it is used.
+    """
+    return [{"type": "user", "id": str(r["id"]), "label": r["name"]}
+            for r in rows[:limit] if r.get("id")]
 
 
 def _answer_team_ranking(caller, intent="performance", best=True):
@@ -702,6 +720,7 @@ def _answer_team_ranking(caller, intent="performance", best=True):
         "status": "ok", "intent": intent,
         "answer": f"Your {which} performers this cycle: {'; '.join(lines)}.{note}",
         "data": [r["name"] for r in rk["ranked"]],
+        "refs": _people_refs(rk["ranked"]),
     }
 
 

@@ -442,6 +442,10 @@ docker compose exec web python manage.py seed_scale_tenant --headcount 5000 --re
 docker compose exec web python scripts/agent_eval.py --tenant scale --judge
 docker compose exec web python scripts/agent_scale_harness.py --tenant scale
 docker compose exec web pytest apps/ai -q
+
+# and the fast one — no API key, ~1 second, safe to put in CI:
+docker compose exec web python scripts/agent_eval.py --tenant scale \
+    --replay docs/AGENT_V3/eval_run.json
 ```
 
 Every seeded account uses the password `Passw0rd!scale`; the admin is `admin@scale.test`.
@@ -474,10 +478,11 @@ database — five tool calls is five round trips. The chat panel has no streamin
 "working…" state for these, so a 15-second turn currently looks like a hang. This is the
 most visible problem left.
 
-**Cost and budget.** Each agent turn is several metered LLM calls. The eval has to reset
-the tenant's budget before every case to get through 103 questions, which tells you what a
-busy manager's day would cost. The per-agent budget ceilings are not tuned for the agent's
-call pattern.
+**Cost.** Each agent turn is several metered LLM calls, and the eval has to reset the
+tenant's budget before every case to get through 103 questions — which tells you what a
+busy manager's day would cost. The per-agent *ceiling* is no longer the problem
+(`AGENT_CALL_MULTIPLIERS` scales `chat_agent` so the allowance counts answers rather than
+rounds); the spend behind it is real and unmeasured against a price list.
 
 **The judge scores 2.00/2 on grounded-ness across the 32 agent turns.** It does
 discriminate — it caught the passing miscount ("two team members" for three) and marked it
@@ -485,9 +490,9 @@ down, and handed empty evidence it returns 0s — but a near-ceiling average fro
 same-family model grading its own output is weak evidence on its own. The deterministic
 no-fabrication check (independent, 103/103) is the stronger claim.
 
-**`relevant` averages 1.58/2.** Most of the weaker answers are
-deterministic turns the judge sees without evidence, but not all: some open-ended replies
-are more list than synthesis. Nothing here is wrong; several things are flat.
+**`relevant` averages 1.59/2.** Most of the weaker answers are deterministic turns the
+judge sees without evidence, but not all: some open-ended replies are more list than
+synthesis. Nothing here is wrong; several things are flat.
 
 **The model can route around the aggregate tools, and only the prompt stops it.** This is
 the most important limit in the design, so it is worth stating precisely.
@@ -536,7 +541,9 @@ one of them improves when the tools improve.
 **Conversations are five turns deep.** Ten- and twenty-turn conversations, where the
 history window starts dropping things, are not measured at all.
 
-**No live-model unit tests.** Everything under `pytest` scripts the model, deliberately:
-those tests own the loop, the scope checks and the caps, which are properties of our code.
-Whether Gemini *picks* the right tools is only measured by the eval, which needs an API key
-and costs money, so it does not run in CI today.
+**Which tools the model picks is not under CI.** Everything under `pytest` scripts the
+model, deliberately: those tests own the loop, the scope checks and the caps, which are
+properties of our code. `--replay` closed part of the gap — it re-runs a recorded run's
+tool calls with no API key in about a second, so the backend-math contract and the answers
+are guarded. What still needs a live key and real money is the question the replay cannot
+ask: whether Gemini, today, chooses the right tools. That runs on demand, not on push.

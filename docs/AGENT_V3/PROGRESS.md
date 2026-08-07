@@ -337,10 +337,40 @@ has never yet produced a wrong answer (every superlative it answered this way na
 right people, because it had in fact fetched all of them). The mitigation is the
 measurement, not a guarantee. Revisit the moment the count rises or an answer is wrong.
 
-**RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
-in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in
-the chat panel for 4–13 s agent turns (the most visible problem, and it is frontend);
-tuning the per-agent budget ceilings for the agent's call pattern; conversations deeper than five
-turns; closing the incidental-arithmetic class structurally rather than by prompt; and a
-working/streaming state in the chat panel for 4-13 s agent turns, which is the most
-visible problem left and is frontend work.
+### Half the eval now gates a build
+`D_EVAL_HARNESS` asks for something CI can run. The live eval cannot be that: an API key,
+real money, twenty-five minutes. `--replay` re-executes the calls the model made on a
+recorded run — same callers, today's code and data — and re-checks the answers that were
+given. Under a second, no model.
+
+Both of its limits were found by *trying*, which is the part worth keeping.
+
+The first version's docstring claimed it caught a widened scope check. It does not.
+Disabling `_readable`'s access check left the run green, for a dull reason: none of the
+recorded calls were for somebody out of scope, so loosening the check changed nothing
+about them. Result-scanning was added and is worth keeping, but it is opportunistic — it
+fires only for calls that happen to have been recorded. The systematic proof of that
+boundary is `test_tools.py`, which denies every data tool for an out-of-scope person in
+one loop and already runs in CI. The claim was corrected rather than the test.
+
+What it does catch is demonstrated, not asserted: adding 3.0 to the cycle-over-cycle
+delta fails 8 of 16 cases instantly — every answer quoting a number the backend no longer
+produces. That is the backend-math contract under regression test in a second.
+
+Recording gained the tool ARGUMENTS and the actor id, which is all replay needs. Results
+are deliberately not recorded; recomputing them is the whole point.
+
+**RESUME HERE → nothing is blocking.** The plan is executed and every unit is landed,
+tested and logged. What is left is in REPORT.md's "Honest remaining weaknesses", and
+none of it is a defect — it is the work after this work:
+
+1. **A working state in the chat panel.** An agent turn takes 4–13 s and the panel shows
+   nothing while it does, so a slow answer reads as a hang. The most visible problem
+   left, and the only one a user would notice unprompted. Frontend, so outside this
+   plan's scope; it needs Hari's call on whether to do it here or on the UI branch.
+2. **Conversations past five turns.** The bank's deepest case is five. Ten and twenty
+   turns, where the history window starts dropping things, are not measured at all.
+3. **Model-side ranking.** Deliberately left open — see the section above. Persuasion
+   failed twice; enforcement would break legitimate questions to prevent a fault that
+   has not yet produced a wrong answer. The eval counts it every run. Revisit if the
+   count rises or an answer is ever wrong.

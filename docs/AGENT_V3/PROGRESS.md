@@ -186,16 +186,18 @@ the whole run, because one leak in sixty questions is a 98% pass and a breach. *
 in the bank** — `{report}`/`{stranger}` placeholders are filled from whatever tenant is in
 front of it.
 
-### Result (live model, 5,000 people, 97 cases)
+### Result (live model, 5,000 people, 103 cases)
 ```
-scope-safe 97/97 · no-fabrication 97/97 · behaviour 97/97
-judge: grounded 1.97/2 (n=31 agent-served) · relevant 1.56/2 · reasoned 1.67/2
-latency median 4.8 s · p95 12.5 s          RESULT: PASS
+scope-safe 103/103 · no-fabrication 103/103 · behaviour 103/103
+judge: grounded 1.88/2 (n=34 agent-served) · relevant 1.59/2 · reasoned 1.69/2
+latency median 4.8 s · p95 16.8 s          RESULT: PASS
 ```
-The bank started at 56 and grew to 97 once the thin coverage was obvious: HRBP and admin
+The bank started at 56 and grew to 103 once the thin coverage was obvious: HRBP and admin
 callers, duplicate names, typos, empty/shouted/run-on input, mixed self-and-other scope,
 longer conversations, four more injection shapes, and questions the product holds no data
-for at all (salary, sick days, review prose).
+for at all (salary, sick days, review prose) — then six FIVE-turn conversations, which
+found that the agent could not resolve "that person" to an id at all (fixed in `608fa5d`
+by handing it the session's own access-rechecked refs).
 
 ### What the harness found, in itself and in the product
 - **It scored 30 of 56 cases as failures because the tenant's daily AI budget ran out.**
@@ -233,11 +235,11 @@ including that 31 of 97 cases are agent-served and 66 keep their pre-coded answe
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
 **ALL FIVE UNITS COMPLETE.** Final state: full backend **1689 passed**, `apps/ai`
-**434 passed**, scale harness **257/257**, eval **PASS** at 97/97 on all three gates.
+**436 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates.
 
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
 in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in
 the chat panel for 4–13 s agent turns (the most visible problem, and it is frontend);
 tuning the per-agent budget ceilings for the agent's call pattern; conversations deeper
-than two turns in the eval bank; and closing the incidental-arithmetic class structurally
-rather than by prompt.
+than five turns, where relevance is already the weakest tag (1.33/2); and closing the
+incidental-arithmetic class structurally rather than by prompt.

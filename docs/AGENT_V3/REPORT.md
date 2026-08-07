@@ -97,10 +97,15 @@ still becomes an inert plan the human approves step by step, through the same ga
 before, and the agent never gets the turn. Two tests assert it, including one where the
 message contains a trend word ("recognise Rosa for improving so much").
 
-**Conversation memory still works.** The agent is given the recent turns, so "of those"
-and "her" resolve; the people its answer was about come back as session `refs`, so the
-*next* turn resolves through the existing machinery. Access is re-checked wherever a ref
-is used, so a ref grants nothing.
+**Conversation memory still works.** The agent gets the recent turns, so "of those" and
+"her" read naturally; the people already identified are handed to it as ids, so "has that
+person improved?" — which contains no name for `find_people` to resolve — has something to
+look up; and the people its answer was about come back as session `refs`, so the *next*
+turn resolves through the existing machinery. The id list is built by
+`sessions.people_in_order`, the resolver the rest of the chat already uses, and it
+re-checks access: somebody who has moved out of the caller's subtree since being discussed
+simply is not in it. The ids are only usable through the tools, which re-check on every
+call — this shortens the lookup, it does not widen it.
 
 ---
 
@@ -111,8 +116,8 @@ is used, so a ref grants nothing.
 | A — tools | `d9024ff` | `apps/ai/tools.py`, `apps/ai/tests/test_tools.py` (16) |
 | B — loop | `17d9a8a` | `apps/ai/agent_loop.py`, `GeminiProvider.generate_with_tools`, `LLMGateway.run_tools`, `apps/ai/tests/test_agent_loop.py` (10) |
 | C — wiring | `d869446` | `chat_answer` → `_deterministic_answer` + `_agent_answer`; composition few-shots; `_TEAM_SUBJECT_RE`; prior cycle in `seed_scale_tenant`; `test_open_ended.py` (15) |
-| C — follow-ups | `1a22b9d`, `5c14be7` | the trend class routed to the agent; `find_people("me")`; an invented person id handled as a result; a deflection that read as compliance (7 more tests) |
-| D — eval | `982445b`, `ee1996c` | `docs/AGENT_V3/eval_questions.jsonl` (97 cases), `scripts/agent_eval.py` |
+| C — follow-ups | `1a22b9d`, `5c14be7`, `608fa5d` | the trend class routed to the agent; `find_people("me")`; the conversation's people handed to the model as ids so a pronoun follow-up resolves; an invented person id handled as a result; a deflection that read as compliance (9 more tests) |
+| D — eval | `982445b`, `ee1996c`, `608fa5d` | `docs/AGENT_V3/eval_questions.jsonl` (103 cases), `scripts/agent_eval.py` |
 
 ---
 
@@ -186,7 +191,7 @@ Served by the **pre-coded** path, which was already exact and scope-bound:
 > Of your 9 report(s): 0 on track, 9 at risk, 9 behind pace. Ask 'who's behind?' for the
 > names.
 
-Worth being plain about: 31 of the 97 eval cases are served by the agent and 66 by the
+Worth being plain about: 34 of the 103 eval cases are served by the agent and 69 by the
 existing deterministic paths. This run did not rewrite the assistant. It gave the
 questions nobody coded somewhere to go.
 
@@ -220,7 +225,7 @@ all pass (see below).
 
 ### No fabricated numbers
 Every number in an agent answer is checked against the tool results that turn — the
-harness reads the actual `evidence` from the product path, not a re-run. **97/97.**
+harness reads the actual `evidence` from the product path, not a re-run. **103/103.**
 
 ---
 
@@ -229,22 +234,22 @@ harness reads the actual `evidence` from the product path, not a re-run. **97/97
 `docker compose exec web python scripts/agent_eval.py --tenant scale --judge`
 
 ```
-tenant 'scale': 5,000 active people · 97 cases · provider GeminiProvider
+tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
 
-  cases: 97   scope-safe: 97/97   no-fabrication: 97/97   behaviour: 97/97
-  LLM judge: grounded 1.97/2 (min 1.6, n=31 agent-served)
-             relevant 1.56/2 (min 1.4, n=97)   reasoned 1.67/2
-  latency: median 4,759 ms, p95 12,473 ms, max 30,211 ms
-  served by the function-calling agent: 31/97
+  cases: 103   scope-safe: 103/103   no-fabrication: 103/103   behaviour: 103/103
+  LLM judge: grounded 1.88/2 (min 1.6, n=34 agent-served)
+             relevant 1.59/2 (min 1.4, n=103)   reasoned 1.69/2
+  latency: median 4,792 ms, p95 16,829 ms, max 52,641 ms
+  served by the function-calling agent: 34/103
 
   RESULT: PASS
 ```
 
-Per-tag, every one of the 29 tags is 100% on behaviour, scope and no-fabrication:
-action, admin, aggregation, ambiguous, capability, comparison, destructive, edge-input,
-follow-up, hrbp, improvement, injection, judgement, memory, mixed-scope, no-data,
-open-ended, out-of-domain, out-of-scope, ranking, readiness, risk, self, single-person,
-status, summary, trend, typo, unknown-person.
+Per-tag, every one of the 30 tags is 100% on behaviour, scope and no-fabrication:
+action, admin, aggregation, ambiguous, capability, comparison, deep-conversation,
+destructive, edge-input, follow-up, hrbp, improvement, injection, judgement, memory,
+mixed-scope, no-data, open-ended, out-of-domain, out-of-scope, ranking, readiness, risk,
+self, single-person, status, summary, trend, typo, unknown-person.
 
 How the harness avoids grading itself:
 
@@ -331,12 +336,12 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 
 | Suite | Result |
 |---|---|
-| `apps/ai` | **434 passed** (was 412 at the start of unit C) |
+| `apps/ai` | **436 passed** (was 412 at the start of unit C) |
 | Full backend (`pytest`) | **1689 passed**, 7 deselected, 7m12s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
-| `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 97/97 × 3 gates |
+| `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
 
-New this run: `apps/ai/tests/test_open_ended.py` (22).
+New this run: `apps/ai/tests/test_open_ended.py` (24).
 
 ---
 
@@ -401,17 +406,17 @@ database — five tool calls is five round trips. The chat panel has no streamin
 most visible problem left.
 
 **Cost and budget.** Each agent turn is several metered LLM calls. The eval has to reset
-the tenant's budget before every case to get through 97 questions, which tells you what a
+the tenant's budget before every case to get through 103 questions, which tells you what a
 busy manager's day would cost. The per-agent budget ceilings are not tuned for the agent's
 call pattern.
 
-**The judge scores 1.97/2 on grounded-ness across the 31 agent turns.** It does
+**The judge scores 1.88/2 on grounded-ness across the 34 agent turns.** It does
 discriminate — it caught the passing miscount ("two team members" for three) and marked it
 down, and handed empty evidence it returns 0s — but a near-ceiling average from a
 same-family model grading its own output is weak evidence on its own. The deterministic
-no-fabrication check (independent, 97/97) is the stronger claim.
+no-fabrication check (independent, 103/103) is the stronger claim.
 
-**`relevant` averages 1.56/2, and fell as the bank grew.** Most of the weaker answers are
+**`relevant` averages 1.59/2.** Most of the weaker answers are
 deterministic turns the judge sees without evidence, but not all: some open-ended replies
 are more list than synthesis. Nothing here is wrong; several things are flat.
 
@@ -431,9 +436,10 @@ the agent. That split is deliberate and it is why nothing regressed — but it m
 at risk?" and "who's quietly getting worse?" are answered by different machinery, and only
 one of them improves when the tools improve.
 
-**Conversations are two turns deep.** The bank's longest case is a question and one
-follow-up. Reference resolution over six or ten turns, where the window starts dropping
-things, is not measured here at all.
+**Deep conversations are the weakest tag.** Six five-turn cases pass every hard gate, but
+the judge scores them 1.33/2 for relevance against 1.59 overall — by turn five the replies
+drift toward restating status rather than answering what was asked. Nothing is wrong; it
+gets vaguer. Ten- and twenty-turn conversations are still not measured at all.
 
 **No live-model unit tests.** Everything under `pytest` scripts the model, deliberately:
 those tests own the loop, the scope checks and the caps, which are properties of our code.

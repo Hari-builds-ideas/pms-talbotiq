@@ -234,8 +234,8 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1706 passed**, `apps/ai`
-**448 passed**, scale harness **257/257**, eval **PASS** at 106/106 on all three gates
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1708 passed**, `apps/ai`
+**450 passed**, scale harness **257/257**, eval **PASS** at 106/106 on all three gates
 (judge: grounded 1.88/2 over 33 agent-served turns, relevant 1.62/2, reasoned 1.66/2),
 and `--replay` green at 37 cases in 1.2 s with no API key.
 
@@ -390,6 +390,29 @@ invented one — which means a question answerable from memory alone has to be a
 BEFORE the agent, not by it. It now is, from `people_in_order`, the same access-rechecked
 resolver everything else uses; somebody reassigned out of the caller's subtree
 mid-conversation drops out of the recap, and a test reassigns one to prove it.
+
+### Proven over HTTP, which found two more things
+Everything up to here was proven in-process. Exercised as a real signed-in manager
+against the running stack instead, and it immediately paid for itself twice.
+
+**The stack serves stale code until `web` restarts.** The container mounts the repo but
+the server process does not reload, so a stack up since before this branch answered "who
+improved most since last cycle?" with "I couldn't find anyone named Improved Most Since"
+— the exact failure this run replaced. A null `tools` field is the tell. It is now the
+second line of the morning checklist, because anyone who skips it will reasonably
+conclude none of this works.
+
+**An unparseable message was reported as a failed NAME lookup.** The injection came back
+as "I couldn't find anyone by that name". Nothing leaked and nothing was obeyed, but the
+reply describes a failure that never happened, and on an impersonation attempt it reads
+like an assistant that half went along. The code already knew better — it refuses to echo
+more than three leftover tokens precisely because that is not a name — it just said
+"name" anyway. It deflects generally now; one to three tokens still echoes, because that
+is what tells a user whether we misread them or they misremembered the person.
+
+And the write gate, proven where it matters rather than only in the suite: propose "give
+recognition to <report>" → status `plan`, one confirm step, headline naming the person,
+recognitions in the database still **0**. Approve the step → **1**.
 
 **RESUME HERE → nothing is blocking.** The plan is executed and every unit is landed,
 tested and logged. What is left is in REPORT.md's "Honest remaining weaknesses", and

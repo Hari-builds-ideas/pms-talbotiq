@@ -404,13 +404,13 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 
 | Suite | Result |
 |---|---|
-| `apps/ai` | **448 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1706 passed**, 7 deselected, 5m35s |
+| `apps/ai` | **450 passed** (was 412 at the start of unit C) |
+| Full backend (`pytest`) | **1708 passed**, 7 deselected |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 106/106 × 3 gates |
 | `scripts/agent_eval.py --replay …` (no API key) | **PASS** — 37 cases, 83 tool calls, 1.2 s |
 
-New this run: `apps/ai/tests/test_open_ended.py` (33).
+New this run: `apps/ai/tests/test_open_ended.py` (35).
 
 ---
 

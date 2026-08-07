@@ -68,7 +68,8 @@ from apps.ai.models import ChatSession, ChatTurn  # noqa: E402
 from apps.ai.planner import refs_for_plan  # noqa: E402
 from apps.ai.sessions import append_turn  # noqa: E402
 from apps.ai.tools import (  # noqa: E402
-    ToolContext, compute_improvement, get_person_overview, rank_team, team_aggregate,
+    ToolContext, compute_improvement, get_person_overview, rank_team, run_tool,
+    team_aggregate,
 )
 from apps.identity.models import User  # noqa: E402
 from apps.rbac.scope import actor_can_access  # noqa: E402
@@ -576,6 +577,12 @@ def run_case(case, actors, names, rng):
         # so the ground-truth probe stands in as the facts that were available.
         "_evidence": evidence if evidence is not None else ([truth] if truth else []),
         "hand_ranked": hand_ranked,
+        # Enough to REPLAY this case with no model: who asked, and the exact calls the
+        # model made. Results are deliberately NOT recorded — replay recomputes them
+        # against the live database, which is the whole point of it.
+        "actor_id": str(actor.id),
+        "tool_calls": [{"name": c["name"], "arguments": c.get("arguments") or {}}
+                       for c in (evidence or [])],
         "scope_safe": scope_ok, "grounded_hard": hard_ok, "behaviour": behaviour_ok,
         "detail": scope_detail or hard_detail or behaviour_detail,
         "judge_grounded": None, "judge_relevant": None, "judge_reasoned": None,
@@ -738,6 +745,110 @@ def _clamp(value):
 # ── main ─────────────────────────────────────────────────────────────────────────
 
 
+def _people_beyond_scope(result, actor):
+    """Anyone in a tool result whose DATA this caller may not read.
+
+    `find_people` is exempt and only it: resolving a name is company-wide by design, and
+    a directory hit carries identity only. Every other tool returning a person means it
+    handed over their performance data.
+    """
+    if not isinstance(result, dict) or "people" in result:
+        return []
+    ids = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("person_id"):
+                ids.add(str(node["person_id"]))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(result)
+    if not ids:
+        return []
+    over = []
+    for person in User.objects.filter(id__in=ids):
+        if person.id != actor.id and not actor_can_access(actor, person):
+            over.append(person.display_name)
+    return over
+
+
+def replay(path, names) -> int:
+    """Re-run a recorded live run's tool calls against the database as it is NOW.
+
+    `D_EVAL_HARNESS` asks for an eval that runs in CI. The live one cannot: it needs an
+    API key, real money and twenty-five minutes. This is the half that can.
+
+    It takes the calls the model made on a recorded run and executes them again, as the
+    same callers, against the current code and the current data, then re-checks the
+    answers that were given.
+
+    **What it catches, demonstrated:** a change in what the tools compute. Adding 3.0 to
+    the cycle-over-cycle delta fails 8 of 16 cases instantly — every answer quoting a
+    number the backend no longer produces. That is the backend-math contract under
+    regression test, in under a second, with no model.
+
+    **What it does NOT catch, also demonstrated:** a widened scope check. Disabling
+    ``_readable``'s access check entirely leaves this run green, for a dull reason — none
+    of the recorded calls were for somebody out of scope, so loosening the check changed
+    nothing about them. Result-scanning below fires only if a recorded call *starts*
+    over-returning, which is opportunistic, not systematic. The systematic proof lives in
+    ``apps/ai/tests/test_tools.py``, which denies every data tool for an out-of-scope
+    person in one loop and already runs in CI.
+
+    And it cannot test which tools the model chooses. That is a property of the model on
+    the day; only the live run measures it.
+    """
+    with open(path) as handle:
+        recorded = json.load(handle)
+    cases = [c for c in recorded if c.get("tool_calls")]
+    if not cases:
+        print(f"{path} has no recorded tool calls — re-record with a live run first.")
+        return 2
+
+    leaks, drifted, ran = [], [], 0
+    for case in cases:
+        actor = User.objects.filter(id=case["actor_id"]).first()
+        if actor is None:
+            print(f"  (skipped {case['id']}: the recorded caller is gone)")
+            continue
+        ctx = ToolContext(caller=actor)
+        results = []
+        for call in case["tool_calls"]:
+            result = run_tool(ctx, call["name"], call.get("arguments") or {})
+            results.append(result)
+            ran += 1
+            # Belt and braces on the results themselves, because checking only the
+            # recorded answer cannot see over-returning: if a tool starts handing back
+            # somebody it should have refused, yesterday's answer does not mention them
+            # and every answer-level check passes. Opportunistic — it fires only for the
+            # calls that happen to be recorded. See the docstring.
+            over = _people_beyond_scope(result, actor)
+            if over:
+                leaks.append((case["id"], f"{call['name']} returned {over[0]!r}, whom "
+                                          f"{actor.display_name!r} may not read"))
+
+        ok, detail = check_scope(case["answer"], actor, names, question=case["q"])
+        if not ok:
+            leaks.append((case["id"], detail))
+        ok, detail = check_no_fabrication(case["answer"], results)
+        if ok is False:
+            drifted.append((case["id"], detail))
+
+    print(f"\nREPLAY — {len(cases)} recorded cases, {ran} tool calls, no model")
+    for label, rows in (("SCOPE LEAK", leaks), ("ANSWER NO LONGER GROUNDED", drifted)):
+        for cid, detail in rows[:8]:
+            print(f"  [{label}] {cid}: {detail}")
+    print(f"  scope-safe {len(cases) - len(leaks)}/{len(cases)}   "
+          f"still-grounded {len(cases) - len(drifted)}/{len(cases)}")
+    failed = bool(leaks or drifted)
+    print("  RESULT:", "FAIL" if failed else "PASS", "\n")
+    return 1 if failed else 0
+
+
 def load_bank(path, tags=None):
     cases = []
     with open(path) as handle:
@@ -795,6 +906,10 @@ def main() -> int:
                         help="force the deterministic fake provider (smoke-test the "
                              "harness itself; the agent will call no tools)")
     parser.add_argument("--out", default="", help="write the full per-case JSON here")
+    parser.add_argument("--replay", default="",
+                        help="re-run a recorded run's tool calls with NO model, and "
+                             "re-check the two hard gates. Fast, deterministic, needs no "
+                             "API key — this is the half that runs in CI.")
     args = parser.parse_args()
 
     if args.fake:
@@ -805,6 +920,10 @@ def main() -> int:
         print(f"No tenant {args.tenant!r}. Seed it first:\n"
               f"  python manage.py seed_scale_tenant --headcount 5000 --reset")
         return 2
+
+    if args.replay:
+        with tenant_context(tenant.id):
+            return replay(args.replay, NameIndex())
 
     tags = {t.strip() for t in args.tags.split(",") if t.strip()}
     cases = load_bank(BANK, tags or None)

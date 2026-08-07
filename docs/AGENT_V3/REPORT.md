@@ -337,7 +337,7 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 | Suite | Result |
 |---|---|
 | `apps/ai` | **436 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1689 passed**, 7 deselected, 7m12s |
+| Full backend (`pytest`) | **1691 passed**, 7 deselected, 5m14s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
 

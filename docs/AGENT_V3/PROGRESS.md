@@ -234,7 +234,7 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1689 passed**, `apps/ai`
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1691 passed**, `apps/ai`
 **436 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates.
 
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,

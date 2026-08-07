@@ -123,7 +123,10 @@ call — this shortens the lookup, it does not widen it.
 | B — loop | `17d9a8a` | `apps/ai/agent_loop.py`, `GeminiProvider.generate_with_tools`, `LLMGateway.run_tools`, `apps/ai/tests/test_agent_loop.py` (10) |
 | C — wiring | `d869446` | `chat_answer` → `_deterministic_answer` + `_agent_answer`; composition few-shots; `_TEAM_SUBJECT_RE`; prior cycle in `seed_scale_tenant`; `test_open_ended.py` (15) |
 | C — follow-ups | `1a22b9d`, `5c14be7`, `608fa5d` | the trend class routed to the agent; `find_people("me")`; the conversation's people handed to the model as ids so a pronoun follow-up resolves; an invented person id handled as a result; a deflection that read as compliance (9 more tests) |
-| D — eval | `982445b`, `ee1996c`, `608fa5d` | `docs/AGENT_V3/eval_questions.jsonl` (103 cases), `scripts/agent_eval.py` |
+| D — eval | `982445b`, `ee1996c` | `docs/AGENT_V3/eval_questions.jsonl` (103 cases), `scripts/agent_eval.py` |
+| after the plan | `608fa5d`, `df996e5` | the conversation's people handed to the agent as ids; team answers grounding whom they named; `AGENT_CALL_MULTIPLIERS` so the budget counts answers, not rounds |
+| after the plan | `94aa0e9`, `bd322e4` | a plan headline that names who it is for; `compute_improvement` returning a whole-team `summary` instead of a top-N to be misread |
+| after the plan | `b7d673f`, `f3f2528`, `e71b915` | the superlative rule; the in-band ranking nudge (which did not work — see the weaknesses); `--replay`, the half of the eval that runs in CI |
 
 ---
 
@@ -251,8 +254,11 @@ The existing adversarial harness covers 19 more injection and social-engineering
 all pass (see below).
 
 ### No fabricated numbers
-Every number in an agent answer is checked against the tool results that turn — the
-harness reads the actual `evidence` from the product path, not a re-run. **103/103.**
+Every number in an agent answer is checked against the tool results of that
+**conversation** — the harness reads the actual `evidence` from the product path, not a
+re-run. Conversation, not turn, because that is what the contract says: a score fetched
+two turns ago is still grounded when it is quoted again, and checking per-turn would push
+the assistant toward re-fetching what it already knows. **103/103.**
 
 ---
 
@@ -267,6 +273,8 @@ tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
   LLM judge: grounded 2.00/2 (min 1.6, n=32 agent-served)
              relevant 1.59/2 (min 1.4, n=103)   reasoned 1.63/2
   served by the function-calling agent: 32/103
+
+  latency: median 4,942 ms, p95 16,160 ms  (agent-served turns: median 6,758 ms)
 
   ! the model ranked a group ITSELF instead of asking the backend, in 1 case(s):
       deep-05: 5 per-person calls - which of them declined the most since last cycle?
@@ -291,6 +299,37 @@ How the harness avoids grading itself:
   applied to its test harness.
 - **Two gates are hard and not averaged.** One leak or one number no tool returned fails
   the entire run. One leak in sixty questions is a 98% pass and a breach.
+
+### Running it in CI
+
+The live eval needs an API key, real money and twenty-five minutes, so it cannot gate a
+build. `--replay` is the half that can:
+
+```
+docker compose exec web python scripts/agent_eval.py --tenant scale \
+    --replay docs/AGENT_V3/eval_run.json
+# REPLAY — 34 recorded cases, 81 tool calls, no model
+#   scope-safe 34/34   still-grounded 34/34      RESULT: PASS      (1.2 s)
+```
+
+It re-executes the calls the model made on a recorded run, as the same callers, against
+the code and data of today — then re-checks the answers that were given. Perturbing the
+cycle-over-cycle delta by 3.0 fails 17 of the 34 instantly: every answer quoting a number
+the backend no longer produces. That is the backend-math contract under regression test
+in under two seconds.
+
+Two limits, both established by trying rather than assuming.
+
+It does **not** catch a widened scope check. Disabling `_readable`'s access check leaves
+the run green, because none of the recorded calls were for somebody out of scope — the one
+agent-served out-of-scope case asked the whole-team form and passed no `person_id` at all.
+Re-tested after doubling the recording, same result. The result-scanning in `replay()` is
+worth keeping but is opportunistic; the systematic proof of that boundary is
+`apps/ai/tests/test_tools.py`, which denies every data tool for an out-of-scope person in
+one loop and already runs in CI.
+
+And it cannot test which tools the model chooses. That is a property of the model on the
+day; only the live run measures it.
 
 ### What the eval found — in the product, and in itself
 
@@ -350,7 +389,7 @@ assistant.
 |---|---|
 | Person resolution | **1 query**, median 0.5 ms, p95 0.7 ms |
 | Team tools (`rank_team`, `team_aggregate`, `compute_improvement`) | a **constant** number of queries, asserted as constant rather than pinned to a figure |
-| Whole chat turn, agent-served | median 4.6 s, p95 14.4 s (dominated by the model, not the database) |
+| Whole chat turn, agent-served | median 6.8 s, p95 16.7 s (dominated by the model, not the database) |
 | Existing behavioural scale harness | **257/257** checks, no regression |
 
 The constant-query property is a correctness property here, not a nicety.
@@ -365,12 +404,13 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 
 | Suite | Result |
 |---|---|
-| `apps/ai` | **439 passed** (was 412 at the start of unit C) |
+| `apps/ai` | **445 passed** (was 412 at the start of unit C) |
 | Full backend (`pytest`) | **1703 passed**, 7 deselected, 5m43s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
+| `scripts/agent_eval.py --replay …` (no API key) | **PASS** — 34 cases, 81 tool calls, 1.2 s |
 
-New this run: `apps/ai/tests/test_open_ended.py` (32).
+New this run: `apps/ai/tests/test_open_ended.py` (30).
 
 ---
 

@@ -191,6 +191,27 @@ Nothing in the codebase has ever seen this phrasing.
 > points, from 55.6 to 46.2. Jamal Silva and Jamal Steinberg have also declined by 3.1
 > points, from 50.5 to 47.4.
 
+### "is my team trending up or down overall?"
+
+The sharpest one, because the old answer was not merely vague — it was **the opposite of
+the truth**.
+
+**Before** — tools: `get_my_team`, `compute_improvement`
+> Overall, your team is trending up.
+> * Jamal Cavendish improved by 9.6 points … * Jamal Oyelaran improved by 9.6 … *
+
+The ranked list is a bounded top-N, and the top of a list sorted by improvement is all
+improvers. Reading five rows of nine and calling it the team produced a confident "up"
+for a team that was going down.
+
+**After** — tools: `compute_improvement`
+> Overall, your team is trending down. Out of 9 people compared, 3 improved and 6
+> declined, with a mean delta of -1.0.
+
+Nothing about the model changed. The tool now returns a `summary` computed over every
+comparable person, alongside the bounded list, and a number cannot be misread the way a
+truncated list can.
+
 ### "how many of my reports are behind pace?"
 
 Served by the **pre-coded** path, which was already exact and scope-bound:
@@ -243,10 +264,13 @@ harness reads the actual `evidence` from the product path, not a re-run. **103/1
 tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
 
   cases: 103   scope-safe: 103/103   no-fabrication: 103/103   behaviour: 103/103
-  LLM judge: grounded 2.00/2 (min 1.6, n=32 agent-served)
-             relevant 1.58/2 (min 1.4, n=103)   reasoned 1.65/2
-  latency: median 5,138 ms, p95 24,453 ms, max 42,162 ms
+  LLM judge: grounded 1.94/2 (min 1.6, n=32 agent-served)
+             relevant 1.57/2 (min 1.4, n=103)   reasoned 1.64/2
+  latency: median 4,898 ms, p95 14,528 ms, max 38,390 ms
   served by the function-calling agent: 32/103
+
+  ! the model ranked a group ITSELF instead of asking the backend, in 1 case(s):
+      deep-05: 5 per-person calls - which of them declined the most since last cycle?
 
   RESULT: PASS
 ```
@@ -343,11 +367,11 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 | Suite | Result |
 |---|---|
 | `apps/ai` | **439 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1700 passed**, 7 deselected, 5m51s |
+| Full backend (`pytest`) | **1702 passed**, 7 deselected, 5m43s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
 
-New this run: `apps/ai/tests/test_open_ended.py` (27).
+New this run: `apps/ai/tests/test_open_ended.py` (31).
 
 ---
 
@@ -443,10 +467,12 @@ returns — and prompt instructions are weaker than structural ones. The same is
 numbers the model throws in while describing a list ("two others are on the same score",
 which it got wrong once before the instruction existed).
 
-What limits the damage is that the *eval* can see it: the recorded tool calls show six
-per-person calls where one ranked call belonged, which is how this was found at all. If
-one thing here deserves follow-up work, it is turning that from an observation into a
-check that fails.
+What limits the damage is that the eval now **counts** it. Every run prints the cases
+where a superlative question fetched three or more people individually — currently one,
+`deep-05`, with five per-person calls, still doing it after the prompt told it not to.
+Reported as a number rather than enforced as a gate: the heuristic is good enough to
+point at, not good enough to fail a release on. A prompt-only guard that nobody measures
+is a guard nobody knows is failing.
 
 **The agent occasionally narrates its tools.** One eval answer said "the `rank_team` tool
 indicates…". The system prompt now carries an explicit bad/good example, but this is a

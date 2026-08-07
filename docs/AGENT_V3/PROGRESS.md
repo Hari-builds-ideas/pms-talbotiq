@@ -234,9 +234,9 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1700 passed**, `apps/ai`
-**442 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
-(judge: grounded 2.00/2 over 32 agent-served turns, relevant 1.58/2, reasoned 1.65/2).
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1702 passed**, `apps/ai`
+**444 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
+(judge: grounded 1.94/2 over 32 agent-served turns, relevant 1.57/2, reasoned 1.64/2).
 
 ---
 
@@ -304,6 +304,28 @@ to name. That is correct behaviour, not a second bug, so the fix stops where the
 genuinely knows who it means.
 
 Full backend **1700 passed**.
+
+### The whole-team trend was read off a truncated list
+The most consequential of the late fixes, because the old answer was not vague — it was
+**the opposite of the truth**. "Is my team trending up or down overall?" returned
+"trending up", read from the ranked list. But `ranked` is a bounded top-N, and the top of
+a list sorted by improvement is all improvers. Five rows of nine said "up" for a team that
+was going down.
+
+`compute_improvement` now returns a `summary` computed over EVERY comparable person —
+improved, declined, unchanged, mean delta, direction — beside the bounded list, and
+`listed` says how much of `compared` the list actually holds. The answer became "trending
+down. Out of 9 people compared, 3 improved and 6 declined, with a mean delta of -1.0."
+Nothing about the model changed; a number cannot be misread the way a truncated list can.
+
+### The limit the tool boundary cannot close, now measured
+Asked "which of them declined the most?", the model calls `compute_improvement` once per
+person and picks the largest by eye — still, after the prompt told it not to. Six legal
+calls are six legal calls; no schema change forbids it. So the eval **counts** it now, and
+prints the offending cases every run (currently one: `deep-05`, five per-person calls).
+Reported as a number, not enforced as a gate — the heuristic is good enough to point at,
+not to fail a release on. A prompt-only guard nobody measures is a guard nobody knows is
+failing.
 
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
 in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in

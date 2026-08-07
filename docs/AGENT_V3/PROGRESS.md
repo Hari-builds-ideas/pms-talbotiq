@@ -234,9 +234,10 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1703 passed**, `apps/ai`
-**445 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
-(judge: grounded 1.94/2 over 33 agent-served turns, relevant 1.54/2, reasoned 1.61/2).
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1706 passed**, `apps/ai`
+**448 passed**, scale harness **257/257**, eval **PASS** at 106/106 on all three gates
+(judge: grounded 1.88/2 over 33 agent-served turns, relevant 1.62/2, reasoned 1.66/2),
+and `--replay` green at 37 cases in 1.2 s with no API key.
 
 ---
 
@@ -360,6 +361,36 @@ produces. That is the backend-math contract under regression test in a second.
 Recording gained the tool ARGUMENTS and the actor id, which is all replay needs. Results
 are deliberately not recorded; recomputing them is the whole point.
 
+### Ten-turn conversations, and two holes they found in the harness
+Three ten-turn cases were added because "conversation memory kept working" is a plan
+requirement and the bank's deepest case was five. The conversations themselves hold: 3/3
+on every gate, relevance 2.00, and on turn nine "summarise everything you've told me
+about them" still answers about the right person with real numbers.
+
+What they found was in the harness, twice.
+
+**The scope gate only looked at the last answer.** In a ten-turn case a leak on turn three
+would have gone straight past the one check that exists to catch it. Every turn is checked
+now, and a failure names which one. Quality is still judged on the final answer — that is
+what the conversation was building toward — but safety is not a property of the last thing
+you said.
+
+**The judge was hiding its own scores.** A run printed "LLM judge: SKIPPED" when the judge
+had plainly just run: grounded-ness is scored only on agent-served turns, that selection
+had none, and the empty mean pulled the whole judge line into the skipped branch —
+discarding the relevance and reasoning scores it had produced. They were 2.00 and 2.00. A
+summary that hides its own data is worse than a missing one.
+
+### One product gap the long conversations exposed
+Nine turns of real work, then "remind me who we've been talking about" → the capability
+leaflet. The session knew the answer the whole time and nothing asked it. The agent could
+not rescue it either: the question needs no tool, so its reply was discarded by the
+tool-grounded rule. That rule is right — it cannot tell a good untooled answer from an
+invented one — which means a question answerable from memory alone has to be answered
+BEFORE the agent, not by it. It now is, from `people_in_order`, the same access-rechecked
+resolver everything else uses; somebody reassigned out of the caller's subtree
+mid-conversation drops out of the recap, and a test reassigns one to prove it.
+
 **RESUME HERE → nothing is blocking.** The plan is executed and every unit is landed,
 tested and logged. What is left is in REPORT.md's "Honest remaining weaknesses", and
 none of it is a defect — it is the work after this work:
@@ -368,8 +399,9 @@ none of it is a defect — it is the work after this work:
    nothing while it does, so a slow answer reads as a hang. The most visible problem
    left, and the only one a user would notice unprompted. Frontend, so outside this
    plan's scope; it needs Hari's call on whether to do it here or on the UI branch.
-2. **Conversations past five turns.** The bank's deepest case is five. Ten and twenty
-   turns, where the history window starts dropping things, are not measured at all.
+2. **Conversations past ten turns.** Three ten-turn cases now pass every gate. Twenty
+   and beyond, where the history window starts dropping things in earnest, are not
+   measured.
 3. **Model-side ranking.** Deliberately left open — see the section above. Persuasion
    failed twice; enforcement would break legitimate questions to prevent a fault that
    has not yet produced a wrong answer. The eval counts it every run. Revisit if the

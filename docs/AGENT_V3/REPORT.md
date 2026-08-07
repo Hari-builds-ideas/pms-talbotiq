@@ -123,7 +123,7 @@ call — this shortens the lookup, it does not widen it.
 | B — loop | `17d9a8a` | `apps/ai/agent_loop.py`, `GeminiProvider.generate_with_tools`, `LLMGateway.run_tools`, `apps/ai/tests/test_agent_loop.py` (10) |
 | C — wiring | `d869446` | `chat_answer` → `_deterministic_answer` + `_agent_answer`; composition few-shots; `_TEAM_SUBJECT_RE`; prior cycle in `seed_scale_tenant`; `test_open_ended.py` (15) |
 | C — follow-ups | `1a22b9d`, `5c14be7`, `608fa5d` | the trend class routed to the agent; `find_people("me")`; the conversation's people handed to the model as ids so a pronoun follow-up resolves; an invented person id handled as a result; a deflection that read as compliance (9 more tests) |
-| D — eval | `982445b`, `ee1996c` | `docs/AGENT_V3/eval_questions.jsonl` (103 cases), `scripts/agent_eval.py` |
+| D — eval | `982445b`, `ee1996c`, `4481be9` | `docs/AGENT_V3/eval_questions.jsonl` (106 cases), `scripts/agent_eval.py`; every turn of a conversation scope-checked, not just the last |
 | after the plan | `608fa5d`, `df996e5` | the conversation's people handed to the agent as ids; team answers grounding whom they named; `AGENT_CALL_MULTIPLIERS` so the budget counts answers, not rounds |
 | after the plan | `94aa0e9`, `bd322e4` | a plan headline that names who it is for; `compute_improvement` returning a whole-team `summary` instead of a top-N to be misread |
 | after the plan | `b7d673f`, `f3f2528`, `e71b915` | the superlative rule; the in-band ranking nudge (which did not work — see the weaknesses); `--replay`, the half of the eval that runs in CI |
@@ -221,7 +221,7 @@ Served by the **pre-coded** path, which was already exact and scope-bound:
 > Of your 9 report(s): 0 on track, 9 at risk, 9 behind pace. Ask 'who's behind?' for the
 > names.
 
-Worth being plain about: 32 of the 103 eval cases are served by the agent and 71 by the
+Worth being plain about: 33 of the 106 eval cases are served by the agent and 73 by the
 existing deterministic paths. This run did not rewrite the assistant. It gave the
 questions nobody coded somewhere to go.
 
@@ -258,7 +258,7 @@ Every number in an agent answer is checked against the tool results of that
 **conversation** — the harness reads the actual `evidence` from the product path, not a
 re-run. Conversation, not turn, because that is what the contract says: a score fetched
 two turns ago is still grounded when it is quoted again, and checking per-turn would push
-the assistant toward re-fetching what it already knows. **103/103.**
+the assistant toward re-fetching what it already knows. **106/106.**
 
 ---
 
@@ -267,14 +267,14 @@ the assistant toward re-fetching what it already knows. **103/103.**
 `docker compose exec web python scripts/agent_eval.py --tenant scale --judge`
 
 ```
-tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
+tenant 'scale': 5,000 active people · 106 cases · provider GeminiProvider
 
-  cases: 103   scope-safe: 103/103   no-fabrication: 103/103   behaviour: 103/103
-  LLM judge: grounded 2.00/2 (min 1.6, n=32 agent-served)
-             relevant 1.59/2 (min 1.4, n=103)   reasoned 1.63/2
-  served by the function-calling agent: 32/103
+  cases: 106   scope-safe: 106/106   no-fabrication: 106/106   behaviour: 106/106
+  LLM judge: grounded 1.88/2 (min 1.6, n=33 agent-served)
+             relevant 1.62/2 (min 1.4, n=106)   reasoned 1.66/2
+  served by the function-calling agent: 33/106
 
-  latency: median 4,942 ms, p95 16,160 ms  (agent-served turns: median 6,758 ms)
+  latency: median 5,059 ms, p95 30,879 ms  (agent-served turns: median 7,105 ms)
 
   ! the model ranked a group ITSELF instead of asking the backend, in 1 case(s):
       deep-05: 5 per-person calls - which of them declined the most since last cycle?
@@ -282,11 +282,11 @@ tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
   RESULT: PASS
 ```
 
-Per-tag, every one of the 30 tags is 100% on behaviour, scope and no-fabrication:
+Per-tag, every one of the 31 tags is 100% on behaviour, scope and no-fabrication:
 action, admin, aggregation, ambiguous, capability, comparison, deep-conversation,
 destructive, edge-input, follow-up, hrbp, improvement, injection, judgement, memory,
-mixed-scope, no-data, open-ended, out-of-domain, out-of-scope, ranking, readiness, risk,
-self, single-person, status, summary, trend, typo, unknown-person.
+long-conversation, mixed-scope, no-data, open-ended, out-of-domain, out-of-scope, ranking,
+readiness, risk, self, single-person, status, summary, trend, typo, unknown-person.
 
 How the harness avoids grading itself:
 
@@ -308,13 +308,13 @@ build. `--replay` is the half that can:
 ```
 docker compose exec web python scripts/agent_eval.py --tenant scale \
     --replay docs/AGENT_V3/eval_run.json
-# REPLAY — 34 recorded cases, 81 tool calls, no model
-#   scope-safe 34/34   still-grounded 34/34      RESULT: PASS      (1.2 s)
+# REPLAY — 37 recorded cases, 83 tool calls, no model
+#   scope-safe 37/37   still-grounded 37/37      RESULT: PASS      (1.2 s)
 ```
 
 It re-executes the calls the model made on a recorded run, as the same callers, against
 the code and data of today — then re-checks the answers that were given. Perturbing the
-cycle-over-cycle delta by 3.0 fails 17 of the 34 instantly: every answer quoting a number
+cycle-over-cycle delta by 3.0 fails 16 of the 37 instantly: every answer quoting a number
 the backend no longer produces. That is the backend-math contract under regression test
 in under two seconds.
 
@@ -404,13 +404,13 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 
 | Suite | Result |
 |---|---|
-| `apps/ai` | **445 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1703 passed**, 7 deselected, 5m43s |
+| `apps/ai` | **448 passed** (was 412 at the start of unit C) |
+| Full backend (`pytest`) | **1706 passed**, 7 deselected, 5m35s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
-| `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
-| `scripts/agent_eval.py --replay …` (no API key) | **PASS** — 34 cases, 81 tool calls, 1.2 s |
+| `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 106/106 × 3 gates |
+| `scripts/agent_eval.py --replay …` (no API key) | **PASS** — 37 cases, 83 tool calls, 1.2 s |
 
-New this run: `apps/ai/tests/test_open_ended.py` (30).
+New this run: `apps/ai/tests/test_open_ended.py` (33).
 
 ---
 
@@ -479,18 +479,18 @@ database — five tool calls is five round trips. The chat panel has no streamin
 most visible problem left.
 
 **Cost.** Each agent turn is several metered LLM calls, and the eval has to reset the
-tenant's budget before every case to get through 103 questions — which tells you what a
+tenant's budget before every case to get through 106 questions — which tells you what a
 busy manager's day would cost. The per-agent *ceiling* is no longer the problem
 (`AGENT_CALL_MULTIPLIERS` scales `chat_agent` so the allowance counts answers rather than
 rounds); the spend behind it is real and unmeasured against a price list.
 
-**The judge scores 2.00/2 on grounded-ness across the 32 agent turns.** It does
+**The judge scores 1.88/2 on grounded-ness across the 33 agent turns.** It does
 discriminate — it caught the passing miscount ("two team members" for three) and marked it
 down, and handed empty evidence it returns 0s — but a near-ceiling average from a
 same-family model grading its own output is weak evidence on its own. The deterministic
-no-fabrication check (independent, 103/103) is the stronger claim.
+no-fabrication check (independent, 106/106) is the stronger claim.
 
-**`relevant` averages 1.59/2.** Most of the weaker answers are deterministic turns the
+**`relevant` averages 1.62/2.** Most of the weaker answers are deterministic turns the
 judge sees without evidence, but not all: some open-ended replies are more list than
 synthesis. Nothing here is wrong; several things are flat.
 
@@ -538,8 +538,10 @@ the agent. That split is deliberate and it is why nothing regressed — but it m
 at risk?" and "who's quietly getting worse?" are answered by different machinery, and only
 one of them improves when the tools improve.
 
-**Conversations are five turns deep.** Ten- and twenty-turn conversations, where the
-history window starts dropping things, are not measured at all.
+**Conversations are ten turns deep.** Three ten-turn cases pass every gate with
+relevance 2.00, and on turn nine "summarise everything you've told me about them" still
+answers about the right person with real numbers. Twenty-plus turns, where the history
+window starts dropping things in earnest, are still not measured.
 
 **Which tools the model picks is not under CI.** Everything under `pytest` scripts the
 model, deliberately: those tests own the loop, the scope checks and the caps, which are

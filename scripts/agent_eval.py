@@ -858,9 +858,16 @@ def replay(path, names) -> int:
         ok, detail = check_scope(case["answer"], actor, names, question=case["q"])
         if not ok:
             leaks.append((case["id"], detail))
-        ok, detail = check_no_fabrication(case["answer"], results)
-        if ok is False:
-            drifted.append((case["id"], detail))
+        # Same rule the live gate applies, for the same reason: only when the AGENT
+        # produced the answer being checked. A conversation can have agent turns early
+        # and a deterministic final turn — that last reply is built from its own ORM
+        # queries and records no tool calls, so grading it against the earlier turns'
+        # results is the wrong yardstick. Replay flagged `long-02` on exactly that
+        # mismatch before this line existed, while the live run passed it.
+        if case.get("served_by") == "agent":
+            ok, detail = check_no_fabrication(case["answer"], results)
+            if ok is False:
+                drifted.append((case["id"], detail))
 
     print(f"\nREPLAY — {len(cases)} recorded cases, {ran} tool calls, no model")
     for label, rows in (("SCOPE LEAK", leaks), ("ANSWER NO LONGER GROUNDED", drifted)):

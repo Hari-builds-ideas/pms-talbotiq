@@ -234,8 +234,9 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1691 passed**, `apps/ai`
-**436 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates.
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1697 passed**, `apps/ai`
+**439 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
+(judge: grounded 2.00/2 over 32 agent-served turns, relevant 1.58/2, reasoned 1.65/2).
 
 ---
 
@@ -261,6 +262,12 @@ Two things fall out. The agent gets the ids, so the follow-up costs one tool cal
 instead of five. And "the first one" after a ranking resolves, because a ranked list is
 an offered set — which it always should have been.
 
+Confirmed live: `conv-01` went from "please specify which of the top performers you'd
+like to know about" to "Jamal Hartmann has 1 active goal(s) of 1 total" — and it is now
+served by the DETERMINISTIC pronoun path, not the agent, because with the people grounded
+it never needed the agent in the first place. `deep-conversation` grounding 1.33 → 2.00,
+`memory` 1.50 → 2.00, over the 103-case run.
+
 One thing deliberately NOT changed: within a turn the session binds a pronoun to the
 LAST ref, so "they" after a three-person ranking lands on rank 3. That is right for a
 narrative answer and arbitrary for a ranking, but it is a pre-existing choice with other
@@ -283,6 +290,8 @@ their back is the opposite of what an explicit row is for. `apps/billing` does n
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
 in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in
 the chat panel for 4–13 s agent turns (the most visible problem, and it is frontend);
-tuning the per-agent budget ceilings for the agent's call pattern; conversations deeper
-than five turns, where relevance is already the weakest tag (1.33/2); and closing the
+tuning the per-agent budget ceilings for the agent's call pattern; a write plan that says WHO it is
+for ("give them recognition" still summarises as "give recognition for their effort",
+with the pronoun unresolved — the gate holds, but a human approving something should be
+told who it concerns); conversations deeper than five turns; and closing the
 incidental-arithmetic class structurally rather than by prompt.

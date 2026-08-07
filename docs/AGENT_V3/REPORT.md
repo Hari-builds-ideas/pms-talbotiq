@@ -191,7 +191,7 @@ Served by the **pre-coded** path, which was already exact and scope-bound:
 > Of your 9 report(s): 0 on track, 9 at risk, 9 behind pace. Ask 'who's behind?' for the
 > names.
 
-Worth being plain about: 34 of the 103 eval cases are served by the agent and 69 by the
+Worth being plain about: 32 of the 103 eval cases are served by the agent and 71 by the
 existing deterministic paths. This run did not rewrite the assistant. It gave the
 questions nobody coded somewhere to go.
 
@@ -237,10 +237,10 @@ harness reads the actual `evidence` from the product path, not a re-run. **103/1
 tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
 
   cases: 103   scope-safe: 103/103   no-fabrication: 103/103   behaviour: 103/103
-  LLM judge: grounded 1.88/2 (min 1.6, n=34 agent-served)
-             relevant 1.59/2 (min 1.4, n=103)   reasoned 1.69/2
-  latency: median 4,792 ms, p95 16,829 ms, max 52,641 ms
-  served by the function-calling agent: 34/103
+  LLM judge: grounded 2.00/2 (min 1.6, n=32 agent-served)
+             relevant 1.58/2 (min 1.4, n=103)   reasoned 1.65/2
+  latency: median 5,138 ms, p95 24,453 ms, max 42,162 ms
+  served by the function-calling agent: 32/103
 
   RESULT: PASS
 ```
@@ -336,12 +336,12 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 
 | Suite | Result |
 |---|---|
-| `apps/ai` | **436 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1691 passed**, 7 deselected, 5m14s |
+| `apps/ai` | **439 passed** (was 412 at the start of unit C) |
+| Full backend (`pytest`) | **1697 passed**, 7 deselected |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
 
-New this run: `apps/ai/tests/test_open_ended.py` (24).
+New this run: `apps/ai/tests/test_open_ended.py` (27).
 
 ---
 
@@ -410,13 +410,13 @@ the tenant's budget before every case to get through 103 questions, which tells 
 busy manager's day would cost. The per-agent budget ceilings are not tuned for the agent's
 call pattern.
 
-**The judge scores 1.88/2 on grounded-ness across the 34 agent turns.** It does
+**The judge scores 2.00/2 on grounded-ness across the 32 agent turns.** It does
 discriminate — it caught the passing miscount ("two team members" for three) and marked it
 down, and handed empty evidence it returns 0s — but a near-ceiling average from a
 same-family model grading its own output is weak evidence on its own. The deterministic
 no-fabrication check (independent, 103/103) is the stronger claim.
 
-**`relevant` averages 1.59/2.** Most of the weaker answers are
+**`relevant` averages 1.58/2.** Most of the weaker answers are
 deterministic turns the judge sees without evidence, but not all: some open-ended replies
 are more list than synthesis. Nothing here is wrong; several things are flat.
 
@@ -436,10 +436,14 @@ the agent. That split is deliberate and it is why nothing regressed — but it m
 at risk?" and "who's quietly getting worse?" are answered by different machinery, and only
 one of them improves when the tools improve.
 
-**Deep conversations are the weakest tag.** Six five-turn cases pass every hard gate, but
-the judge scores them 1.33/2 for relevance against 1.59 overall — by turn five the replies
-drift toward restating status rather than answering what was asked. Nothing is wrong; it
-gets vaguer. Ten- and twenty-turn conversations are still not measured at all.
+**A write plan does not say who it is for.** Ask "who are my two weakest?" then "give them
+recognition", and the plan you are asked to approve reads "Plan to give recognition for
+their effort this quarter" — the pronoun never resolved into a name. The gate holds and
+nothing is created without approval, but a human being asked to approve something should
+be told who it concerns. This is the planner, not the agent.
+
+**Conversations are five turns deep.** Ten- and twenty-turn conversations, where the
+history window starts dropping things, are not measured at all.
 
 **No live-model unit tests.** Everything under `pytest` scripts the model, deliberately:
 those tests own the loop, the scope checks and the caps, which are properties of our code.

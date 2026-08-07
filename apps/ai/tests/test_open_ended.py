@@ -708,6 +708,68 @@ def test_a_risk_scan_grounds_only_the_people_it_showed(org, org_big_team=None):
 
 
 @override_settings(**FAKE)
+def test_who_have_we_been_talking_about_is_answered_from_the_session(org, team,
+                                                                    blind_classifier):
+    """A ten-turn eval case ended by asking this and getting the capability leaflet.
+
+    The session knew the answer the whole time; nothing asked it. The question needs no
+    tool, so the agent's reply was discarded by the tool-grounded rule — correctly, since
+    that rule cannot tell a good untooled answer from an invented one. So the session
+    answers it directly, before any LLM call.
+    """
+    from apps.ai import sessions
+    from apps.ai.models import ChatTurn
+
+    with tenant_context(org.tenant):
+        session = _session(org.manager)
+        for person in (team["rosa"], team["wei"]):
+            sessions.append_turn(session, ChatTurn.Role.USER, f"how is {person.display}?")
+            sessions.append_turn(
+                session, ChatTurn.Role.ASSISTANT, "Fine.",
+                refs=[{"type": "user", "id": str(person.id), "label": person.display}])
+
+        out = chat_answer(org.manager, "remind me who we've been talking about",
+                          session=session)
+
+    assert "Rosa Villalobos" in out["answer"] and "Wei Chen" in out["answer"]
+    assert _GENERAL_ANSWER not in out["answer"]
+    assert {r["label"] for r in out["refs"]} == {"Rosa Villalobos", "Wei Chen"}
+
+
+@override_settings(**FAKE)
+def test_who_have_we_discussed_is_honest_when_nobody_has(org, blind_classifier):
+    """An empty conversation says so, rather than inventing a recap."""
+    with tenant_context(org.tenant):
+        out = chat_answer(org.manager, "who have we discussed so far?",
+                          session=_session(org.manager))
+
+    assert "haven't discussed anyone" in out["answer"]
+
+
+@override_settings(**FAKE)
+def test_the_recap_drops_somebody_who_left_the_callers_scope(org, team, blind_classifier):
+    """It re-checks access like every other use of a ref, so a person reassigned
+    mid-conversation is simply not in the recap."""
+    from apps.ai import sessions
+    from apps.ai.models import ChatTurn
+
+    with tenant_context(org.tenant):
+        session = _session(org.manager)
+        moved = team["rosa"]
+        sessions.append_turn(session, ChatTurn.Role.USER, "how is Rosa?")
+        sessions.append_turn(
+            session, ChatTurn.Role.ASSISTANT, "Fine.",
+            refs=[{"type": "user", "id": str(moved.id), "label": moved.display}])
+
+        moved.manager = org.hrbp  # reassigned away from this manager
+        moved.save(update_fields=["manager"])
+        out = chat_answer(org.manager, "remind me who we've been talking about",
+                          session=session)
+
+    assert "Rosa" not in out["answer"], out["answer"]
+
+
+@override_settings(**FAKE)
 def test_a_person_the_caller_can_no_longer_read_is_not_handed_to_the_model(org, team):
     """The id list is only a shortcut for LOOKUP. It re-checks access, so somebody who
     has moved out of the caller's scope since being discussed simply is not in it."""

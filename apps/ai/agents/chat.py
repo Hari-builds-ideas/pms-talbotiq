@@ -331,6 +331,18 @@ _OPEN_REF_RE = re.compile(
     r"^\s*(open|show me|show|go to|take me to)\s+(the|that|this|it\b|her\b|his\b)", re.I
 )
 
+#: "who have we been talking about?" — a question about the CONVERSATION, not about the
+#: data. The session already knows the answer, but nothing asked it: the question needs
+#: no tool, so the agent's reply was discarded by the tool-grounded rule (correctly — it
+#: cannot tell a good untooled answer from an invented one), and the user got the
+#: capability leaflet after nine turns of real work. Found by a ten-turn eval case.
+_WHO_DISCUSSED_RE = re.compile(
+    r"\b(who|which people|which of them)\b[^?]{0,40}\b(we(?:'ve| have)?\s+(?:been\s+)?"
+    r"(?:talk|discuss|cover|mention)\w*|discussed|talked about|mentioned so far)\b|"
+    r"\bremind me who\b|\bwho (?:did|have) (?:we|i) (?:discuss|talk about|ask about)\w*\b",
+    re.I,
+)
+
 #: ref type → the SPA route for "open it" (mirrors execute_action's artifacts).
 _REF_DEEPLINK = {
     "review": lambda obj: f"/reviews/{obj.id}",
@@ -1121,6 +1133,26 @@ def _deterministic_answer(caller, query: str, session=None) -> dict:
     # any LLM call. A definite reference is ALWAYS navigation (new-thing writes
     # say "open A check-in" and are untouched), so when nothing resolves we say
     # so honestly — never a goals dump, never a spurious plan.
+    # "Who have we been talking about?" — answerable from the session alone, before any
+    # LLM call. Access is re-checked by `people_in_order`, so somebody who has moved out
+    # of the caller's scope mid-conversation simply is not listed.
+    if session is not None and _WHO_DISCUSSED_RE.search(query or ""):
+        from apps.ai.sessions import people_in_order
+
+        discussed = people_in_order(caller, session)
+        if discussed:
+            names = [u.display for u in discussed]
+            who = (" and ".join(names) if len(names) <= 2
+                   else ", ".join(names[:-1]) + f", and {names[-1]}")
+            return {
+                "status": "ok", "intent": "performance", "data": names,
+                "answer": f"So far we've talked about {who}.",
+                "refs": [{"type": "user", "id": str(u.id), "label": u.display}
+                         for u in discussed[:5]],
+            }
+        return {"status": "ok", "intent": "general", "data": [],
+                "answer": "We haven't discussed anyone specific yet in this conversation."}
+
     if _OPEN_REF_RE.search(query or ""):
         opened = _answer_open_reference(caller, session, query)
         if opened is not None:

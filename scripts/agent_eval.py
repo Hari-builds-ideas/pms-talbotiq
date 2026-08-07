@@ -787,15 +787,17 @@ def replay(path, names) -> int:
     answers that were given.
 
     **What it catches, demonstrated:** a change in what the tools compute. Adding 3.0 to
-    the cycle-over-cycle delta fails 8 of 16 cases instantly — every answer quoting a
-    number the backend no longer produces. That is the backend-math contract under
-    regression test, in under a second, with no model.
+    the cycle-over-cycle delta fails 17 of 34 recorded cases instantly — every answer
+    quoting a number the backend no longer produces. That is the backend-math contract
+    under regression test, in under two seconds, with no model.
 
-    **What it does NOT catch, also demonstrated:** a widened scope check. Disabling
-    ``_readable``'s access check entirely leaves this run green, for a dull reason — none
-    of the recorded calls were for somebody out of scope, so loosening the check changed
-    nothing about them. Result-scanning below fires only if a recorded call *starts*
-    over-returning, which is opportunistic, not systematic. The systematic proof lives in
+    **What it does NOT catch, also demonstrated, twice:** a widened scope check.
+    Disabling ``_readable``'s access check entirely leaves this run green, for a dull
+    reason — none of the recorded calls were for somebody out of scope, so loosening the
+    check changed nothing about them. Re-checked after doubling the recording: the one
+    agent-served out-of-scope case used the whole-team form and passed no ``person_id``
+    at all. Result-scanning below fires only if a recorded call *starts* over-returning,
+    which is opportunistic, not systematic. The systematic proof lives in
     ``apps/ai/tests/test_tools.py``, which denies every data tool for an out-of-scope
     person in one loop and already runs in CI.
 

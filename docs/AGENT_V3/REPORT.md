@@ -264,13 +264,12 @@ harness reads the actual `evidence` from the product path, not a re-run. **103/1
 tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
 
   cases: 103   scope-safe: 103/103   no-fabrication: 103/103   behaviour: 103/103
-  LLM judge: grounded 1.94/2 (min 1.6, n=33 agent-served)
-             relevant 1.54/2 (min 1.4, n=103)   reasoned 1.61/2
-  latency: median 4,898 ms, p95 14,528 ms, max 38,390 ms
-  served by the function-calling agent: 33/103
+  LLM judge: grounded 2.00/2 (min 1.6, n=32 agent-served)
+             relevant 1.59/2 (min 1.4, n=103)   reasoned 1.63/2
+  served by the function-calling agent: 32/103
 
   ! the model ranked a group ITSELF instead of asking the backend, in 1 case(s):
-      deep-05: 6 per-person calls - which of them declined the most since last cycle?
+      deep-05: 5 per-person calls - which of them declined the most since last cycle?
 
   RESULT: PASS
 ```

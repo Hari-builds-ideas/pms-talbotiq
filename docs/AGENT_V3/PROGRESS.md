@@ -234,9 +234,9 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1702 passed**, `apps/ai`
-**444 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
-(judge: grounded 1.94/2 over 32 agent-served turns, relevant 1.57/2, reasoned 1.64/2).
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1703 passed**, `apps/ai`
+**445 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
+(judge: grounded 1.94/2 over 33 agent-served turns, relevant 1.54/2, reasoned 1.61/2).
 
 ---
 
@@ -324,8 +324,18 @@ person and picks the largest by eye — still, after the prompt told it not to. 
 calls are six legal calls; no schema change forbids it. So the eval **counts** it now, and
 prints the offending cases every run (currently one: `deep-05`, five per-person calls).
 Reported as a number, not enforced as a gate — the heuristic is good enough to point at,
-not to fail a release on. A prompt-only guard nobody measures is a guard nobody knows is
-failing.
+not to fail a release on.
+
+Then the advice was moved IN-BAND, into the result of the third per-person call, on the
+theory that the prompt was simply too far away by then. **It made no difference.** The
+next run went from five per-person calls to six: the model saw the note on calls three
+through six and carried on. Persuasion has been tried twice and failed twice.
+
+Left open deliberately. The remaining option is enforcement — refusing the fourth call —
+and that breaks a legitimate "compare these four people" question to prevent a fault that
+has never yet produced a wrong answer (every superlative it answered this way named the
+right people, because it had in fact fetched all of them). The mitigation is the
+measurement, not a guarantee. Revisit the moment the count rises or an answer is wrong.
 
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
 in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in

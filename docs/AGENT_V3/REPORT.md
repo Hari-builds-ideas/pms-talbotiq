@@ -264,13 +264,13 @@ harness reads the actual `evidence` from the product path, not a re-run. **103/1
 tenant 'scale': 5,000 active people · 103 cases · provider GeminiProvider
 
   cases: 103   scope-safe: 103/103   no-fabrication: 103/103   behaviour: 103/103
-  LLM judge: grounded 1.94/2 (min 1.6, n=32 agent-served)
-             relevant 1.57/2 (min 1.4, n=103)   reasoned 1.64/2
+  LLM judge: grounded 1.94/2 (min 1.6, n=33 agent-served)
+             relevant 1.54/2 (min 1.4, n=103)   reasoned 1.61/2
   latency: median 4,898 ms, p95 14,528 ms, max 38,390 ms
-  served by the function-calling agent: 32/103
+  served by the function-calling agent: 33/103
 
   ! the model ranked a group ITSELF instead of asking the backend, in 1 case(s):
-      deep-05: 5 per-person calls - which of them declined the most since last cycle?
+      deep-05: 6 per-person calls - which of them declined the most since last cycle?
 
   RESULT: PASS
 ```
@@ -367,11 +367,11 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 | Suite | Result |
 |---|---|
 | `apps/ai` | **439 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1702 passed**, 7 deselected, 5m43s |
+| Full backend (`pytest`) | **1703 passed**, 7 deselected, 5m43s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
 
-New this run: `apps/ai/tests/test_open_ended.py` (31).
+New this run: `apps/ai/tests/test_open_ended.py` (32).
 
 ---
 
@@ -467,12 +467,22 @@ returns — and prompt instructions are weaker than structural ones. The same is
 numbers the model throws in while describing a list ("two others are on the same score",
 which it got wrong once before the instruction existed).
 
-What limits the damage is that the eval now **counts** it. Every run prints the cases
-where a superlative question fetched three or more people individually — currently one,
-`deep-05`, with five per-person calls, still doing it after the prompt told it not to.
-Reported as a number rather than enforced as a gate: the heuristic is good enough to
-point at, not good enough to fail a release on. A prompt-only guard that nobody measures
-is a guard nobody knows is failing.
+Persuasion has now been tried twice and failed twice, which is the useful part of this
+finding. The system prompt tells it to call the whole-team form once; it did not comply.
+The tool result of the third per-person call then carries the same advice in-band — the
+one place the model is certainly reading, arriving exactly when the pattern starts — and
+on the next run the same case went from five per-person calls to **six**. It saw the note
+on calls three, four, five and six and carried on.
+
+So the honest position is: this is not fixable by asking. What remains is enforcement —
+refusing the fourth per-person call — and that would break a legitimate "compare these
+four people" question to prevent a fault that has not yet produced a wrong answer. Every
+superlative it has answered this way named the right people, because it had in fact
+fetched all of them. The risk is that one day it will not, and nothing will notice.
+
+What does notice is the eval, which prints the offending cases every run. That is the
+mitigation: not a guarantee, a measurement. It is left open deliberately, and it is the
+first thing to revisit if the count ever rises or an answer is ever wrong.
 
 **The agent occasionally narrates its tools.** One eval answer said "the `rank_team` tool
 indicates…". The system prompt now carries an explicit bad/good example, but this is a

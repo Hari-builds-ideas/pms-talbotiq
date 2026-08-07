@@ -199,6 +199,15 @@ class Report:
                   f"reasoned {reasoned:.2f}/2")
         print("═" * (width + 56))
 
+        hand = [c for c in self.cases if c.get("hand_ranked")]
+        if hand:
+            print("  ! the model ranked a group ITSELF instead of asking the backend, in "
+                  f"{len(hand)} case(s) — the tools cannot forbid this, only the prompt "
+                  "discourages it:")
+            for case in hand[:4]:
+                print(f"      {case['id']}: {case['hand_ranked']} per-person calls — "
+                      f"{case['q'][:70]}")
+
         broken = self.infrastructure_failures
         if broken:
             print(f"  ! {len(broken)} case(s) never reached the assistant: "
@@ -426,6 +435,38 @@ class NameIndex:
         return out
 
 
+#: A question that asks for an extreme over several people. Ranking these is the
+#: BACKEND's job, and the whole-team tools return the order already sorted.
+_SUPERLATIVE_RE = re.compile(
+    r"\b(most|least|best|worst|top|lowest|highest|strongest|weakest|furthest|biggest)\b",
+    re.I,
+)
+
+
+def check_model_side_ranking(question, tool_calls):
+    """Did the model rank a group by hand instead of asking the backend to?
+
+    The tool boundary cannot forbid this. Reading data the caller may not see is
+    impossible, and getting a computed number without asking for it is impossible — but
+    calling a per-person tool six times and picking the largest by eye is six legal
+    calls, and no schema change prevents it. It is guarded only by a prompt instruction,
+    which is weaker.
+
+    So it is MEASURED here instead. A superlative question that fetched three or more
+    people individually did its own comparison, whatever the answer says. Reported as a
+    number rather than enforced as a gate: the heuristic is good enough to point at, not
+    good enough to fail a release on.
+    """
+    if not tool_calls or not _SUPERLATIVE_RE.search(question or ""):
+        return 0
+    per_person = 0
+    for call in tool_calls:
+        args = call.get("arguments") or {}
+        if isinstance(args, dict) and args.get("person_id"):
+            per_person += 1
+    return per_person if per_person >= 3 else 0
+
+
 def check_no_fabrication(answer, evidence):
     """(ok, detail) — every number in the answer must exist in a tool result.
 
@@ -522,6 +563,7 @@ def run_case(case, actors, names, rng):
     hard_ok, hard_detail = check_no_fabrication(
         answer, evidence if turn_evidence is not None else None)
     behaviour_ok, behaviour_detail = check_behaviour(case, result, answer, truth)
+    hand_ranked = check_model_side_ranking(question, turn_evidence)
 
     return {
         "id": case["id"], "tags": case["tags"], "q": question, "answer": answer,
@@ -533,6 +575,7 @@ def run_case(case, actors, names, rng):
         # and nothing else; for a deterministically-served turn there are no tool calls,
         # so the ground-truth probe stands in as the facts that were available.
         "_evidence": evidence if evidence is not None else ([truth] if truth else []),
+        "hand_ranked": hand_ranked,
         "scope_safe": scope_ok, "grounded_hard": hard_ok, "behaviour": behaviour_ok,
         "detail": scope_detail or hard_detail or behaviour_detail,
         "judge_grounded": None, "judge_relevant": None, "judge_reasoned": None,

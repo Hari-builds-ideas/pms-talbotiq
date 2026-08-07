@@ -77,6 +77,13 @@ is also how "the most" gets claimed after looking at only some of the team. If t
 asked about a subset, still use the whole-team ranking and pick that subset out of it in
 the order it came back. Use person_id only when the question is about ONE named person.
 
+A RANKED LIST IS NOT THE WHOLE TEAM. "ranked" is a bounded top-N; "listed" says how many
+of "compared" it contains. For a statement about the team as a whole - "is my team
+trending up?", "how is the team doing overall?" - use the "summary" block
+compute_improvement returns, which counts every comparable person. Reading five rows of
+nine and calling it the team is a true sentence about five people presented as one about
+nine.
+
 GROUNDING - never invent anything
 - Every name, number, status and date in your answer must come from a tool result in THIS
   conversation. If it is not in a tool result, do not say it.

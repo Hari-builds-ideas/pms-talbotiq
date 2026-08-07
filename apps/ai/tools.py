@@ -495,9 +495,36 @@ def compute_improvement(ctx, person_id: str = None, from_cycle: str = None,
     if not improved:
         return _no_data("person with two comparable cycle scores on your team")
     improved.sort(key=lambda d: d["delta"], reverse=(order != "asc"))
+    listed = improved[:min(limit, MAX_ROWS)]
     return {"manages": True, "metric": "improvement", "order": order,
             "compared": len(improved), "team_size": len(rows), "truncated": truncated,
-            "ranked": improved[:min(limit, MAX_ROWS)]}
+            # WHOLE-TEAM direction, computed over every comparable person — not over the
+            # slice below. "Is my team trending up?" was answered by reading the top five
+            # of nine and calling it the team, which is a true statement about five
+            # people presented as one about nine. The model cannot make that mistake
+            # against a number, so here is the number.
+            "summary": _trend_summary(improved),
+            "listed": len(listed),
+            "ranked": listed}
+
+
+def _trend_summary(rows):
+    """Direction of travel across everyone compared, from the backend.
+
+    Separate from ``ranked`` on purpose: a ranked list is bounded (a 200-person team
+    must not become 200 rows in the model's context), and a bounded list is the wrong
+    thing to draw a whole-team conclusion from.
+    """
+    deltas = [r["delta"] for r in rows]
+    mean = round(sum(deltas) / len(deltas), 1) if deltas else 0.0
+    return {
+        "people_compared": len(deltas),
+        "improved": sum(1 for d in deltas if d > 0),
+        "declined": sum(1 for d in deltas if d < 0),
+        "unchanged": sum(1 for d in deltas if d == 0),
+        "mean_delta": mean,
+        "direction": "up" if mean > 0 else ("down" if mean < 0 else "flat"),
+    }
 
 
 def _delta_for(person_id, from_cycle, to_cycle):
@@ -622,7 +649,10 @@ TOOLS = {
         "compute_improvement",
         "Cycle-over-cycle score deltas computed by the backend, for one person "
         "(person_id) or ranked across the whole team (omit person_id). Use this for any "
-        "'improved', 'got better', 'declined' or 'trending' question.",
+        "'improved', 'got better', 'declined' or 'trending' question. The team form "
+        "returns 'summary' — how many improved, how many declined, the mean delta and "
+        "the overall direction across EVERYONE. For a whole-team question use 'summary'; "
+        "'ranked' is a bounded top-N and does not describe the whole team.",
         {**_PERSON_ARG,
          "from_cycle": {"type": "string", "description": "optional cycle name"},
          "to_cycle": {"type": "string", "description": "optional cycle name"},

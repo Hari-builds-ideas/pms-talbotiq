@@ -272,6 +272,50 @@ def test_the_signed_in_user_is_findable_as_me(org):
 
 
 @override_settings(**FAKE)
+def test_the_whole_team_direction_is_a_backend_number_not_a_read_of_the_top_n(org, team):
+    """"Is my team trending up?" was answered by reading the top five rows of nine and
+    calling it the team — a true statement about five people presented as one about
+    nine. The ranked list is bounded on purpose (a 200-person team must not become 200
+    rows), so the whole-team direction is computed separately, over everyone.
+
+    Fixture: Rosa +24, Bram +4, Wei −6 → 2 up, 1 down, mean +7.3, direction up.
+    """
+    from apps.ai.tools import ToolContext, compute_improvement
+
+    with tenant_context(org.tenant):
+        out = compute_improvement(ToolContext(caller=org.manager), limit=1)
+
+    assert len(out["ranked"]) == 1 and out["listed"] == 1, "the list is bounded"
+    assert out["compared"] == 3
+    assert out["summary"] == {
+        "people_compared": 3, "improved": 2, "declined": 1, "unchanged": 0,
+        "mean_delta": 7.3, "direction": "up",
+    }
+
+
+@override_settings(**FAKE)
+def test_the_direction_is_down_when_the_team_is_going_backwards(org, org_unused=None):
+    """The summary has to be capable of saying "down", or it is a decoration."""
+    from apps.ai.tools import ToolContext, compute_improvement
+
+    with tenant_context(org.tenant):
+        old = CycleFactory(tenant=org.tenant, name="P1", status="CLOSED")
+        new = CycleFactory(tenant=org.tenant, name="P2", status="ACTIVE")
+        for name, before, after in (("Down One", "70", "50"), ("Down Two", "60", "58")):
+            person = UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name=name,
+                                 email=f"{name.split()[1].lower()}@acme.test",
+                                 manager=org.manager)
+            _score(org.tenant, person, old, before, ago=90)
+            _score(org.tenant, person, new, after, ago=1)
+
+        out = compute_improvement(ToolContext(caller=org.manager))
+
+    assert out["summary"]["direction"] == "down"
+    assert out["summary"]["declined"] == 2 and out["summary"]["improved"] == 0
+    assert out["summary"]["mean_delta"] == -11.0
+
+
+@override_settings(**FAKE)
 def test_an_invented_person_id_is_a_result_not_a_crash(org, team, script, blind_classifier):
     """A model that skips find_people invents an id. The live eval produced
     "jamal_whitfield_id", which the ORM rejects as a UUID — from inside a tool call, in

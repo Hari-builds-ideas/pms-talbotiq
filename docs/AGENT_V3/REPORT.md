@@ -426,11 +426,27 @@ no-fabrication check (independent, 103/103) is the stronger claim.
 deterministic turns the judge sees without evidence, but not all: some open-ended replies
 are more list than synthesis. Nothing here is wrong; several things are flat.
 
-**Incidental arithmetic is prompt-governed, not prevented.** Every number that answers the
-question comes from a tool, structurally. A number the model throws in while describing a
-list it was shown — "two others are on the same score" — is governed only by a prompt
-instruction, and it got one of those wrong before that instruction existed. The class is
-narrower now, not closed.
+**The model can route around the aggregate tools, and only the prompt stops it.** This is
+the most important limit in the design, so it is worth stating precisely.
+
+The tool boundary makes two things impossible: reading data the caller may not see, and
+getting a computed number without asking the backend for it. It cannot make a *third*
+thing impossible — calling a per-person tool several times and doing the comparison
+itself. Asked "which of them declined the most?", the model called `compute_improvement`
+six times, once per person, and picked the largest by eye. It named the right two, so no
+gate failed. But the ranking happened in the model, and "the most" was a claim about the
+whole team made after looking at six of them.
+
+Calling a legal tool six times is legal. There is no schema change that forbids it. So
+the guard is a prompt instruction — call the whole-team form once and read the order it
+returns — and prompt instructions are weaker than structural ones. The same is true of
+numbers the model throws in while describing a list ("two others are on the same score",
+which it got wrong once before the instruction existed).
+
+What limits the damage is that the *eval* can see it: the recorded tool calls show six
+per-person calls where one ranked call belonged, which is how this was found at all. If
+one thing here deserves follow-up work, it is turning that from an observation into a
+check that fails.
 
 **The agent occasionally narrates its tools.** One eval answer said "the `rank_team` tool
 indicates…". The system prompt now carries an explicit bad/good example, but this is a

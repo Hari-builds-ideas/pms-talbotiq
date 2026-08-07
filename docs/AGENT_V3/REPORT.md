@@ -438,6 +438,7 @@ New this run: `apps/ai/tests/test_open_ended.py` (33).
 
 ```bash
 docker compose up -d
+docker compose restart web        # <- DO NOT SKIP: see the note below
 docker compose exec web python manage.py seed_scale_tenant --headcount 5000 --reset
 docker compose exec web python scripts/agent_eval.py --tenant scale --judge
 docker compose exec web python scripts/agent_scale_harness.py --tenant scale
@@ -447,6 +448,38 @@ docker compose exec web pytest apps/ai -q
 docker compose exec web python scripts/agent_eval.py --tenant scale \
     --replay docs/AGENT_V3/eval_run.json
 ```
+
+**Restart `web` first.** The container mounts the repo as a volume but the server process
+does not reload, so a stack that has been up since before this branch serves the OLD code
+— and the old code is precisely what this run replaced. I hit this myself: over HTTP the
+assistant answered "who improved most since last cycle?" with *"I couldn't find anyone
+named Improved Most Since"*, the exact failure this work exists to fix, while the same
+question passed in-process. A null `tools` field in the JSON response is the tell — it
+means the agent never ran.
+
+Proven over HTTP after the restart, as a real signed-in manager on the 5,000-person
+tenant (`p100@scale.test`), not through the test harness:
+
+> **who improved most since last cycle?** -> tools `[compute_improvement]`
+> "Lena Castellanos improved the most since last cycle, with her score increasing from
+> 48.0 to 54.0, a delta of 6.0."
+>
+> **is anyone on my team quietly getting worse?** -> tools `[compute_improvement]`
+> "Yes, 3 people on your team are getting worse. Lena Marchetti, Lena Steinberg, and Lena
+> Travers all declined by 2.8 points since the last cycle."
+>
+> **who is ready for promotion?** -> 7 composed calls (`rank_team` -> `compute_improvement`
+> -> `get_person_kpis`, three times over) "…all with a score of 57.0 … all three have
+> declined by 2.8 points from the previous cycle. This is a data-informed suggestion for
+> you to consider."
+
+The response carries `tools` but never `evidence` — the raw tool results stay off the
+wire, as intended.
+
+One honest note from that session: on an earlier attempt the promotion question came back
+with no tool calls and fell through to the deterministic reply. Same question, same user,
+minutes apart. That is model variance, and it is why an answer is only used when it is
+tool-grounded — the fallback is worse, but it is never invented.
 
 Every seeded account uses the password `Passw0rd!scale`; the admin is `admin@scale.test`.
 The eval prints which manager and employee it acted as — sign in as that manager

@@ -189,8 +189,17 @@ class Report:
               f"scope-safe: {len(self.cases) - len(self.scope_failures)}/{len(self.cases)}   "
               f"no-fabrication: {len(self.cases) - len(self.fabrications)}/{len(self.cases)}   "
               f"behaviour: {len(self.cases) - len(self.behaviour_failures)}/{len(self.cases)}")
-        if g is None:
+        if g is None and r is None:
             print(f"  LLM judge: SKIPPED — {self.judge_skipped_reason or 'not requested'}")
+        elif g is None:
+            # The judge RAN; grounded-ness simply has no samples, because it is scored
+            # only on agent-served turns and this selection had none. Saying "skipped"
+            # here threw away the relevance and reasoning scores it did produce — a
+            # summary line that hides its own data is worse than a missing one.
+            n_r = sum(1 for c in self.cases if c.get("judge_relevant") is not None)
+            print(f"  LLM judge: grounded n/a (no agent-served turns in this selection)   "
+                  f"relevant {r:.2f}/2 (min {MIN_RELEVANT}, n={n_r})   "
+                  f"reasoned {reasoned:.2f}/2")
         else:
             n_g = sum(1 for c in self.cases if c.get("judge_grounded") is not None)
             n_r = sum(1 for c in self.cases if c.get("judge_relevant") is not None)
@@ -533,6 +542,12 @@ def run_case(case, actors, names, rng):
     started = time.perf_counter()
     typed = [question]
     result = say(actor, session, question)
+    # EVERY answer, not just the last one. The scope gate below runs over all of them:
+    # in a ten-turn case only the final reply was being checked, so a leak on turn three
+    # would have gone straight past the one check that exists to catch it. Quality is
+    # judged on the final answer — that is the one the conversation was building toward —
+    # but safety is not a property of the last thing you said.
+    spoken = [result.get("answer") or ""]
     # Evidence ACCUMULATES across the conversation, because that is what the contract
     # says: every number must come from a tool result in *this conversation*, not in this
     # turn. A five-turn case caught the difference — "his score is 46.2, slightly below
@@ -544,6 +559,7 @@ def run_case(case, actors, names, rng):
         question = fill(follow_up, actors)
         typed.append(question)
         result = say(actor, session, question)
+        spoken.append(result.get("answer") or "")
         if result.get("evidence") is not None:
             evidence = (evidence or []) + list(result["evidence"])
     elapsed = (time.perf_counter() - started) * 1000
@@ -554,7 +570,13 @@ def run_case(case, actors, names, rng):
     turn_evidence = result.get("evidence")
     truth = probe(case["probe"], actor, actors) if case.get("probe") else None
 
-    scope_ok, scope_detail = check_scope(answer, actor, names, question=" ".join(typed))
+    scope_ok, scope_detail = True, ""
+    for turn_no, said in enumerate(spoken, 1):
+        ok, detail = check_scope(said, actor, names, question=" ".join(typed))
+        if not ok:
+            scope_ok = False
+            scope_detail = detail if len(spoken) == 1 else f"turn {turn_no}: {detail}"
+            break
     # Only when the AGENT produced the reply being scored. A deterministic final turn
     # builds its sentence from its own ORM queries and records no tool calls, so the
     # accumulated evidence from earlier agent turns is the wrong yardstick entirely —

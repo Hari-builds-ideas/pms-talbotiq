@@ -56,6 +56,61 @@ def test_multi_step_plan_is_ordered_inert_and_grounded(org):
 
 
 @override_settings(**FAKE)
+def test_a_plan_headline_says_who_it_is_for(org):
+    """The line a human reads before approving has to name the person.
+
+    A request made with a pronoun came back as one: after "who are my two weakest?",
+    "give them recognition for their effort" summarised as "…give recognition for their
+    effort this quarter". Every step underneath named the right person; the headline —
+    which is what the approver actually reads and decides on — did not.
+    """
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        ReviewFactory(employee=org.report,
+                      cycle=CycleFactory(tenant=org.tenant, status="ACTIVE"), state="DRAFT")
+        session = _session(org.manager)
+        out = build_plan(org.manager, session, "start a 360 for Rhea and draft her review")
+
+        assert out["status"] == "planned"
+        steps = list(out["plan"].steps.all())
+        assert [s.action for s in steps] == ["initiate_360", "draft_review"]
+        summary = out["plan"].summary
+
+    assert "Rhea" in summary, f"the approver is not told who this is for: {summary!r}"
+
+
+@override_settings(**FAKE)
+def test_a_plan_headline_that_already_names_the_person_is_left_alone(org):
+    """No belt-and-braces restatement: nobody gets told twice."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        session = _session(org.manager)
+        plan = build_plan(org.manager, session,
+                          "give recognition to Rhea Report for her work")["plan"]
+        plan.summary = "Ready to recognise Rhea Report."
+        # Re-run the naming over an already-explicit headline.
+        from apps.ai.planner import _name_the_subjects, _subject_label
+
+        realized = [("give_recognition", {"preview": [{"recipient": "Rhea Report"}]})]
+        assert _subject_label(realized[0][1]) == "Rhea Report"
+        out = _name_the_subjects(org.manager, plan.summary, realized)
+
+    assert out == "Ready to recognise Rhea Report."
+
+
+@override_settings(**FAKE)
+def test_a_plan_about_the_callers_own_records_is_not_addressed_to_them(org):
+    """"Start my check-in" does not want "(for Nikhil Vasquez)" bolted onto it."""
+    from apps.ai.planner import _name_the_subjects
+
+    _name(org.manager, "Nikhil Vasquez")
+    realized = [("open_checkin", {"preview": [{"employee": "Nikhil Vasquez"}]})]
+
+    assert _name_the_subjects(org.manager, "Ready to open your check-in.", realized) == (
+        "Ready to open your check-in.")
+
+
+@override_settings(**FAKE)
 def test_approve_one_step_executes_that_step_only_and_is_idempotent(org):
     with tenant_context(org.tenant):
         _name(org.report, "Rhea Report")

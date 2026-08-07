@@ -85,6 +85,43 @@ def _subject_label(proposal: dict) -> str:
     return ""
 
 
+def _name_the_subjects(user, summary: str, realized: list) -> str:
+    """Make sure a plan's headline says WHO it is for.
+
+    The summary is the model echoing the user back, so a request made with a pronoun
+    comes out as one: "who are my two weakest?" then "give them recognition" produced
+    "Plan to give recognition for their effort this quarter". The gate held and every
+    step underneath named the right person — but the line the human reads first, and
+    decides on, did not. Somebody being asked to approve something should be told who it
+    concerns without having to expand the steps.
+
+    The rule is not "when there is a pronoun" — a vague headline can be vague without
+    one, and the fake provider's canned "Planned the requested steps for your approval"
+    is exactly that. It is simply: if this plan acts on other people and the headline
+    does not name them, name them.
+
+    Two things it leaves alone. A headline that already names everyone, so nobody gets
+    told twice. And a plan about the caller's OWN records — "start my check-in" does not
+    want "(for Nikhil Vasquez)" bolted onto it.
+
+    Appended rather than substituted: swapping "their" for "Priya Nair's" is a grammar
+    problem with several wrong answers, and this has none.
+    """
+    if not summary or not realized:
+        return summary
+    self_name = (getattr(user, "display_name", "") or "").strip().lower()
+    names: list[str] = []
+    for _action, proposal in realized:
+        label = _subject_label(proposal)
+        if label and label not in names and label.strip().lower() != self_name:
+            names.append(label)
+    if not names or all(n.lower() in summary.lower() for n in names):
+        return summary
+    who = (" and ".join(names) if len(names) <= 2
+           else ", ".join(names[:-1]) + f", and {names[-1]}")
+    return f"{summary.rstrip('.')} (for {who})."
+
+
 def _reason_for(action: str, proposal: dict) -> str:
     """A grounded 'why' composed from the REAL facts the propose function verified.
     (The propose already confirmed scope/eligibility against live rows, so these
@@ -381,6 +418,7 @@ def build_plan(user, session, message: str) -> dict:
         summary = (summary or "Here's what I can set up.") + (
             " (Some requested steps couldn't be prepared with the information available.)"
         )
+    summary = _name_the_subjects(user, summary, realized)
 
     plan = _persist_plan(user, session, message, summary, result.confidence, realized)
     return {"status": "planned", "plan": plan}

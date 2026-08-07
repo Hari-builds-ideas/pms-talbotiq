@@ -341,6 +341,40 @@ def test_an_invented_person_id_is_a_result_not_a_crash(org, team, script, blind_
 
 
 @override_settings(**FAKE)
+def test_fetching_people_one_at_a_time_is_nudged_toward_the_ranked_call(org, team, script,
+                                                                        blind_classifier):
+    """The one thing the tool boundary cannot forbid.
+
+    Six legal calls are six legal calls — no schema change stops a model fetching each
+    person separately and picking the largest by eye. The eval measures it and the
+    system prompt discourages it, but neither is present at the moment it happens. So
+    the nudge rides in the result of the call that crosses the line, which is the one
+    place the model is certainly reading. The call still runs and still returns its data:
+    fetching three people individually is a reasonable thing to want.
+    """
+    from apps.ai.agent_loop import _RANKING_HINT, _with_ranking_hint
+
+    ids = [str(u.id) for u in team.values()]
+    calls = [{"name": "compute_improvement", "arguments": {"person_id": i}, "result": {}}
+             for i in ids]
+
+    # The first two carry no advice.
+    assert "note" not in _with_ranking_hint({"delta": 1.0}, "compute_improvement", calls[:1])
+    assert "note" not in _with_ranking_hint({"delta": 1.0}, "compute_improvement", calls[:2])
+    # The third does — and the data it came with is untouched.
+    third = _with_ranking_hint({"delta": 1.0}, "compute_improvement", calls[:3])
+    assert third["delta"] == 1.0
+    assert third["note"] == _RANKING_HINT
+
+    # A different tool's calls don't count toward it, and neither does the TEAM form.
+    other = [{"name": "get_person_kpis", "arguments": {"person_id": i}, "result": {}}
+             for i in ids]
+    team_wide = [{"name": "compute_improvement", "arguments": {}, "result": {}}] * 5
+    assert "note" not in _with_ranking_hint({}, "compute_improvement", other)
+    assert "note" not in _with_ranking_hint({}, "compute_improvement", team_wide)
+
+
+@override_settings(**FAKE)
 def test_a_failing_tool_is_reported_to_the_model_not_raised(org):
     """Whatever goes wrong inside a tool, the loop still has to hand the model
     something — a traceback is not an answer."""

@@ -278,7 +278,8 @@ def run_agent(caller, message, *, history=None, known_people=None,
                 "role": "tool",
                 "tool_call_id": call_id,
                 "name": name,
-                "content": json.dumps(output, default=str),
+                "content": json.dumps(_with_ranking_hint(output, name, run.tool_calls),
+                                      default=str),
             })
 
     # Out of rounds with no final answer: say so rather than inventing a conclusion from
@@ -287,6 +288,42 @@ def run_agent(caller, message, *, history=None, known_people=None,
     run.answer = ("I couldn't finish working that out. Could you narrow the question a "
                   "little?")
     return run
+
+
+#: How many times the same tool may be called for a DIFFERENT single person in one turn
+#: before the results start carrying a nudge toward the whole-team form.
+_PER_PERSON_HINT_AFTER = 3
+
+_RANKING_HINT = (
+    "You have now fetched several people one at a time with this tool. If you are working "
+    "out who is highest, lowest, most or least, call it once with NO person_id instead: "
+    "the backend returns them already ranked, and comparing separate results yourself is "
+    "both slower and how a superlative gets claimed after seeing only part of the team."
+)
+
+
+def _with_ranking_hint(output, name, tool_calls):
+    """The tool result the model sees, plus a nudge when it is ranking by hand.
+
+    This is the one thing the tool boundary genuinely cannot forbid. Reading data the
+    caller may not see is impossible and getting a computed number without asking the
+    backend is impossible — but calling a per-person tool six times and picking the
+    largest by eye is six legal calls, and no schema change prevents it. The eval
+    measures it; the system prompt discourages it; neither is present at the moment the
+    model actually does it.
+
+    So the nudge is delivered in-band, in the result of the call that crosses the line,
+    which is the one place the model is certainly reading. It is advice attached to a
+    real result, not a refusal: the call still ran and still returns its data, because
+    fetching three people individually is a perfectly reasonable thing to want.
+    """
+    if not isinstance(output, dict):
+        return output
+    same = sum(1 for c in tool_calls
+               if c["name"] == name and (c.get("arguments") or {}).get("person_id"))
+    if same < _PER_PERSON_HINT_AFTER:
+        return output
+    return {**output, "note": _RANKING_HINT}
 
 
 def _unpack(call):

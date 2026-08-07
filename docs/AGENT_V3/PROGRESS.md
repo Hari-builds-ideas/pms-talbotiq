@@ -234,8 +234,8 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1697 passed**, `apps/ai`
-**439 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1700 passed**, `apps/ai`
+**442 passed**, scale harness **257/257**, eval **PASS** at 103/103 on all three gates
 (judge: grounded 2.00/2 over 32 agent-served turns, relevant 1.58/2, reasoned 1.65/2).
 
 ---
@@ -287,11 +287,28 @@ explicit `AgentBudget` row still wins outright — scaling somebody's chosen cei
 their back is the opposite of what an explicit row is for. `apps/billing` does not import
 `apps/ai`, so the number is stated twice; a test fails if the two drift.
 
+### A plan you approve now says who it is for
+The eval's last low score. "Who are my two weakest?" then "give them recognition" produced
+a plan headed "Plan to give recognition for their effort this quarter" — every step
+underneath named the right person, and the line the approver reads named nobody.
+
+The trigger is not "there is a pronoun": the deterministic planner's own summary is
+"Planned the requested steps for your approval", which is just as blind. It is: if the
+plan acts on other people and the headline does not name them, name them. A headline that
+already names everyone is left alone, and so is a plan about the caller's own records —
+"start my check-in" does not want "(for Nikhil Vasquez)" bolted on.
+
+Worth recording what this is NOT. The reproduction showed the pronoun case resolving to a
+CLARIFY step — the planner asking which detail is missing — and a clarify has no subject
+to name. That is correct behaviour, not a second bug, so the fix stops where the plan
+genuinely knows who it means.
+
+Full backend **1700 passed**.
+
 **RESUME HERE → nothing is blocking.** The plan is executed. The next most valuable work,
 in order, is in REPORT.md's "Honest remaining weaknesses": a working/streaming state in
 the chat panel for 4–13 s agent turns (the most visible problem, and it is frontend);
-tuning the per-agent budget ceilings for the agent's call pattern; a write plan that says WHO it is
-for ("give them recognition" still summarises as "give recognition for their effort",
-with the pronoun unresolved — the gate holds, but a human approving something should be
-told who it concerns); conversations deeper than five turns; and closing the
-incidental-arithmetic class structurally rather than by prompt.
+tuning the per-agent budget ceilings for the agent's call pattern; conversations deeper than five
+turns; closing the incidental-arithmetic class structurally rather than by prompt; and a
+working/streaming state in the chat panel for 4-13 s agent turns, which is the most
+visible problem left and is frontend work.

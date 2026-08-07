@@ -97,6 +97,12 @@ still becomes an inert plan the human approves step by step, through the same ga
 before, and the agent never gets the turn. Two tests assert it, including one where the
 message contains a trend word ("recognise Rosa for improving so much").
 
+One thing about that gate did improve. The plan's headline — the line an approver reads
+and decides on — did not name the person: "give them recognition" summarised as "Plan to
+give recognition for their effort this quarter", with every step underneath correctly
+resolved and the top line saying nobody. A plan that acts on other people now names them
+unless it already does, and leaves a plan about the caller's own records alone.
+
 **Conversation memory still works.** The agent gets the recent turns, so "of those" and
 "her" read naturally; the people already identified are handed to it as ids, so "has that
 person improved?" — which contains no name for `find_people` to resolve — has something to
@@ -337,7 +343,7 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 | Suite | Result |
 |---|---|
 | `apps/ai` | **439 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1697 passed**, 7 deselected |
+| Full backend (`pytest`) | **1700 passed**, 7 deselected, 5m51s |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 103/103 × 3 gates |
 
@@ -435,12 +441,6 @@ their pre-coded paths; improvement, readiness, comparison and open-ended synthes
 the agent. That split is deliberate and it is why nothing regressed — but it means "who's
 at risk?" and "who's quietly getting worse?" are answered by different machinery, and only
 one of them improves when the tools improve.
-
-**A write plan does not say who it is for.** Ask "who are my two weakest?" then "give them
-recognition", and the plan you are asked to approve reads "Plan to give recognition for
-their effort this quarter" — the pronoun never resolved into a name. The gate holds and
-nothing is created without approval, but a human being asked to approve something should
-be told who it concerns. This is the planner, not the agent.
 
 **Conversations are five turns deep.** Ten- and twenty-turn conversations, where the
 history window starts dropping things, are not measured at all.

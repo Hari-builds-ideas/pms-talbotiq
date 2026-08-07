@@ -294,6 +294,22 @@ def test_the_whole_team_direction_is_a_backend_number_not_a_read_of_the_top_n(or
 
 
 @override_settings(**FAKE)
+def test_a_ranking_says_how_much_of_the_team_it_actually_lists(org, team):
+    """A model handed five rows of nine wrote "Here is your team, ranked from strongest
+    to weakest" — true of the five, said of the nine. `compute_improvement` already
+    reported how much of the team its list held; `rank_team` did not, so the count now
+    sits next to the list rather than being inferable from it."""
+    from apps.ai.tools import ToolContext, rank_team
+
+    with tenant_context(org.tenant):
+        out = rank_team(ToolContext(caller=org.manager), metric="score", limit=2)
+
+    assert out["listed"] == 2 == len(out["ranked"])
+    assert out["scored"] == 3, "three of the team have a score"
+    assert out["team_size"] > out["listed"], "the gap the model kept papering over"
+
+
+@override_settings(**FAKE)
 def test_the_direction_is_down_when_the_team_is_going_backwards(org, org_unused=None):
     """The summary has to be capable of saying "down", or it is a decoration."""
     from apps.ai.tools import ToolContext, compute_improvement

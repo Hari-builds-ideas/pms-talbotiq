@@ -234,8 +234,8 @@ eval numbers, scale figures, the morning checklist, and the weaknesses stated pl
 including that 31 of 97 cases are agent-served and 66 keep their pre-coded answers. This
 run did not rewrite the assistant; it gave the questions nobody coded somewhere to go.
 
-**ALL FIVE UNITS COMPLETE.** Final state: full backend **1708 passed**, `apps/ai`
-**450 passed**, scale harness **257/257**, eval **PASS** at 106/106 on all three gates
+**ALL FIVE UNITS COMPLETE.** Final state: full backend **1709 passed**, `apps/ai`
+**451 passed**, scale harness **257/257**, eval **PASS** at 106/106 on all three gates
 (judge: grounded 1.88/2 over 33 agent-served turns, relevant 1.62/2, reasoned 1.66/2),
 and `--replay` green at 37 cases in 1.2 s with no API key.
 

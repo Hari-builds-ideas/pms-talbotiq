@@ -402,16 +402,23 @@ def rank_team(ctx, metric: str = "score", order: str = "desc", limit: int = 5,
         keyed = [(0.0 if s.pace_behind else 1.0, u, s) for u, s in scored]
 
     keyed.sort(key=lambda k: k[0], reverse=(order != "asc"))
+    shown = keyed[:min(limit, MAX_ROWS)]
     return {
         "manages": True, "metric": metric, "order": order,
         "team_size": len(rows), "truncated": truncated,
+        # How many of the team the list below ACTUALLY contains. `compute_improvement`
+        # already reported this; rank_team did not, and a model handed five rows of nine
+        # wrote "Here is your team, ranked from strongest to weakest" — true of the five,
+        # said of the nine. The count has to be next to the list, not inferable from it.
+        "listed": len(shown),
+        "scored": len(scored),
         "ranked": [{
             "person_id": str(u.id),
             "name": u.display,
             "value": round(v, 1),
             "risk_status": s.get_risk_status_display(),
             "pace_behind": bool(s.pace_behind),
-        } for v, u, s in keyed[:min(limit, MAX_ROWS)]],
+        } for v, u, s in shown],
     }
 
 

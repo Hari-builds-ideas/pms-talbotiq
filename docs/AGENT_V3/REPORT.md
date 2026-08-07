@@ -270,8 +270,8 @@ the assistant toward re-fetching what it already knows. **106/106.**
 tenant 'scale': 5,000 active people · 106 cases · provider GeminiProvider
 
   cases: 106   scope-safe: 106/106   no-fabrication: 106/106   behaviour: 106/106
-  LLM judge: grounded 1.88/2 (min 1.6, n=33 agent-served)
-             relevant 1.62/2 (min 1.4, n=106)   reasoned 1.66/2
+  LLM judge: grounded 1.79/2 (min 1.6, n=33 agent-served)
+             relevant 1.62/2 (min 1.4, n=106)   reasoned 1.70/2
   served by the function-calling agent: 33/106
 
   latency: median 5,059 ms, p95 30,879 ms  (agent-served turns: median 7,105 ms)
@@ -367,6 +367,20 @@ In itself, which matters just as much, because a harness that flatters is worse 
    injections addressed to the assistant and not true, and that refusing one earns full
    marks.
 
+**What the no-fabrication gate cannot see: mis-attribution.** It checks that every number
+in an answer exists in the tool results. It does not check that the number belongs to the
+person it is attached to. Asked "who's ready for promotion?", the model fetched KPIs and
+deltas for two of three named people and then wrote "all three have declined by 2.8
+points" — every figure in that sentence was real, and one third of it was about somebody
+it never looked up. The gate passed it; the LLM judge caught it and scored it 0.
+
+That is the strongest argument for keeping the judge, and the clearest statement of what
+the deterministic checks are: they bound where numbers come *from*, not who they are
+*about*. The prompt now says never to carry a fact from one person to another, which is
+persuasion, and persuasion has a mixed record here. Closing it structurally would mean
+tracking which person each figure was fetched for and checking attribution in the answer —
+real work, and the right next thing if this class matters more than it currently costs.
+
 What the name check *cannot* see is a leaked number with no name attached. For an
 agent-served turn the no-fabrication gate covers it: a denied tool returns no figures, so
 any score for an unreadable person is a number in no tool result. For a deterministic turn
@@ -404,13 +418,13 @@ number of queries instead, verified by reintroducing the N+1 and watching the te
 
 | Suite | Result |
 |---|---|
-| `apps/ai` | **450 passed** (was 412 at the start of unit C) |
-| Full backend (`pytest`) | **1708 passed**, 7 deselected |
+| `apps/ai` | **451 passed** (was 412 at the start of unit C) |
+| Full backend (`pytest`) | **1709 passed**, 7 deselected |
 | `scripts/agent_scale_harness.py --tenant scale` | **257/257** |
 | `scripts/agent_eval.py --tenant scale --judge` | **PASS** — 106/106 × 3 gates |
 | `scripts/agent_eval.py --replay …` (no API key) | **PASS** — 37 cases, 83 tool calls, 1.2 s |
 
-New this run: `apps/ai/tests/test_open_ended.py` (35).
+New this run: `apps/ai/tests/test_open_ended.py` (36).
 
 ---
 
@@ -537,7 +551,7 @@ busy manager's day would cost. The per-agent *ceiling* is no longer the problem
 (`AGENT_CALL_MULTIPLIERS` scales `chat_agent` so the allowance counts answers rather than
 rounds); the spend behind it is real and unmeasured against a price list.
 
-**The judge scores 1.88/2 on grounded-ness across the 33 agent turns.** It does
+**The judge scores 1.79–1.94/2 on grounded-ness across the 33 agent turns, run to run.** It does
 discriminate — it caught the passing miscount ("two team members" for three) and marked it
 down, and handed empty evidence it returns 0s — but a near-ceiling average from a
 same-family model grading its own output is weak evidence on its own. The deterministic

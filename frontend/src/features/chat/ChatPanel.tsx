@@ -282,12 +282,17 @@ function ChatSheet() {
       >
         <ResizeHandle onResize={setWidth} />
         <SheetHeader>
+          {/* The panel is resizable down to 320px, so the header has to hold a title,
+              two controls and the close button in very little room. `whitespace-nowrap`
+              on the title and `shrink-0` on the controls is what stops "AI Assistant"
+              wrapping onto two lines when it gets tight — which it did, and it made the
+              whole panel look unfinished. */}
           <div className="flex items-center justify-between gap-2 pr-8">
-            <SheetTitle className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-ai" />
+            <SheetTitle className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+              <Sparkles className="h-4 w-4 shrink-0 text-ai" />
               AI Assistant
             </SheetTitle>
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-0.5">
               <HowToUse canSeeTeam={canSeeTeam} />
               <Button
                 type="button"
@@ -295,7 +300,7 @@ function ChatSheet() {
                 size="sm"
                 onClick={newChat}
                 disabled={turns.length === 0 && !input}
-                className="h-7 gap-1 text-xs text-muted-foreground"
+                className="h-7 gap-1 whitespace-nowrap px-2 text-xs text-muted-foreground"
                 aria-label="Start a new chat"
               >
                 <Plus className="h-3.5 w-3.5" /> New chat
@@ -331,28 +336,38 @@ function ChatSheet() {
                 </Alert>
               )}
               {turns.length === 0 && !unavailable && (
-                <div className="space-y-3 pt-6 text-center">
+                <div className="space-y-4 pt-8 text-center">
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-ai-subtle text-ai">
                     <Bot className="h-5 w-5" />
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Ask about {canSeeTeam ? "your team, " : ""}your goals, reviews or
-                    scores — within your access. Try one:
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">
+                      Ask about {canSeeTeam ? "your team" : "your goals"}
+                    </p>
+                    <p className="mx-auto max-w-[16rem] text-xs leading-relaxed text-muted-foreground">
+                      Goals, KPIs, scores and reviews — always within your access.
+                    </p>
+                  </div>
                   {/* One click sends. A chip that only fills the box makes the user
                       press Enter to find out whether it was a good question; sending
                       shows them, which is the point of an example. */}
-                  <div className="flex flex-wrap justify-center gap-1.5">
+                  <div className="flex flex-col items-stretch gap-1.5 px-2 text-left">
                     {starterPrompts(canSeeTeam).map((s) => (
                       <button
                         key={s}
                         type="button"
                         onClick={() => ask(s)}
-                        className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-secondary"
+                        className="group flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-foreground transition-colors hover:border-ai/40 hover:bg-ai-subtle"
                       >
-                        {s}
+                        <span>{s}</span>
+                        <Send className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                       </button>
                     ))}
+                  </div>
+                  {/* The header's help affordance is an icon for want of room. Here
+                      there is room, and here is where a new user actually is. */}
+                  <div className="flex justify-center pt-1">
+                    <HowToUse canSeeTeam={canSeeTeam} variant="link" />
                   </div>
                 </div>
               )}

@@ -228,7 +228,12 @@ _TEAM_SCAN_RE = re.compile(
 _COMPARE_RE = re.compile(
     r"\bwho(?:'s| is| are)?\b.{0,40}\b(doing\s+best|doing\s+worst|best|worst|top|"
     r"strongest|weakest|highest|lowest|ahead)\b|\btop\s+performer|\bbest\s+performer|"
-    r"\bworst\s+performer|\brank\b",
+    r"\bworst\s+performer|\brank\b|"
+    # "compare all my teammates", "rank my team" — an explicit ask to order the WHOLE
+    # team. Deterministic and free; without it this fell to the agent (an LLM call) at
+    # best and to the caller's own goals at worst.
+    r"\b(compare|rank)\b[\w\s']{0,20}\b(my|the)\s+(?:\w+\s+){0,2}"
+    r"(team|teams|teammates?|reports?|people|colleagues?|peers?|staff)\b",
     re.I,
 )
 
@@ -245,6 +250,34 @@ _AGG_RE = re.compile(
 #: like "own" slips past the name-stop list. Deictic third-person pronouns
 #: ("he/she/they") are handled separately and take precedence.
 _SELF_REF_RE = re.compile(r"\b(my|mine|myself|i|me|i'm)\b", re.I)
+
+#: A message genuinely ABOUT the caller's own performance — the only thing that may
+#: resolve the subject to the caller.
+#:
+#: `_SELF_REF_RE` above is too loose to decide that: it matches the OBJECT pronoun in
+#: "tell me a joke" and "show me X's goals", where "me" is who is being spoken to, not
+#: who is being asked about. That is how "tell me a joke" came back with the caller's own
+#: cycle status. Possessive "my/mine/my own" counts — but not when it introduces somebody
+#: else ("my team", "my manager") — and so do the first-person question forms, where the
+#: caller is the grammatical subject.
+#: A message that actually ASKS ABOUT A PERSON. Only these may come back with "I
+#: couldn't find anyone named X" — otherwise a stray noun becomes a failed name lookup
+#: and "tell me a joke" answers "I couldn't find anyone named Joke". The heuristic that
+#: decides something "looks like a name" cannot tell `joke` from `akhil`; what it can
+#: tell is whether the sentence was asking after somebody.
+_ASKS_ABOUT_PERSON_RE = re.compile(
+    r"\bhow(?:'s| is| are| has| have)\b|\bwhat\s+about\b|\btell\s+me\s+about\b|"
+    r"\b(?:doing|performing|getting\s+on|status\s+of|progress\s+of)\b|"
+    r"\bdoes\b.{0,30}\bneed\b|\bis\b.{0,30}\b(?:ok|okay|struggling|at\s+risk|behind)\b",
+    re.I,
+)
+
+_SELF_QUESTION_RE = re.compile(
+    r"\b(?:my|mine)\b(?!\s+(?:team|teams|teammates?|reports?|colleagues?|peers?|people|"
+    r"staff|employees?|directs?|manager|boss|lead|leads|director|hrbp|skip|mentor)\b)"
+    r"|\bmyself\b|\b(?:am|do|did|have|was|should)\s+i\b|\bi'?m\b|\bhow\s+i\b",
+    re.I,
+)
 
 #: POSSESSIVE self-reference only ("my"/"mine"/"my own") — for detecting a genuine
 #: "my goals AND X's" mixed query. Excludes bare "me"/"i" so "show me X's goals"
@@ -290,10 +323,16 @@ _GROUP_TEAMWORD_RE = re.compile(r"\b(team|reports?|everyone|all\s+of)\b", re.I)
 #: goals. Those questions now go to the function-calling agent (AGENT_V3/C). Checked
 #: LAST, so the three pre-coded team shapes above keep their deterministic answers.
 _TEAM_SUBJECT_RE = re.compile(
-    r"\bmy\s+(?:\w+\s+){0,2}(?:team|reports?|directs?|people|performers?|employees?|staff)\b|"
+    # "my team", "my two weakest performers", "all my teammates", "my colleagues".
+    # `teammates`/`colleagues`/`peers` were the gap that sent "compare all my teammates"
+    # down the single-person path, where the bare "my" read as self-reference and the
+    # caller got their own goals back.
+    r"\bmy\s+(?:\w+\s+){0,2}(?:team|teams|teammates?|reports?|directs?|people|"
+    r"performers?|employees?|staff|colleagues?|peers?)\b|"
     r"\b(?:the|my)\s+(?:top|best|worst|weakest|strongest)\s+(?:\w+\s+){0,2}"
     r"(?:performers?|reports?|people|employees?)\b|"
-    r"\beveryone\s+(?:on|in)\s+my\b|\ball\s+(?:of\s+)?my\s+(?:reports?|team)\b",
+    r"\beveryone\s+(?:on|in)\s+my\b|"
+    r"\ball\s+(?:of\s+)?my\s+(?:reports?|team|teammates?|people|colleagues?)\b",
     re.I,
 )
 
@@ -1439,7 +1478,7 @@ def _deterministic_answer(caller, query: str, session=None) -> dict:
         # am I doing", "my own KPIs") is about the CURRENT USER — resolve to self,
         # never a name lookup. This must win over the fragile `typed_a_name`
         # heuristic (a stray domain word like "own" must not force a not-found).
-        is_self_ref = bool(_SELF_REF_RE.search(query or ""))
+        is_self_ref = bool(_SELF_QUESTION_RE.search(query or ""))
         if named is not None:
             target = named
         elif ambiguous:  # a list of candidate User objects (offered order)
@@ -1530,7 +1569,9 @@ def _deterministic_answer(caller, query: str, session=None) -> dict:
             # dead-ends here. If the agent can compose an answer it should; if the user
             # really did mistype a name, find_people comes back empty and the honest
             # message below still stands.
-            if not typed:
+            if not typed or not _ASKS_ABOUT_PERSON_RE.search(query or ""):
+                # Two ways to know this was never a name lookup.
+                #
                 # More than three leftover tokens is not a name, and we already refuse to
                 # echo it for that reason — so claiming a NAME lookup failed is a claim
                 # about something that never happened. Found over HTTP, where a prompt
@@ -1538,6 +1579,11 @@ def _deterministic_answer(caller, query: str, session=None) -> dict:
                 # scorers") came back as "I couldn't find anyone by that name". Nothing
                 # leaked, but the reply describes the wrong failure, and on an
                 # impersonation attempt that reads like a half-engaged assistant.
+                #
+                # And the sentence may simply not be asking after anybody: "tell me a
+                # joke" left the single token `joke`, which this heuristic cannot tell
+                # from `akhil` — but it can tell that nobody was being asked about.
+                #
                 # The general redirect is the honest answer to a message we could not
                 # parse; the agent still gets first refusal at it either way.
                 return {"status": "ok", "intent": "general", "data": [],
@@ -1575,7 +1621,18 @@ def _deterministic_answer(caller, query: str, session=None) -> dict:
                 return _scope_denied_answer(caller, intent, prior.display,
                                             ground_user=prior)
             target = prior
-        # else: no name, no pronoun → answer about the caller (self).
+        else:
+            # NOTHING identified a subject: no name, no pronoun, no first-person claim.
+            # This used to fall through to `target = caller`, which meant any message the
+            # classifier mislabelled `performance` came back as the caller's own cycle
+            # status — "tell me a joke", "who are you?", an injection line. A confident
+            # answer to a question nobody asked is worse than no answer, and it is the
+            # single most common way this assistant looked broken.
+            #
+            # Marked, so the agent gets a turn at whatever it actually was; if it has
+            # nothing tool-grounded to say, the honest redirect stands.
+            return {"status": "ok", "intent": "general", "data": [],
+                    _UNANSWERED: True, "answer": _GENERAL_ANSWER}
 
     if target is None:
         return {"status": "ok", "intent": intent, "data": [], _UNANSWERED: True,

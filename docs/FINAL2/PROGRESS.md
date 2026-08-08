@@ -60,3 +60,85 @@ still resolve to the caller — the other side of tightening the first-person te
 
 **RESUME HERE → Unit 2** (capabilities/help surface), then Unit 3 (usage + cost report),
 Unit 4 (~50-prompt test bank), Unit 5 (`READY.md`).
+
+---
+
+## Unit 2 — the capabilities surface
+
+`HowToUse` beside New chat: a plain-language popover of what it CAN do and what it
+CAN'T. Role-aware in exactly one place — who you may ask about — because that is the only
+limit that genuinely differs between a manager and an employee.
+
+Starter chips in the empty chat that **send on one click** rather than filling the box. A
+chip that only fills it makes the user press Enter to find out whether it was a good
+question; sending shows them, which is the point of an example. That needed `ask(text)`
+instead of `submit()` reading `input`, since state has not landed on the click that sets
+it. The chips are role-scoped: an employee is never offered "who's at risk on my team?",
+because offering it is a promise the scope rules would refuse.
+
+Server side, "what can you do?" is answered from the role **before any model call**. It
+was spending a Gemini classification to learn something already known, and it is the chip
+a new user clicks first. Anchored on the whole message, so "what can you do about my
+team's goals?" stays a real question. The answer now states the boundaries too.
+
+Two older tests asserted the blurb calls itself "read-only". That stopped being true when
+write actions landed as approval-gated plans — it does write, on your click. Both now
+assert the substance (it describes itself, and names the approval boundary).
+
+**apps/ai: 477 · frontend: 138.**
+
+---
+
+## Unit 3 — the usage and cost report
+
+`manage.py ai_usage` reads the `TokenLedger` the gateway has been writing all along:
+calls, tokens and an estimated bill, by agent, model or tenant, with `--json`.
+
+The cost is an **estimate** and says so every time. Prices live in `settings.LLM_PRICES`
+(USD per million tokens, in/out separately), overridable with `LLM_PRICES_JSON`. Model ids
+match longest-prefix first so `gemini-2.5-flash-002` is priced like its family; a model
+with no price is named in a warning rather than counted as free. Logical tiers (`chat`,
+`default`) resolve through `GEMINI_MODEL_MAP` before pricing — not doing so understated
+this repo's own ledger by ~15%.
+
+The first version queried across tenants and reported **zero** against a ledger holding
+thousands of rows: every manager on a `TenantScopedModel` filters by the ambient tenant,
+`all_objects` included — it widens to soft-deleted rows, not to other tenants. It
+aggregates per tenant inside each context now, with a test for that regression.
+
+It cannot report per-user spend: the ledger has no user column. Documented rather than
+left to be discovered from an empty column.
+
+**apps/billing + apps/ai: 574.** Docs: `docs/FINAL2/AI_USAGE.md`.
+
+---
+
+## Unit 4 — the 59-prompt self-test bank
+
+`docs/FINAL2/test_bank.jsonl`, run by `scripts/agent_selftest.py` (human table) and
+`apps/ai/tests/test_prompt_bank.py` (CI). Judging lives in `apps/ai/selftest.py` so the
+two cannot drift about what "passed" means. **59/59, 15/15 categories, zero model calls.**
+
+It judges ROUTING, not phrasing — deterministic, so it is free to run. One real bug
+caught: "compare my two weakest" still deflected to the caller, because a superlative with
+the noun left off matched no team pattern.
+
+Two of its own bugs caught, both a harness grading the right answer wrong: the scope check
+called a refusal naming the person you asked about a leak, and a self-deflection tell
+("nothing to assess this cycle") fired on the correct third-person answer. Tells are
+anchored on a second-person subject now — one that fires on the right answer is worse
+than no tell.
+
+**Full backend: 1803 passed.**
+
+---
+
+## Unit 5 — READY.md
+
+`docs/FINAL2/READY.md`: the before/after table for the reported bug, the three refusals
+one message at a time, the per-category 59/59 table, the capabilities surface, the usage
+numbers, exact merge steps, the one new (optional) env var, and what I would still watch.
+
+**ALL FIVE UNITS COMPLETE.** Full backend **1803**, frontend **138**, prompt bank
+**59/59**, replay eval **37/37**, scale harness **257/257**. Ready for testing and
+deployment.

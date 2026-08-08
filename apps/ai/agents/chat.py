@@ -351,7 +351,12 @@ _TEAM_SUBJECT_RE = re.compile(
     r"\b(?:the|my)\s+(?:top|best|worst|weakest|strongest)\s+(?:\w+\s+){0,2}"
     r"(?:performers?|reports?|people|employees?)\b|"
     r"\beveryone\s+(?:on|in)\s+my\b|"
-    r"\ball\s+(?:of\s+)?my\s+(?:reports?|team|teammates?|people|colleagues?)\b",
+    r"\ball\s+(?:of\s+)?my\s+(?:reports?|team|teammates?|people|colleagues?)\b|"
+    # "my two weakest", "my top three" — a superlative with the noun left off. Without
+    # this the bare "my" reads as self-reference and "compare my two weakest" comes back
+    # describing the CALLER, which is the exact shape of the bug this rule exists for.
+    r"\bmy\s+(?:two|three|four|five|\d+)?\s*"
+    r"(?:top|best|worst|weakest|strongest|lowest|highest)\b",
     re.I,
 )
 

@@ -15,13 +15,24 @@ category with no Gemini spend.
 
 ```bash
 docker compose up -d
-docker compose restart web        # <- DO NOT SKIP
+docker compose restart web                       # backend  <- DO NOT SKIP
+docker compose build frontend                    # UI       <- DO NOT SKIP
+docker compose up -d --force-recreate frontend
 ```
 
-The container mounts the repo but the server process does not reload. A stack that has
-been up since before this branch serves the **old** code — and the old code is the thing
-this pass replaced. The symptom is the bug you reported: "who improved most since last
-cycle?" answering about you, or `tools: null` in the response. I hit it myself.
+**Both are required, for different reasons, and skipping either hides half this work.**
+
+The *backend* container mounts the repo but the server process does not reload, so a
+stack up since before this branch serves the old Python. The symptom is the bug you
+reported: "who improved most since last cycle?" answering about you, or `tools: null` in
+the response.
+
+The *frontend* is a baked production build — nginx serving a compiled bundle, not a dev
+server. Restarting it re-serves the same old bundle. The symptom is that the backend
+behaves correctly while the UI looks untouched: no "How to use" button, old starter
+chips. This one caught me out: I verified the component with typechecks and unit tests
+and reported it as shipped, when the running app had never been rebuilt. Hard-refresh the
+browser afterwards (⌘⇧R) so it picks up the new asset hash.
 
 ---
 
@@ -166,7 +177,10 @@ git checkout main
 git pull
 git merge --no-ff hari/agent-intelligence-v2 -m "merge: open-ended agent intelligence + FINAL2 pre-deployment pass"
 
-# 3. Deploy, then on the running stack
+# 3. Deploy — the frontend MUST be rebuilt, not just restarted (see above)
+docker compose build frontend && docker compose up -d --force-recreate frontend
+
+# 4. On the running stack
 python manage.py migrate                          # no new migrations, safe to run
 python manage.py ai_usage --days 1                # confirms the meter reads
 ```

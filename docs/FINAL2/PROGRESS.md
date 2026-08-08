@@ -142,3 +142,28 @@ numbers, exact merge steps, the one new (optional) env var, and what I would sti
 **ALL FIVE UNITS COMPLETE.** Full backend **1803**, frontend **138**, prompt bank
 **59/59**, replay eval **37/37**, scale harness **257/257**. Ready for testing and
 deployment.
+
+---
+
+## Post-hand-off correction — the UI was never rebuilt
+
+Hari opened the app and the "How to use" button was not there. The component, its tests
+and the typecheck were all fine; the running frontend is a **baked production build**
+(nginx serving a compiled bundle, not a dev server), and `docker compose restart` re-serves
+the same old bundle. I had verified the code and reported the surface as shipped without
+ever loading the page.
+
+Fixed by `docker compose build frontend && docker compose up -d --force-recreate frontend`;
+the served bundle now contains both `How to use` and the starter chips.
+
+Two things changed so it cannot happen the same way again:
+
+- **`HowToUse.test.tsx` now renders the component.** It only tested `starterPrompts`, a
+  pure function, which passed happily while the affordance beside "New chat" was never
+  checked to appear at all. Three render tests: the trigger exists, it opens onto both
+  what it can and cannot do, and an employee is told they see only their own data.
+- **READY.md's deploy steps say to rebuild the frontend**, with the symptom spelled out —
+  backend correct, UI apparently untouched — because the merge instructions previously
+  said only `restart web`, which is precisely the trap.
+
+Frontend: **141 passed** (was 138).

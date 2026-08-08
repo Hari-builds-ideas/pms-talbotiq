@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { cn } from "@/lib/utils";
 import type { ChatPlan, ChatProposal } from "@/lib/types";
+import { HowToUse, starterPrompts } from "./HowToUse";
 import { ProposalCard } from "./ProposalCard";
 import { PlanChecklist } from "./PlanChecklist";
 
@@ -120,7 +121,10 @@ const CHAT_SESSION_KEY = "pms.chat.session";
 
 function ChatSheet() {
   const { open, setOpen, width, setWidth } = useChatPanel();
-  const { hasFeature } = useAuth();
+  const { hasFeature, atLeast } = useAuth();
+  /** Only a manager and above has anybody else to ask about — the one limit that
+      genuinely differs by role, so the only one the help text branches on. */
+  const canSeeTeam = atLeast("MANAGER");
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [input, setInput] = React.useState("");
   const [unavailable, setUnavailable] = React.useState(false);
@@ -225,13 +229,21 @@ function ChatSheet() {
     el.style.overflowY = el.scrollHeight > maxH ? "auto" : "hidden";
   }, [input]);
 
-  const submit = React.useCallback(() => {
-    const q = input.trim();
-    if (!q || unavailable) return;
-    setTurns((t) => [...t, { role: "user", text: q }]);
-    setInput("");
-    mutation.mutate(q);
-  }, [input, unavailable, mutation]);
+  /** Send `text` as a turn. Takes the text rather than reading `input`, so a starter
+      chip can send on the click that sets it — a `setInput` then `submit()` would send
+      the previous value, because state has not landed yet. */
+  const ask = React.useCallback(
+    (text: string) => {
+      const q = text.trim();
+      if (!q || unavailable) return;
+      setTurns((t) => [...t, { role: "user", text: q }]);
+      setInput("");
+      mutation.mutate(q);
+    },
+    [unavailable, mutation],
+  );
+
+  const submit = React.useCallback(() => ask(input), [ask, input]);
 
   function send(e: React.FormEvent) {
     e.preventDefault();
@@ -275,17 +287,20 @@ function ChatSheet() {
               <Sparkles className="h-4 w-4 text-ai" />
               AI Assistant
             </SheetTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={newChat}
-              disabled={turns.length === 0 && !input}
-              className="h-7 gap-1 text-xs text-muted-foreground"
-              aria-label="Start a new chat"
-            >
-              <Plus className="h-3.5 w-3.5" /> New chat
-            </Button>
+            <div className="flex items-center gap-1">
+              <HowToUse canSeeTeam={canSeeTeam} />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={newChat}
+                disabled={turns.length === 0 && !input}
+                className="h-7 gap-1 text-xs text-muted-foreground"
+                aria-label="Start a new chat"
+              >
+                <Plus className="h-3.5 w-3.5" /> New chat
+              </Button>
+            </div>
           </div>
           <SheetDescription>
             Ask questions or plan multi-step tasks — I propose, you approve each step.
@@ -321,21 +336,23 @@ function ChatSheet() {
                     <Bot className="h-5 w-5" />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Ask about your team, goals, reviews, or org — within your scope.
+                    Ask about {canSeeTeam ? "your team, " : ""}your goals, reviews or
+                    scores — within your access. Try one:
                   </p>
+                  {/* One click sends. A chip that only fills the box makes the user
+                      press Enter to find out whether it was a good question; sending
+                      shows them, which is the point of an example. */}
                   <div className="flex flex-wrap justify-center gap-1.5">
-                    {["How many open reviews do I have?", "Who is at risk on my team?"].map(
-                      (s) => (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => setInput(s)}
-                          className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-secondary"
-                        >
-                          {s}
-                        </button>
-                      ),
-                    )}
+                    {starterPrompts(canSeeTeam).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => ask(s)}
+                        className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-secondary"
+                      >
+                        {s}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}

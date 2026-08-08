@@ -33,7 +33,11 @@ pytestmark = pytest.mark.django_db
 FAKE = {"LLM_PROVIDER": "apps.ai.providers.FakeLLMProvider"}
 
 #: The distinctive opening of the capability blurb — what must NOT come back.
-_BLURB_TELL = "read-only performance assistant"
+#: The distinctive opening of the capability blurb — what must NOT come back in answer
+#: to a real question. It no longer claims "read-only" (write actions land as
+#: approval-gated plans, so that stopped being true); "performance assistant" is the part
+#: that identifies the leaflet.
+_BLURB_TELL = "performance assistant"
 
 
 @pytest.fixture

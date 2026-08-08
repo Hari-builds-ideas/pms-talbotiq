@@ -61,6 +61,18 @@ _CAPABILITY_PHRASES = (
     "what can you do", "what do you do", "who are you", "what are you",
     "how do you work", "what can i ask", "capabilit", "your purpose", "what are your",
 )
+#: The capability question, recognised without a model. Anchored on the whole message so
+#: "what can you do about Priya's goals?" is a real question, not a request for the blurb.
+_CAPABILITY_ASK_RE = re.compile(
+    r"^\s*(?:hi|hey|hello)?[\s,]*(?:"
+    r"help|\?|what can you do|what can't you do|what cannot you do|what do you do|"
+    r"who are you|what are you|how do you work|what can i ask|what can i ask you|"
+    r"who can i see|who can i ask about|what are your (?:capabilities|limits)|"
+    r"your capabilities|what are you able to do"
+    r")[\s.!?]*$",
+    re.I,
+)
+
 _PERF_WORDS = (
     "goal", "kpi", "score", "rating", "review", "performance", "risk", "progress",
     "feedback", "cycle", "objective", "assessment", "appraisal", "how am i doing",
@@ -111,8 +123,15 @@ def _capability_answer(caller):
     else:
         team_part = (" I can only see your own data — not other people's — so I can't "
                      "report on colleagues.")
-    return ("I'm your read-only performance assistant (I can't make changes or "
-            f"approvals). {self_part}{team_part}")
+    # What it CANNOT do, said out loud. A capabilities answer that only lists strengths
+    # leaves the user to discover the boundaries by hitting them, and the two they hit
+    # first — "why won't it just do it?" and "why can't it see her?" — are exactly the
+    # ones worth stating up front.
+    limits = (" What I can't do: change anything on my own — recognition, check-ins and "
+              "review drafts are prepared for you and only happen when you approve them; "
+              "see anyone outside your access; or help with anything that isn't about "
+              "performance.")
+    return ("I'm your performance assistant. " + self_part + team_part + limits)
 _GENERAL_ANSWER = (
     "I'm a read-only performance assistant, so that's outside what I can help with — "
     "but I can tell you about your goals, KPIs, cycle scores, or reviews (within your "
@@ -1166,6 +1185,15 @@ def _deterministic_answer(caller, query: str, session=None) -> dict:
     routed = route_turn(caller, query, session=session) if session is not None else None
     if routed is not None:
         return routed
+
+    # "What can you do?" — answered from the role, before any LLM call. The answer is
+    # composed entirely from the caller's own capabilities, so asking a model to classify
+    # it first was spending a Gemini call to learn something we already knew. It is also
+    # the chip a new user clicks first, which made it the most-asked question in the
+    # product and the one it made least sense to pay for.
+    if _CAPABILITY_ASK_RE.search(query or ""):
+        return {"status": "ok", "intent": "capability", "data": [],
+                "answer": _capability_answer(caller)}
 
     # "Open the draft / that review / it" — a definite-reference navigation ask,
     # resolved deterministically from the session's access-rechecked refs BEFORE

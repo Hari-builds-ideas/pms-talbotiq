@@ -21,7 +21,13 @@ vi.mock("@/lib/api/endpoints", () => ({
   },
 }));
 vi.mock("@/lib/auth/AuthContext", () => ({
-  useAuth: () => ({ me: { id: "u-1", role: "MANAGER" }, hasFeature: () => true }),
+  useAuth: () => ({
+    me: { id: "u-1", role: "MANAGER" },
+    hasFeature: () => true,
+    // The panel branches its help text and starter chips on this; a mock missing it
+    // fails with `atLeast is not a function`, which says nothing about the panel.
+    atLeast: () => true,
+  }),
 }));
 
 import { ChatProvider, useChatPanel } from "./ChatPanel";

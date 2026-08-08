@@ -151,7 +151,7 @@ days of heavy development, of which one day was **1,353 calls / ~$0.57**.
 |---|---|
 | Full backend (`pytest`) | **1803 passed**, 7 deselected |
 | `apps/ai` | 477 |
-| Frontend (`vitest`) | 138 passed |
+| Frontend (`vitest`) | **141 passed** |
 | Prompt bank (no API key) | **59/59**, 15/15 categories |
 | `agent_eval.py --replay` (no API key) | 37/37 |
 | `agent_scale_harness.py` (5,000 people) | 257/257 |

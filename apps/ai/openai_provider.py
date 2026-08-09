@@ -129,6 +129,13 @@ class OpenAIProvider(LLMProvider):
         try:
             content = json.loads(raw_content)
         except (json.JSONDecodeError, TypeError):
+            # A completion cut off at max_tokens is unterminated JSON, not a model that
+            # broke JSON mode — the two need opposite fixes, so say which one happened.
+            if finish == "length":
+                raise LLMProviderError(
+                    f"OpenAI response was cut off at the {self.max_tokens}-token ceiling, "
+                    "so the JSON is unterminated — raise LLM_MAX_TOKENS."
+                )
             # The model broke JSON mode — do NOT fabricate; surface a provider error
             # so the gateway returns a structured failure (no draft).
             raise LLMProviderError("OpenAI returned non-JSON content.")

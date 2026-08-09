@@ -547,6 +547,32 @@ GEMINI_MODEL_MAP = {
     "chat": env("LLM_MODEL_CHAT", default=GEMINI_MODEL_FAST),
     "default": env("LLM_MODEL_DEFAULT", default=GEMINI_MODEL_FAST),
 }
+# ── LLM price table (USD per MILLION tokens), for the usage report ────────────
+# Read by `manage.py ai_usage` to turn the TokenLedger into money. It is an ESTIMATE
+# and deliberately configurable, because published prices move and only the bill is
+# authoritative. Keys are matched against the model id recorded on each ledger row,
+# longest-prefix first, so "gemini-2.5-flash-002" costs what "gemini-2.5-flash" costs.
+# Override wholesale with LLM_PRICES_JSON, e.g.
+#   LLM_PRICES_JSON='{"gemini-2.5-flash": {"in": 0.30, "out": 2.50}}'
+LLM_PRICES = {
+    "gemini-2.5-flash": {"in": 0.30, "out": 2.50},
+    "gemini-flash": {"in": 0.30, "out": 2.50},
+    "gemini-pro": {"in": 1.25, "out": 10.00},
+    "gpt-4o-mini": {"in": 0.15, "out": 0.60},
+    "gpt-4o": {"in": 2.50, "out": 10.00},
+    # The deterministic test provider costs nothing; naming it keeps a local run from
+    # reporting imaginary money.
+    "fake-llm-1": {"in": 0.0, "out": 0.0},
+}
+_prices_json = env("LLM_PRICES_JSON", default="")
+if _prices_json:
+    import json as _json
+
+    try:
+        LLM_PRICES = {**LLM_PRICES, **_json.loads(_prices_json)}
+    except ValueError:  # a malformed override must not take the app down
+        pass
+
 # Generic key fallback used by any provider when its specific key is unset.
 LLM_API_KEY = env("LLM_API_KEY", default=OPENAI_API_KEY or GROQ_API_KEY or GEMINI_API_KEY)
 LLM_BASE_URL = env("LLM_BASE_URL", default="https://api.groq.com/openai/v1")  # Groq only

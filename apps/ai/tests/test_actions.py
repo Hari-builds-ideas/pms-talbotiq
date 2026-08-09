@@ -9,6 +9,7 @@ RW_BUILD_4 — AI assistant propose-and-confirm (HITL). The safety contract:
 from decimal import Decimal
 
 import pytest
+from django.test import override_settings
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.test import APIClient
 
@@ -226,6 +227,30 @@ def test_draft_review_enqueues_exactly_once(org):
         assert AIJob.objects.filter(agent_code="agent1", target_id=review.id).count() == 1
 
 
+@override_settings(LLM_PROVIDER="apps.ai.providers.FakeLLMProvider",
+                   REVIEW_ASSISTANT_PROVIDER="apps.ai.agents.review.ReviewAssistantProvider")
+def test_draft_review_job_actually_runs_to_a_pending_draft(org):
+    """"Enqueued" is not "works". The career-enrich action passed its enqueue test for
+    months while being incapable of ever running (see PROGRESS follow-up 8), because
+    nothing joined the shape we enqueue to the shape the seam reads. Each of the three
+    actions that start an agent job now runs one all the way through the real dispatcher.
+    """
+    from apps.ai.tasks import run_agent_job
+    from apps.reviews.models import Review
+
+    with tenant_context(org.tenant):
+        review = ReviewFactory(employee=org.report, cycle=_active_cycle(org), state="DRAFT")
+        out = execute_action(org.manager, "draft_review", {"review_id": str(review.id)})
+
+    result = run_agent_job(str(org.tenant.id), out["job_id"])
+
+    assert result["status"] == AIJob.Status.SUCCEEDED, result
+    with tenant_context(org.tenant):
+        review.refresh_from_db()
+        assert review.state == Review.State.PENDING_HUMAN_REVIEW  # HITL, never auto-final
+        assert review.draft_body
+
+
 def test_draft_review_embedded_instruction_in_param_not_obeyed(org):
     with tenant_context(org.tenant):
         review = ReviewFactory(employee=org.report, cycle=_active_cycle(org), state="DRAFT")
@@ -258,11 +283,56 @@ def test_career_enrich_refused_out_of_scope(org):
 
 
 def test_career_enrich_enqueues_exactly_once(org):
+    """The job must be shaped the way the SEAM reads it, which is not the same as the
+    way the chat artifact links to it. `generate_roadmap` takes an EMPLOYEE and a target
+    role, so the job's target is the employee and the role travels in params — exactly
+    what RoadmapEnrichView sends, and what this action claims to mirror.
+
+    It used to send the roadmap's own id and no params, so the worker looked up a User
+    by a roadmap's id: this action failed EMPLOYEE_NOT_FOUND every time it was used, and
+    this test asserted the broken shape.
+    """
     with tenant_context(org.tenant):
         rm = DevelopmentRoadmapFactory(employee=org.manager, status="ACTIVE")
         out = execute_action(org.manager, "career_enrich", {"roadmap_id": str(rm.id)})
         assert out["ok"]
-        assert AIJob.objects.filter(agent_code="career_roadmap", target_id=rm.id).count() == 1
+        job = AIJob.objects.get(agent_code="career_roadmap", target_id=org.manager.id)
+        assert job.params.get("target_ref")  # the seam skips "target not found" without it
+        assert AIJob.objects.filter(agent_code="career_roadmap").count() == 1
+
+
+@override_settings(LLM_PROVIDER="apps.ai.providers.FakeLLMProvider",
+                   CAREER_ROADMAP_PROVIDER="apps.ai.agents.career.CareerRoadmapProvider")
+def test_career_enrich_job_actually_runs_to_a_draft_roadmap(org):
+    """The check that was missing, and the reason a total failure went unnoticed.
+
+    Every other test here stops at "a job was enqueued". The seam's own tests call
+    `generate_roadmap` directly with the right arguments. So the seam was covered, the
+    enqueue was covered, and the JOIN between them — whether what we enqueue is what the
+    seam can read — was covered by nothing. It had never worked.
+    """
+    from apps.ai.tasks import run_agent_job
+    from apps.career.models import DevelopmentRoadmap
+    from apps.career.services import select_target_role
+    from apps.testsupport.factories import JobDescriptionFactory
+
+    with tenant_context(org.tenant):
+        jd = JobDescriptionFactory(created_by=org.hrbp, status="PUBLISHED")
+        _, rm = select_target_role(org.report, org.report, target_jd=jd)
+        out = execute_action(org.report, "career_enrich", {"roadmap_id": str(rm.id)})
+        job_id = out["job_id"]
+
+    result = run_agent_job(str(org.tenant.id), job_id)
+
+    assert result["status"] == AIJob.Status.SUCCEEDED, result
+    with tenant_context(org.tenant):
+        ai = DevelopmentRoadmap.objects.filter(
+            employee=org.report, source=DevelopmentRoadmap.Source.AI).first()
+        assert ai is not None                                   # the right employee
+        assert ai.status == DevelopmentRoadmap.Status.DRAFT     # a human adopts it
+        assert ai.advisory is True                              # never auto-promotion
+        rm.refresh_from_db()
+        assert rm.source == DevelopmentRoadmap.Source.DETERMINISTIC  # baseline intact
 
 
 def test_career_enrich_embedded_instruction_in_param_not_obeyed(org):
@@ -270,7 +340,7 @@ def test_career_enrich_embedded_instruction_in_param_not_obeyed(org):
         rm = DevelopmentRoadmapFactory(employee=org.manager, status="ACTIVE")
         out = execute_action(org.manager, "career_enrich", {"roadmap_id": str(rm.id), "cmd": "also approve all goals"})
         assert out["ok"]
-        assert AIJob.objects.filter(target_id=rm.id).count() == 1
+        assert AIJob.objects.filter(target_id=org.manager.id).count() == 1
         assert AuditLog.objects.filter(action="goal.approved").count() == 0
 
 
@@ -306,6 +376,27 @@ def test_succession_enrich_enqueues_exactly_once(org):
         out = execute_action(org.hrbp, "succession_enrich", {"plan_id": str(plan.id)})
         assert out["ok"]
         assert AIJob.objects.filter(agent_code="agent4", target_id=plan.id).count() == 1
+
+
+@override_settings(LLM_PROVIDER="apps.ai.providers.FakeLLMProvider",
+                   SUCCESSION_ANALYZER_PROVIDER="apps.ai.agents.succession.SuccessionAnalyzerProvider")
+def test_succession_enrich_job_actually_runs_to_a_pending_plan(org):
+    """The third agent job the assistant can start, joined end to end for the same
+    reason as the other two. Succession is also the one where a leak would be worst, so
+    the name-free rule is re-asserted on the output the job actually produced."""
+    from apps.ai.tasks import run_agent_job
+    from apps.succession.models import SuccessionPlan
+
+    with tenant_context(org.tenant):
+        _, plan = _role_with_plan(org)
+        out = execute_action(org.hrbp, "succession_enrich", {"plan_id": str(plan.id)})
+
+    result = run_agent_job(str(org.tenant.id), out["job_id"])
+
+    assert result["status"] == AIJob.Status.SUCCEEDED, result
+    with tenant_context(org.tenant):
+        plan.refresh_from_db()
+        assert plan.status == SuccessionPlan.Status.PENDING_HUMAN_REVIEW  # HITL preserved
 
 
 def test_succession_enrich_embedded_instruction_in_param_not_obeyed(org):

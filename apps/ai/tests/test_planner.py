@@ -56,6 +56,61 @@ def test_multi_step_plan_is_ordered_inert_and_grounded(org):
 
 
 @override_settings(**FAKE)
+def test_a_plan_headline_says_who_it_is_for(org):
+    """The line a human reads before approving has to name the person.
+
+    A request made with a pronoun came back as one: after "who are my two weakest?",
+    "give them recognition for their effort" summarised as "…give recognition for their
+    effort this quarter". Every step underneath named the right person; the headline —
+    which is what the approver actually reads and decides on — did not.
+    """
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        ReviewFactory(employee=org.report,
+                      cycle=CycleFactory(tenant=org.tenant, status="ACTIVE"), state="DRAFT")
+        session = _session(org.manager)
+        out = build_plan(org.manager, session, "start a 360 for Rhea and draft her review")
+
+        assert out["status"] == "planned"
+        steps = list(out["plan"].steps.all())
+        assert [s.action for s in steps] == ["initiate_360", "draft_review"]
+        summary = out["plan"].summary
+
+    assert "Rhea" in summary, f"the approver is not told who this is for: {summary!r}"
+
+
+@override_settings(**FAKE)
+def test_a_plan_headline_that_already_names_the_person_is_left_alone(org):
+    """No belt-and-braces restatement: nobody gets told twice."""
+    with tenant_context(org.tenant):
+        _name(org.report, "Rhea Report")
+        session = _session(org.manager)
+        plan = build_plan(org.manager, session,
+                          "give recognition to Rhea Report for her work")["plan"]
+        plan.summary = "Ready to recognise Rhea Report."
+        # Re-run the naming over an already-explicit headline.
+        from apps.ai.planner import _name_the_subjects, _subject_label
+
+        realized = [("give_recognition", {"preview": [{"recipient": "Rhea Report"}]})]
+        assert _subject_label(realized[0][1]) == "Rhea Report"
+        out = _name_the_subjects(org.manager, plan.summary, realized)
+
+    assert out == "Ready to recognise Rhea Report."
+
+
+@override_settings(**FAKE)
+def test_a_plan_about_the_callers_own_records_is_not_addressed_to_them(org):
+    """"Start my check-in" does not want "(for Nikhil Vasquez)" bolted onto it."""
+    from apps.ai.planner import _name_the_subjects
+
+    _name(org.manager, "Nikhil Vasquez")
+    realized = [("open_checkin", {"preview": [{"employee": "Nikhil Vasquez"}]})]
+
+    assert _name_the_subjects(org.manager, "Ready to open your check-in.", realized) == (
+        "Ready to open your check-in.")
+
+
+@override_settings(**FAKE)
 def test_approve_one_step_executes_that_step_only_and_is_idempotent(org):
     with tenant_context(org.tenant):
         _name(org.report, "Rhea Report")
@@ -216,3 +271,51 @@ def test_unknown_action_from_planner_is_dropped(org):
 
         for s in plan.steps.all():
             assert s.action in ACTIONS or s.action == "clarify"
+
+
+# ── FIX 3: pending-slot follow-up — a reply FILLS the slot, never restarts ────────
+
+
+@override_settings(**FAKE)
+def test_pending_recognition_slot_is_filled_by_the_next_message(org):
+    """"recognise priya" is genuinely ambiguous (many Priyas) → a clarify step. The
+    user's next message "Priya Nair" must COMPLETE the recognition — resume the same
+    action — not start a new, unrelated plan."""
+    with tenant_context(org.tenant):
+        _name(org.manager, "Ada Lovelace")
+        _name(org.hrbp, "Priya Nair")
+        for surname in ("Silva", "Novak", "Khan"):
+            UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name=f"Priya {surname}")
+        session = _session(org.manager)
+
+        # Turn 1: ambiguous → a clarify step that remembers the action to resume.
+        out1 = build_plan(org.manager, session, "give recognition to priya")
+        step1 = out1["plan"].steps.first()
+        assert step1.feel == "clarify"
+        assert step1.params.get("clarify_action") == "give_recognition"
+
+        # Turn 2: the answer fills the slot → a give_recognition CONFIRM for Priya Nair,
+        # NOT a fresh "draft a review" plan.
+        out2 = build_plan(org.manager, session, "Priya Nair")
+        step2 = out2["plan"].steps.first()
+        assert step2.action == "give_recognition"
+        assert step2.feel == "confirm"
+        assert step2.params.get("recipient_user_id") == str(org.hrbp.id)
+
+
+@override_settings(**FAKE)
+def test_pending_slot_yields_to_a_genuine_new_command(org):
+    """A pending clarify must not hijack a real new command: if the next message is
+    itself an action ("approve my team's goals"), plan THAT, don't force-fill."""
+    with tenant_context(org.tenant):
+        _name(org.manager, "Ada Lovelace")
+        for surname in ("Silva", "Novak"):
+            UserFactory(tenant=org.tenant, role="EMPLOYEE", display_name=f"Priya {surname}")
+        cyc = CycleFactory(tenant=org.tenant, status="ACTIVE")
+        GoalFactory(employee=org.report, cycle=cyc, status="ACTIVE")
+        session = _session(org.manager)
+
+        build_plan(org.manager, session, "give recognition to priya")  # pending clarify
+        out = build_plan(org.manager, session, "approve my team's goals")
+        actions = [s.action for s in out["plan"].steps.all()]
+        assert "approve_goals" in actions  # the new command won, not a recognition fill

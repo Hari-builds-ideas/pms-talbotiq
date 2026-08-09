@@ -1,0 +1,137 @@
+[
+  {
+    "id": "long-01",
+    "tags": [
+      "memory",
+      "long-conversation"
+    ],
+    "q": "remind me who we've been talking about",
+    "answer": "I'm a read-only performance assistant, so that's outside what I can help with \u2014 but I can tell you about your goals, KPIs, cycle scores, or reviews (within your access). For example: \u201chow am I doing this cycle?\u201d",
+    "status": "ok",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 39077.9,
+    "truth": null,
+    "hand_ranked": 0,
+    "actor_id": "39a3dc00-f5d9-4337-858c-aa656138c497",
+    "tool_calls": [
+      {
+        "name": "find_people",
+        "arguments": {
+          "query": "me"
+        }
+      },
+      {
+        "name": "compute_improvement",
+        "arguments": {
+          "person_id": "39a3dc00-f5d9-4337-858c-aa656138c497"
+        }
+      },
+      {
+        "name": "rank_team",
+        "arguments": {
+          "metric": "score",
+          "order": "desc",
+          "limit": 1
+        }
+      },
+      {
+        "name": "compute_improvement",
+        "arguments": {
+          "person_id": "2a4c64d0-1774-44c2-8d2b-301aac19b22b"
+        }
+      }
+    ],
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 2,
+    "judge_reasoned": 2,
+    "judge_reason": "The assistant correctly states its limitations as a read-only performance assistant, explaining why it cannot recall previous conversation context, and offers relevant alternatives."
+  },
+  {
+    "id": "long-02",
+    "tags": [
+      "memory",
+      "long-conversation"
+    ],
+    "q": "summarise everything you've told me about them",
+    "answer": "Jamal Steinberg is currently flagged as 'At risk' and is behind pace. A key area for focus is his 'Legal objective 6', where 'Attainment' is currently at 47% of its target. It appears Jamal would benefit from support to address this specific goal.",
+    "status": "ok",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 44107.1,
+    "truth": null,
+    "hand_ranked": 0,
+    "actor_id": "39a3dc00-f5d9-4337-858c-aa656138c497",
+    "tool_calls": [
+      {
+        "name": "compute_improvement",
+        "arguments": {
+          "order": "desc",
+          "limit": 1
+        }
+      },
+      {
+        "name": "compute_improvement",
+        "arguments": {
+          "order": "asc",
+          "limit": 1
+        }
+      },
+      {
+        "name": "team_aggregate",
+        "arguments": {
+          "metric": "average_score"
+        }
+      },
+      {
+        "name": "compute_improvement",
+        "arguments": {}
+      }
+    ],
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 2,
+    "judge_reasoned": 2,
+    "judge_reason": "The answer directly summarises key information about the individual and provides a reasoned conclusion based on the data points presented."
+  },
+  {
+    "id": "long-03",
+    "tags": [
+      "memory",
+      "long-conversation",
+      "out-of-scope"
+    ],
+    "q": "fine. who on my team is behind pace?",
+    "answer": "9 of your 9 team member(s) are behind pace: Jamal Castellanos (At risk, behind pace); Jamal Cavendish (Critical, behind pace); Jamal Hartmann (At risk, behind pace); Jamal Marchetti (At risk, behind pace); Jamal Okafor (At risk, behind pace); Jamal Oyelaran (Critical, behind pace); Jamal Silva (At risk, behind pace); Jamal Steinberg (At risk, behind pace), and 1 more. Ask me about any of them for detail.",
+    "status": "ok",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 26815.2,
+    "truth": null,
+    "hand_ranked": 0,
+    "actor_id": "39a3dc00-f5d9-4337-858c-aa656138c497",
+    "tool_calls": [
+      {
+        "name": "compute_improvement",
+        "arguments": {
+          "person_id": "2a4c64d0-1774-44c2-8d2b-301aac19b22b"
+        }
+      }
+    ],
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 2,
+    "judge_reasoned": 2,
+    "judge_reason": "The answer directly identifies the team members who are behind pace, providing a list as requested by the question, which does not require additional reasoning."
+  }
+]

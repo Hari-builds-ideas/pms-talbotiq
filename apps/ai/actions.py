@@ -24,14 +24,16 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.audit.services import record as audit_record
+from apps.ai.directory import AMBIGUOUS, resolve_person_in_population
 from apps.rbac.matrix import Capability, role_has_capability
 from apps.rbac.scope import Scope, actor_can_access, reporting_subtree_ids, scope_for_role
 
 #: cap a single proposal/execution so a runaway can't approve an unbounded set.
 _MAX_TARGETS = 50
 
-#: sentinel: a name/role matched more than one in-scope target → the chat must ASK.
-AMBIGUOUS = object()
+#: :data:`AMBIGUOUS` (a name/role matched more than one target → the chat must ASK) is
+#: the shared sentinel from :mod:`apps.ai.directory`, re-exported for the propose/
+#: execute code below that compares ``result is AMBIGUOUS``.
 
 
 def _display(user) -> str:
@@ -56,28 +58,18 @@ def _visible_user_ids(user) -> set:
 
 
 def _resolve_person(user, message: str):
-    """Resolve a person NAMED in the message, but ONLY within the caller's visible
-    scope. Returns a User, ``None`` (no in-scope match — treated as a 404; we never
-    reveal an out-of-scope person exists), or :data:`AMBIGUOUS` (the chat asks)."""
-    from apps.identity.models import User
-
-    m = (message or "").lower()
+    """Resolve a person NAMED in the message for a DATA/write action — the directory
+    lookup is restricted to the caller's VISIBLE scope, so an out-of-scope name simply
+    doesn't resolve (treated as a 404; we never reveal an out-of-scope person exists).
+    Tiered matching (exact full name wins, never disambiguates on a shared first name).
+    Returns a User, ``None``, or :data:`AMBIGUOUS`. The action's own access check still
+    runs before any data is read — resolution alone grants nothing."""
     vis = _visible_user_ids(user)
     if not vis:
         return None
-    hits = []
-    for u in User.objects.filter(id__in=vis):
-        name = (u.display_name or "").strip().lower()
-        if not name:
-            continue
-        first = name.split()[0]
-        if name in m or (len(first) >= 3 and re.search(rf"\b{re.escape(first)}\b", m)):
-            hits.append(u)
-    if not hits:
-        return None
-    if len(hits) > 1:
-        return AMBIGUOUS
-    return hits[0]
+    # exclude_self=False: the visible set already includes self, and some data actions
+    # legitimately name the caller; the per-action scope/own-guard decides what's valid.
+    return resolve_person_in_population(user, message, population_ids=vis, exclude_self=False)
 
 
 def _resolve_critical_role(user, message: str):
@@ -95,9 +87,25 @@ def _resolve_critical_role(user, message: str):
     return hits[0]
 
 
-def _clarify(question: str) -> dict:
-    """A non-executable proposal that just asks the user to disambiguate."""
-    return {"action": "clarify", "feel": "clarify", "summary": question, "preview": [], "params": {}}
+def _clarify(question: str, candidates=None, *, slot: str | None = "person") -> dict:
+    """A non-executable proposal that just asks the user to disambiguate. ``candidates``
+    (name + email) let the UI list who was meant so the user can pick — and the planner
+    records which action to resume when the user answers (pending-slot follow-up).
+
+    ``slot`` names WHICH detail is being waited on, so the conversation state machine
+    can parse the user's next message with the right parser: a bare "5" is a valid
+    answer to a ``mood`` slot but not to a ``person`` one. ``slot=None`` marks a
+    dead-end message (nothing the user can type will resolve it), which must never arm
+    a pending slot — otherwise the next message is swallowed forever."""
+    return {
+        "action": "clarify", "feel": "clarify", "summary": question, "preview": [],
+        "params": {"clarify_slot": slot} if slot else {}, "candidates": candidates or [],
+    }
+
+
+def _candidate_rows(users) -> list:
+    """Name+email options for a disambiguation prompt (data only — no scores)."""
+    return [{"id": str(u.id), "name": _display(u), "email": u.email} for u in users]
 
 
 def _artifact(type_: str, id_, title: str, state: str, deeplink: str) -> dict:
@@ -350,7 +358,20 @@ def _execute_career_enrich(user, params) -> dict:
     if not role_has_capability(user.role, Capability.MANAGE_CAREER_ROADMAP):
         raise PermissionDenied("You don't have permission to enrich roadmaps.")
     roadmap = services.get_roadmap_in_scope(user, params.get("roadmap_id"))  # raises 404 out-of-scope
-    job = enqueue_agent_job(actor=user, agent_code="career_roadmap", target_type="career_roadmap", target_id=roadmap.id)
+    # Enqueue EXACTLY as RoadmapEnrichView does, which this action claims to mirror: the
+    # seam takes the EMPLOYEE and the target role, so the job's target is the employee
+    # and the role travels in params. Sending the roadmap's own id here (and no params)
+    # made the worker look up a User by a roadmap's id — this action failed
+    # EMPLOYEE_NOT_FOUND every time it was ever used.
+    target_ref = (
+        {"jd": str(roadmap.target_jd_id)}
+        if roadmap.target_jd_id
+        else {"position": str(roadmap.target_position_id)}
+    )
+    job = enqueue_agent_job(
+        actor=user, agent_code="career_roadmap", target_type="career_roadmap",
+        target_id=roadmap.employee_id, params={"target_ref": target_ref},
+    )
     return {
         "action": "career_enrich",
         "ok": True,
@@ -370,14 +391,14 @@ def _propose_succession_enrich(user, message):
         return None  # employees never see succession
     role = _resolve_critical_role(user, message)
     if role is AMBIGUOUS:
-        return _clarify("Which critical role's plan should I enrich? Please name the role.")
+        return _clarify("Which critical role's plan should I enrich? Please name the role.", slot="role")
     if role is None:
         return None
     from apps.succession.models import SuccessionPlan
 
     plan = SuccessionPlan.objects.filter(critical_role=role).order_by("-generated_at").first()
     if plan is None:
-        return _clarify(f"There's no plan for {role.name} yet — generate one on the Succession screen, then ask me to enrich it.")
+        return _clarify(f"There's no plan for {role.name} yet — generate one on the Succession screen, then ask me to enrich it.", slot=None)
     return {
         "action": "succession_enrich",
         "feel": "confirm",
@@ -528,7 +549,7 @@ def _propose_record_actual(user, message):
     value = _extract_number(message)
     if len(matched) != 1 or value is None:
         # never guess WHICH KPI or WHAT number — ask (deterministic-params rule).
-        return _clarify("Which KPI, and what value? e.g. “record 85 for <KPI name>”.")
+        return _clarify("Which KPI, and what value? e.g. “record 85 for <KPI name>”.", slot="kpi_value")
     k = matched[0]
     unit = f" {k.unit}" if k.unit else ""
     return {
@@ -580,25 +601,14 @@ def _execute_record_actual(user, params) -> dict:
 
 
 def _resolve_recipient_in_tenant(user, message: str):
-    """Resolve a recognition RECIPIENT named in the message within the caller's
-    TENANT (recognition's real scope), excluding self. Returns a User, ``None`` or
-    :data:`AMBIGUOUS`. Tenant-scoped manager bounds it to the caller's tenant."""
-    from apps.identity.models import User
-
-    m = (message or "").lower()
-    hits = []
-    for u in User.objects.filter(is_active=True).exclude(id=user.id):
-        name = (u.display_name or "").strip().lower()
-        if not name:
-            continue
-        first = name.split()[0]
-        if name in m or (len(first) >= 3 and re.search(rf"\b{re.escape(first)}\b", m)):
-            hits.append(u)
-    if not hits:
-        return None
-    if len(hits) > 1:
-        return AMBIGUOUS
-    return hits[0]
+    """Resolve a recognition RECIPIENT named in the message. Recognition is a
+    DIRECTORY-only action: you may recognise anyone in the company, so the search
+    ranges over the WHOLE active tenant (``population_ids=None``), excluding self.
+    Tiered matching means an exact full name ("Priya Nair") wins even when six other
+    people share the first name "Priya" — it never collapses to a dead-end ASK.
+    Tenant isolation still rides on the scoped manager (a cross-tenant name never
+    resolves). Returns a User, ``None``, or :data:`AMBIGUOUS`."""
+    return resolve_person_in_population(user, message, population_ids=None, exclude_self=True)
 
 
 def _extract_company_value(message: str):
@@ -611,24 +621,66 @@ def _extract_company_value(message: str):
     return None
 
 
+def _extract_recognition_reason(message: str, recipient) -> str:
+    """The user's OWN words for why they're recognising someone — the clause after
+    "for", when it isn't just the person's name.
+
+    The category has to be one of the configured company values, so "for mentoring the
+    new joiners" can only ever be filed under a value like Teamwork. That's correct for
+    reporting, but it meant the posted note said "Recognised for Teamwork." and the
+    reason the person actually gave was thrown away. The note is free text, so their
+    wording belongs there.
+
+    Returned as DATA: it is stored verbatim on the recognition (and the human approves
+    it first), exactly like a note typed into the Recognition screen — never
+    re-interpreted as an instruction.
+    """
+    text = (message or "").strip()
+    match = re.search(r"\bfor\s+(.+)$", text, re.I)
+    if not match:
+        return ""
+    reason = match.group(1).strip(" .!?,;")
+    # "make a recognition for Priya Nair" — the clause is the NAME, not a reason.
+    name_tokens = {t for t in re.findall(r"[^\W\d_]+", (getattr(recipient, "display_name", "") or "").lower())}
+    reason_tokens = {t for t in re.findall(r"[^\W\d_]+", reason.lower())}
+    if reason_tokens and reason_tokens <= name_tokens:
+        return ""
+    return reason[:400]
+
+
 def _propose_give_recognition(user, message):
     if not role_has_capability(user.role, Capability.GIVE_RECOGNITION):
         return None
     recipient = _resolve_recipient_in_tenant(user, message)
     if recipient is AMBIGUOUS:
-        return _clarify("Who would you like to recognise? Please name one colleague.")
+        from apps.ai.directory import suggest_candidates
+
+        options = suggest_candidates(user, message, population_ids=None, exclude_self=True)
+        names = ", ".join(_display(u) for u in options[:6])
+        q = (f"More than one colleague matches — did you mean {names}? "
+             "Tell me their full name or email.") if names else \
+            "Who would you like to recognise? Please name one colleague."
+        return _clarify(q, candidates=_candidate_rows(options))
     if recipient is None:
         return _clarify("Who would you like to recognise, and what for? Name a colleague.")
     value = _extract_company_value(message) or "Teamwork"  # a default the human can change
+    reason = _extract_recognition_reason(message, recipient)
+    note = f"Recognised for {reason}." if reason else f"Recognised for {value}."
     return {
         "action": "give_recognition",
         "feel": "confirm",
-        "summary": f"Give {_display(recipient)} recognition for {value}? It posts to your team feed — edit the note first if you like.",
-        "preview": [{"recipient": _display(recipient), "value": value}],
+        # Echo the person's OWN reason back in the summary when they gave one, so the
+        # card they approve says what they meant rather than only the value bucket.
+        "summary": (f"Give {_display(recipient)} recognition for {reason} (filed under {value})? "
+                    "It posts to your team feed — edit the note first if you like."
+                    if reason else
+                    f"Give {_display(recipient)} recognition for {value}? "
+                    "It posts to your team feed — edit the note first if you like."),
+        "preview": [{"recipient": _display(recipient), "value": value, "reason": reason}],
         "params": {
             "recipient_user_id": str(recipient.id),
             "category": value,
-            "note": f"Recognised for {value}.",  # a clean default note; the human edits/approves
+            "note": note,  # the human edits/approves before anything posts
         },
     }
 
@@ -709,7 +761,8 @@ def _propose_open_checkin(user, message):
         }
     mood = _extract_mood(message)
     if mood is None:
-        return _clarify("How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.")
+        return _clarify("How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.",
+                        slot="mood")
     return {
         "action": "open_checkin", "feel": "confirm",
         "summary": f"Start this week's check-in with mood {mood}/5? You can add wins & blockers next.",
@@ -902,7 +955,7 @@ def _propose_update_kpi_actual(user, message):
     matched = [k for k in kpis if k.name and k.name.lower() in m]  # OWN KPIs only, by name
     value = _extract_number(message)
     if len(matched) != 1 or value is None:
-        return _clarify("Which KPI, and what value? e.g. “update my Uptime KPI to 99”.")
+        return _clarify("Which KPI, and what value? e.g. “update my Uptime KPI to 99”.", slot="kpi_value")
     k = matched[0]
     warns = _direction_warning(k, value)
     warn_txt = (" ⚠️ " + "; ".join(warns) + ".") if warns else ""
@@ -1041,7 +1094,14 @@ ACTIONS: dict[str, dict] = {
         "capability": Capability.GIVE_RECOGNITION,
         "label": "give recognition",
         "description": "Give a colleague recognition for a company value.",
-        "match": lambda m: ("recogni" in m or "kudos" in m) and "approve" not in m,
+        # AGENT_REBUILD/B3 — recognition is asked for in many plain-English ways, and
+        # every one of them must land HERE rather than fall through to a check-in or
+        # the capability blurb. "thank(s)" is deliberately NOT a trigger: a bare
+        # "thanks!" is conversation, not a command to post recognition.
+        "match": lambda m: (
+            "recogni" in m or "kudos" in m or "shout out" in m or "shoutout" in m
+            or "shout-out" in m or "praise" in m or "give props" in m or "props to" in m
+        ) and "approve" not in m,
     },
     # respond_to_checkin MUST precede open_checkin: "respond" routes to the manager
     # response; anything else about a check-in routes to opening the caller's own.
@@ -1061,7 +1121,13 @@ ACTIONS: dict[str, dict] = {
         "capability": Capability.MANAGE_OWN_CHECKIN,
         "label": "open your check-in",
         "description": "Start this week's check-in for yourself with a mood.",
-        "match": lambda m: ("checkin" in m or "check-in" in m or "check in" in m) and "respond" not in m,
+        # "log my mood" is a check-in by another name — route it here rather than
+        # leaving it unmatched (it used to reach the capability blurb). `record` is
+        # excluded so "record 4 for my Uptime KPI" still belongs to record_actual.
+        "match": lambda m: (
+            "checkin" in m or "check-in" in m or "check in" in m
+            or ("mood" in m and "record" not in m)
+        ) and "respond" not in m,
     },
 }
 

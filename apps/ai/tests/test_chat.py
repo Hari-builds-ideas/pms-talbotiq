@@ -214,7 +214,13 @@ def test_capability_question_describes_the_assistant_not_metrics(org):
     assert body["intent"] == "capability"
     assert body["data"] == []  # NOT a performance dump
     assert "Report goal" not in str(body)
-    assert "read-only" in body["answer"].lower()
+    # It describes ITSELF — what it can do and what it cannot. It used to have to say
+    # "read-only"; that stopped being true when write actions landed as approval-gated
+    # plans, so the assertion is on the substance (the approval boundary) rather than on
+    # a self-description the product outgrew.
+    answer = body["answer"].lower()
+    assert "performance assistant" in answer
+    assert "approve" in answer, "the approval gate is the boundary worth stating"
 
 
 @override_settings(**FAKE)

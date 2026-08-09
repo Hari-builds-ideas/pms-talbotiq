@@ -71,6 +71,22 @@ def test_non_json_content_raises_provider_error_not_fabrication():
 
 
 @override_settings(**FAKE)
+def test_a_truncated_completion_blames_the_token_ceiling_not_the_model():
+    """Agent-1 failed 100% of the time in the demo deploy, reporting "returned non-JSON
+    content" — which points at the prompt. The real cause was our own max_tokens pin
+    cutting the JSON off mid-string. The two need opposite fixes, so the message has to
+    tell them apart."""
+    cut = {"choices": [{"finish_reason": "length",
+                        "message": {"content": '{"draft_body": "It was the best of ti'}}],
+           "usage": {}}
+    with patch("apps.ai.gemini_provider.requests.post", return_value=_resp(200, cut)):
+        with pytest.raises(LLMProviderError) as exc:
+            GeminiProvider().generate(agent_code="review", prompt="x", model="review")
+    assert "cut off" in str(exc.value) and "LLM_MAX_TOKENS" in str(exc.value)
+    assert "non-JSON" not in str(exc.value)
+
+
+@override_settings(**FAKE)
 def test_http_error_raises_without_leaking_body():
     with patch("apps.ai.gemini_provider.requests.post", return_value=_resp(400, {})):
         with pytest.raises(LLMProviderError) as exc:

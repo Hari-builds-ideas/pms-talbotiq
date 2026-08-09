@@ -298,6 +298,10 @@ def team_ranking(caller, *, best=True, limit=5) -> dict:
     unscored = len(rows) - len(scored)
     scored.sort(key=lambda r: float(r[1].t_score), reverse=best)
     ranked = [{
+        # The id rides along so the caller can GROUND the people it names as session
+        # refs. Without it a ranking is a list of strings, and "how is the first one
+        # doing?" has nothing to resolve against. (`team_scan` already returns ids.)
+        "id": u.id,
         "name": u.display,
         "risk": s.get_risk_status_display(),
         "pace_behind": bool(s.pace_behind),

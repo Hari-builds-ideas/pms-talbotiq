@@ -89,6 +89,24 @@ class FakeLLMProvider(LLMProvider):
             "confidence": _FAKE_CONFIDENCE.get(agent_code, 0.9),
         }
 
+    #: A queue of turns for :meth:`generate_with_tools`, set by a test. Each entry is
+    #: either ``{"tool_calls": [...]}`` or ``{"content": "..."}``. Scripting the model
+    #: is the only way to test the LOOP itself — whether tools get run with the trusted
+    #: context, whether denials come back, whether the iteration cap holds — without the
+    #: assertions depending on what a real model felt like doing that minute.
+    script: list = []
+
+    def generate_with_tools(self, *, agent_code, messages, tools, model) -> dict:
+        turn = self.script.pop(0) if self.script else {"content": "[fake: no script left]"}
+        return {
+            "content": turn.get("content") or "",
+            "tool_calls": turn.get("tool_calls") or [],
+            "finish_reason": "stop",
+            "model": model or "fake-llm-1",
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+        }
+
 
 # ── inert real adapter scaffold (never called tonight) ────────────────────────
 

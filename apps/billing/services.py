@@ -376,7 +376,7 @@ def resolve_budget_limit(tenant, agent_code, window=AgentBudget.Window.DAILY) ->
         if row is not None:
             return row.limit
     entitlement = get_entitlement_cached(tenant)
-    return default_budget_limit(window, entitlement.has_pack(FULL_AI))
+    return default_budget_limit(window, entitlement.has_pack(FULL_AI), agent_code)
 
 
 def check_and_reserve_budget(

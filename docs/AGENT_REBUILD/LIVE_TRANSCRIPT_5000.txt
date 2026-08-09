@@ -1,0 +1,119 @@
+tenant 'scale' · acting as Theo Nair <p100@scale.test>
+  in scope:     Lena Oyelaran, Lena Castellanos
+  out of team:  Aarav Sharma, Mei Chen
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a check-in follow-up question actually gets answered
+  (before: replying '5' re-asked the same question, forever)
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open the user's check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+  [[32mOK  [0m] the assistant asks for a mood
+
+  [1muser[0m  › 5
+  [36massistant[0m ‹ Start this week's check-in with mood 5/5? You can add wins & blockers next.
+      · step: action=open_checkin feel=confirm | Start this week's check-in with mood 5/5? You can add wins & blockers next.
+  [[32mOK  [0m] a bare "5" fills the slot and completes the check-in — action=open_checkin
+      [32mapprove[0m → {"plan_id": "9795cc71-14de-4faa-93ee-d98262d9ae8d", "step_id": "6fccaeb1-4e53-42f0-bb78-56a328e8b029", "action": "open_checkin", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent": fal
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a new command mid-question is obeyed, and cancel works
+  (before: both were ignored and the question was re-asked)
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open the user's check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+
+  [1muser[0m  › give recognition to Aarav Sharma for her excellent work
+  [36massistant[0m ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for her excellent work (filed under Teamwork)? It posts to your team feed — edit the note 
+  [[32mOK  [0m] a new command abandons the pending question — action=give_recognition
+
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open your check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+
+  [1muser[0m  › never mind
+  [36massistant[0m ‹ Okay — I've cancelled that. What would you like to do instead?
+  [[32mOK  [0m] cancel clears the pending question
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a nonsense answer is explained once, then let go
+  (before: the same question came back forever)
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › start my check-in
+  [36massistant[0m ‹ Open your check-in.
+      · step: action=clarify feel=clarify | How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.
+
+  [1muser[0m  › banana
+  [36massistant[0m ‹ I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my check-in, mood 4”.)
+      · step: action=clarify feel=clarify | I need a number from 1 to 5 for how this week felt — e.g. “4”. (How are you feeling this week (1–5)? e.g. “start my chec
+  [[32mOK  [0m] says what it expects
+
+  [1muser[0m  › banana
+  [36massistant[0m ‹ I still didn't catch that, so I've dropped the question. I need a number from 1 to 5 for how this week felt — e.g. “4”. Or tell me something else you'd like to do.
+  [[32mOK  [0m] does not ask a third time
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a manager recognises a colleague OUTSIDE their team
+  (before: 'not found' — lookup was team-scoped)
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › make a recognition for Aarav Sharma
+  [36massistant[0m ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  [[32mOK  [0m] recognition for an out-of-team person is prepared
+      [32mapprove[0m → {"plan_id": "6c011195-9ae6-41b2-99e1-eed1fced0677", "step_id": "5178eb22-e87e-45f5-ac87-6bbeec2b679d", "action": "give_recognition", "feel": "confirm", "ordinal": 0, "out_of_order": false, "status": "done", "idempotent":
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: 'do the same for <someone else>' repeats the RECOGNITION
+  (before: it started a check-in)
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › give recognition to Aarav Sharma for mentoring the new joiners
+  [36massistant[0m ‹ Plan to give recognition to Aarav Sharma.
+      · step: action=give_recognition feel=confirm | Give Aarav Sharma recognition for mentoring the new joiners (filed under Teamwork)? It posts to your team feed — edit th
+
+  [1muser[0m  › do the same for Mei Chen
+  [36massistant[0m ‹ Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+      · step: action=give_recognition feel=confirm | Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first if you like.
+  [[32mOK  [0m] "do the same" repeats the recognition — action=give_recognition
+  [[32mOK  [0m] …for the NEW person, not the previous one — Give Mei Chen recognition for Teamwork? It posts to your team feed — edit the note first i
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a real question gets a real answer, not the capability blurb
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › how is Lena Oyelaran doing this cycle?
+  [36massistant[0m ‹ Lena Oyelaran is currently flagged as "At risk" and is behind pace this cycle. Her "Operations objective 5" is showing a key performance indicator, "Attainment," at 55% of its 100% target, indicating it's the primary area needing attention. Based on this, Lena would likely benefit from some support to get back on track.
+  [[32mOK  [0m] not the capability blurb
+  [[32mOK  [0m] names the person asked about
+
+  [1muser[0m  › compare Lena Oyelaran and Lena Castellanos
+  [36massistant[0m ‹ Lena Oyelaran is currently flagged at risk and behind pace, with her 'Operations objective 5' showing 55% attainment and likely needing support. In contrast, Lena Castellanos is on track and keeping pace this cycle. While her 'Operations objective 1' is at 80% attainment, no immediate extra help appears necessary for her at this time.
+  [[32mOK  [0m] a comparison covers both people
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: directory-wide actions, but data stays permission-scoped
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › how is Aarav Sharma doing?
+  [36massistant[0m ‹ You don't have access to Aarav Sharma's data — only an admin or HR can see everyone across the company. You can ask about the people on your team: Lena Castellanos, Lena Cavendish, Lena Hartmann, Lena Marchetti, Lena Okafor, Lena Oyelaran, Lena Steinberg, Lena Travers, Lena Whitfield.
+  [[32mOK  [0m] out-of-scope performance data is refused — honest refusal
+
+══════════════════════════════════════════════════════════════════════════════
+SCENARIO: a name that doesn't exist is reported as such
+══════════════════════════════════════════════════════════════════════════════
+
+  [1muser[0m  › how is Zebediah Quartermain doing?
+  [36massistant[0m ‹ I couldn't find anyone named Zebediah Quartermain — try their full name or their email address.
+  [[32mOK  [0m] says it couldn't find the name
+  [[32mOK  [0m] not the capability blurb
+
+══════════════════════════════════════════════════════════════════════════════
+LIVE TRANSCRIPT: 15/15 assertions held (real HTTP, real LLM, tenant 'scale')
+══════════════════════════════════════════════════════════════════════════════

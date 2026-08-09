@@ -534,6 +534,36 @@ def test_group_support_followup_stays_scope_safe(org):
     assert "at risk" not in ans.lower()   # no other person's status leaked
 
 
+@override_settings(**FAKE)
+def test_at_risk_scan_is_not_captured_by_the_prior_turn_set(org):
+    """"who's at risk?" is a question about the TEAM, even as a follow-up.
+
+    The refer-back above answers "who needs more support?" over the people just
+    discussed, which is right — but `at risk` is a computed status, not a relative
+    judgment, and it once shared the same regex. A manager who compared two healthy
+    people and then asked who was at risk got those two reasoned over and the person
+    who was actually at risk — never mentioned in the conversation — left out.
+    """
+    with tenant_context(org.tenant):
+        org.report.display_name = "Aarav Rossi"           # healthy, gets compared
+        org.report.save(update_fields=["display_name"])
+        _score(org.tenant, org.report, risk="ON_TRACK", pace_behind=False)
+        mei = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                          display_name="Mei Patel")        # healthy, gets compared
+        _score(org.tenant, mei, risk="ON_TRACK", pace_behind=False)
+        noah = UserFactory(tenant=org.tenant, manager=org.manager, role="EMPLOYEE",
+                           display_name="Noah Cohen")      # the ACTUAL at-risk one
+        _score(org.tenant, noah, risk="AT_RISK", pace_behind=True)
+
+    c = _client(org.manager)
+    sid = c.post(CHAT, {"query": "compare Aarav Rossi and Mei Patel"},
+                 format="json").json()["session_id"]
+    ans = c.post(CHAT, {"query": "who's at risk and why?", "session_id": sid},
+                 format="json").json()["answer"]
+
+    assert "Noah" in ans, f"the at-risk person was not surfaced: {ans!r}"
+
+
 # ── AGENT_INTEL_V2 §8: "who ELSE / the OTHER … behind pace?" drops the person
 #    just discussed from the team-scan list ──────────────────────────────────
 @override_settings(**FAKE)

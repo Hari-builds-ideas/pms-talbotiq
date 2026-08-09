@@ -1,0 +1,61 @@
+tenant 'scale': 5,000 active people (seed=1337, 25 people per category)
+acting as: manager 'Tariq Cohen' (9 reports), employee 'Elena Adeyemi', hrbp 'Mei Chen', admin 'Aarav Sharma'
+
+══════════════════════════════════════════════════════════════════════════════════
+AGENT SCALE HARNESS — results
+══════════════════════════════════════════════════════════════════════════════════
+  [PASS] exact full name resolves                              25/25
+  [PASS] typo still finds the person                           17/17
+  [PASS] duplicate names disambiguate                          2/2
+  [PASS] duplicate candidates carry emails                     2/2
+  [PASS] email settles a duplicate                             2/2
+  [PASS] edge-case names                                       11/11
+  [PASS] resolution actually queries the database              10/10
+  [PASS] no unbounded SELECT during resolution                 10/10
+  [PASS] resolution query count is small and bounded           1/1
+  [PASS] phrasing routes deterministically → give_recognition  10/10
+  [PASS] phrasing routes deterministically → open_checkin      6/6
+  [PASS] phrasing routes deterministically → draft_review      3/3
+  [PASS] phrasing routes deterministically → initiate_360      3/3
+  [PASS] phrasing routes deterministically → schedule_review   1/1
+  [PASS] phrasing routes deterministically → approve_goals     2/2
+  [PASS] phrasing routes deterministically → approve_reviews   2/2
+  [PASS] a question is never taken as a command                8/8
+  [PASS] recognition for an out-of-team person                 12/12
+  [PASS] recognition resolves the right recipient              12/12
+  [PASS] recognition posts on approve                          12/12
+  [PASS] "do the same for X" repeats the action                6/6
+  [PASS] "do the same for X" targets the NEW person            6/6
+  [PASS] check-in asks for the mood                            10/10
+  [PASS] a bare mood answer fills the slot                     10/10
+  [PASS] the check-in is created with the stated mood          10/10
+  [PASS] cancel clears a pending question                      1/1
+  [PASS] an invalid answer explains the expected format        1/1
+  [PASS] a second bad answer does not loop forever             1/1
+  [PASS] a 360 is prepared for a team member                   6/6
+  [PASS] the 360 names the right subject                       6/6
+  [PASS] proposing a 360 creates nothing                       6/6
+  [PASS] the 360 cycle is created on approve                   6/6
+  [PASS] a 360 is NOT armed for someone out of scope           1/1
+  [PASS] a review draft is prepared for a team member          3/3
+  [PASS] the draft picks the named person's review             3/3
+  [PASS] proposing a draft queues nothing                      3/3
+  [PASS] the AI draft job is queued on approve                 3/3
+  [PASS] a data question is answered, not deflected            6/6
+  [PASS] the answer names the person asked about               6/6
+  [PASS] answers differ between people (not a template)        1/1
+  [PASS] a comparison names both people                        1/1
+  [PASS] a comparison is not the capability blurb              1/1
+  [PASS] out-of-scope data is refused                          5/5
+  [PASS] injection / social engineering refused                19/19
+  [PASS] hrbp gets a real answer for someone company-wide      1/1
+  [PASS] an employee is still refused what an HRBP can see     2/2
+  [PASS] admin gets a real answer for someone company-wide     1/1
+──────────────────────────────────────────────────────────────────────────────────
+  · resolution latency over 25 lookups: median 0.4 ms, p95 0.5 ms, max 0.7 ms
+  · typo tolerance exercised on 17 name(s); 0 skipped as near-duplicates
+  · resolution cost at 5,000 people: 1–1 queries per lookup
+──────────────────────────────────────────────────────────────────────────────────
+  TOTAL 276/276 checks passed
+══════════════════════════════════════════════════════════════════════════════════
+

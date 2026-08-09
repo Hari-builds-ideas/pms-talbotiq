@@ -53,3 +53,34 @@ def test_prod_loads_secure_with_required_env():
     assert r.returncode == 0, r.stderr
     # DEBUG off + secure session cookie + HSTS on + secure CSRF cookie.
     assert "OK True True True" in r.stdout
+
+
+def _compose_default(path, key):
+    """The fallback in ``KEY: ${KEY:-value}`` from a compose file, or None."""
+    import pathlib
+    import re
+
+    text = pathlib.Path(path).read_text()
+    m = re.search(rf"^\s*{re.escape(key)}:\s*\$\{{{re.escape(key)}:-([^}}]*)\}}", text, re.M)
+    return m.group(1) if m else None
+
+
+def test_compose_never_pins_the_token_budget_below_the_settings_default():
+    """A fix in settings that the deployment silently overrides is not a fix.
+
+    ``LLM_MAX_TOKENS`` was raised to 4096 in ``base.py`` — with a comment explaining
+    that 900 truncates a Gemini "thinking" model mid-JSON — while both compose files
+    went on pinning 900. Agent-1 review drafts therefore failed 100% of the time, in
+    dev AND in the prod compose, reporting "returned non-JSON content": a message that
+    points at the model when the cause was our own ceiling. Nothing caught it because
+    the settings default and the deployment value were never compared.
+    """
+    from django.conf import settings
+
+    for path in ("docker-compose.yml", "docker-compose.prod.yml"):
+        pinned = _compose_default(path, "LLM_MAX_TOKENS")
+        assert pinned is not None, f"{path} no longer sets LLM_MAX_TOKENS — update this test"
+        assert int(pinned) >= settings.LLM_MAX_TOKENS, (
+            f"{path} pins LLM_MAX_TOKENS={pinned}, below the settings default "
+            f"{settings.LLM_MAX_TOKENS} — long-form drafts will be truncated mid-JSON"
+        )

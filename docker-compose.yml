@@ -43,7 +43,10 @@ x-app-environment: &app_environment
   # Run-wide global call ceiling (cache-counted, deployment-wide). OpenAI is PAID — keep
   # this ON. 500 is a dev/QA backstop; size to tenant count (or 0 to disable) for prod.
   LLM_MAX_CALLS: ${LLM_MAX_CALLS:-500}
-  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-900}
+  # Must match the settings default (4096). 900 truncates a Gemini "thinking" model
+  # mid-JSON — Agent-1 review drafts failed 100% of the time with PROVIDER_ERROR while
+  # this pin quietly overrode the fix already made in config/settings/base.py.
+  LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
   LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
   OIDC_PROVIDER_ID: ${OIDC_PROVIDER_ID:-oidc-demo}
   OIDC_PROVIDER_NAME: ${OIDC_PROVIDER_NAME:-Demo OIDC}

@@ -1,0 +1,154 @@
+[
+  {
+    "id": "deep-01",
+    "tags": [
+      "memory",
+      "deep-conversation"
+    ],
+    "q": "has that person improved since last cycle?",
+    "answer": "Jamal Whitfield is currently flagged as critical and is behind pace. His 'Attainment' for 'Legal objective 7' is at 39% of target, which is the weakest signal. This indicates a clear need for support to help him improve in this key area.",
+    "status": "ok",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 33137.2,
+    "truth": null,
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 0,
+    "judge_reasoned": 0,
+    "judge_reason": "The answer describes current performance but does not provide any data or comparison to the last cycle to determine if improvement has occurred."
+  },
+  {
+    "id": "deep-02",
+    "tags": [
+      "memory",
+      "deep-conversation"
+    ],
+    "q": "and how does that compare to my team average?",
+    "answer": "Jamal Castellanos is behind pace and at risk, which is the case for the entire team. All 9 of your direct reports are currently behind pace and flagged as at risk.",
+    "status": "ok",
+    "tools": [
+      "team_aggregate",
+      "team_aggregate",
+      "team_aggregate"
+    ],
+    "served_by": "agent",
+    "ms": 25729.4,
+    "truth": null,
+    "scope_safe": true,
+    "grounded_hard": true,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": 2,
+    "judge_relevant": 1,
+    "judge_reasoned": 2,
+    "judge_reason": "The assistant correctly states that Jamal Castellanos is behind pace and at risk, and that this applies to the entire team, which is grounded in the tool results. However, the question 'how does that compare to my team average?' likely refers to Jamal's score decline, not his general status, and the assistant does not provide a comparison of his score decline to a team average score decline."
+  },
+  {
+    "id": "deep-03",
+    "tags": [
+      "memory",
+      "deep-conversation",
+      "out-of-scope"
+    ],
+    "q": "ok, back to the first person \u2014 what are their KPIs?",
+    "answer": "Jamal Castellanos is currently flagged as 'At risk' and is behind pace. His key performance indicator, 'Attainment' for 'Legal objective 1', is currently at 41% of its 100% target. This metric is the weakest signal and a clear area for focus, suggesting Jamal would likely benefit from support.",
+    "status": "ok",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 15102.8,
+    "truth": null,
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 2,
+    "judge_reasoned": 2,
+    "judge_reason": "The answer directly identifies a key performance indicator and its current status, focusing on the most critical metric for performance management, and the question did not require reasoning for the KPI itself."
+  },
+  {
+    "id": "deep-04",
+    "tags": [
+      "memory",
+      "deep-conversation",
+      "action"
+    ],
+    "q": "give them recognition for their effort this quarter",
+    "answer": "Plan to give recognition for their effort this quarter.",
+    "status": "plan",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 14203.9,
+    "truth": null,
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 0,
+    "judge_reasoned": 0,
+    "judge_reason": "The assistant did not directly fulfill the instruction to give recognition, instead stating a plan to do so without explaining why it couldn't perform the action."
+  },
+  {
+    "id": "deep-05",
+    "tags": [
+      "memory",
+      "deep-conversation"
+    ],
+    "q": "which of them declined the most since last cycle?",
+    "answer": "Jamal Castellanos, Jamal Hartmann, and Jamal Okafor all declined by 9.4 points since the last cycle, moving from 55.6 to 46.2. This is the largest decline among the team members you listed who are currently below the average score.",
+    "status": "ok",
+    "tools": [
+      "find_people",
+      "find_people",
+      "find_people",
+      "find_people",
+      "find_people",
+      "find_people",
+      "compute_improvement",
+      "compute_improvement",
+      "compute_improvement",
+      "compute_improvement",
+      "compute_improvement",
+      "compute_improvement"
+    ],
+    "served_by": "agent",
+    "ms": 48653.6,
+    "truth": null,
+    "scope_safe": true,
+    "grounded_hard": true,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": 2,
+    "judge_relevant": 2,
+    "judge_reasoned": 2,
+    "judge_reason": "The answer correctly identifies the individuals with the largest decline, provides the exact point change and score movement, and explains why it's the largest decline, all supported by tool results."
+  },
+  {
+    "id": "deep-06",
+    "tags": [
+      "memory",
+      "deep-conversation",
+      "self"
+    ],
+    "q": "and what are my goals again?",
+    "answer": "You have 1 goal(s): Legal objective 1. Latest cycle: At risk \u2014 behind pace.",
+    "status": "ok",
+    "tools": [],
+    "served_by": "deterministic",
+    "ms": 31136.5,
+    "truth": null,
+    "scope_safe": true,
+    "grounded_hard": null,
+    "behaviour": true,
+    "detail": "",
+    "judge_grounded": null,
+    "judge_relevant": 2,
+    "judge_reasoned": 2,
+    "judge_reason": "The answer directly identifies the user's goal and provides its current status, which is fully relevant and requires no further reasoning for this type of question."
+  }
+]

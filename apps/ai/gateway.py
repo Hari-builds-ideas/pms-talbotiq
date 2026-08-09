@@ -127,5 +127,79 @@ class LLMGateway:
         )
 
 
+    # ── function-calling turn (AGENT_V3/B) ────────────────────────────────────
+    def run_tools(self, *, tenant, agent_code, messages, tools, model="default"):
+        """One turn of a TOOL-CALLING conversation, through the same choke point.
+
+        A sibling of :meth:`run`, not a replacement: budget, PII-scrub, tracing and
+        metering all still apply, because CLAUDE.md rule 6 says every LLM call goes
+        through the gateway and a tool-calling call is still an LLM call. Skipping it
+        would mean an agent that silently spends unmetered tokens.
+
+        Two deliberate differences from :meth:`run`:
+
+        * **Only the user-authored text is scrubbed.** Tool RESULTS come from our own
+          scoped queries, and scrubbing them would corrupt the very numbers the answer
+          depends on — a redacted score is worse than no score. The PII risk is in what
+          the user types, which is what we clean.
+        * **No schema validation.** The output is either typed ``tool_calls`` or prose
+          for a human; there is no JSON contract to check.
+
+        Returns a :class:`GatewayResult` whose ``content`` is
+        ``{"text": …, "tool_calls": […]}``.
+        """
+        provider = get_llm_provider()
+        if not getattr(provider, "configured", False):
+            return GatewayResult(status="NOT_CONFIGURED")
+        if not hasattr(provider, "generate_with_tools"):
+            # An older provider can't do this; degrade honestly rather than crash so the
+            # caller falls back to the pre-existing answer path.
+            return GatewayResult(status="NOT_CONFIGURED",
+                                 errors=["provider has no tool-calling support"])
+
+        try:
+            check_and_reserve_budget(tenant, agent_code)
+        except BudgetExceeded as exc:
+            return GatewayResult(status="BUDGET_EXCEEDED", errors=[exc.detail])
+
+        cleaned = [_scrub_user_text(m) for m in messages]
+
+        try:
+            with trace(agent_code, model=model):
+                raw = provider.generate_with_tools(
+                    agent_code=agent_code, messages=cleaned, tools=tools, model=model)
+        except LLMNotConfiguredError:
+            release_budget(tenant, agent_code)
+            return GatewayResult(status="NOT_CONFIGURED")
+        except LLMGlobalCeilingError as exc:
+            release_budget(tenant, agent_code)
+            return GatewayResult(status="BUDGET_EXCEEDED", errors=[str(exc)])
+        except Exception:  # noqa: BLE001 — never crash the request, never fabricate
+            logger.error("LLM tool call failed for agent=%s", agent_code, exc_info=True)
+            release_budget(tenant, agent_code)
+            return GatewayResult(status="PROVIDER_ERROR")
+
+        prompt_tokens = int(raw.get("prompt_tokens", 0))
+        completion_tokens = int(raw.get("completion_tokens", 0))
+        used_model = raw.get("model", model)
+        record_usage(tenant, agent_code=agent_code, model=used_model,
+                     prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+        return GatewayResult(
+            status="OK",
+            content={"text": raw.get("content") or "", "tool_calls": raw.get("tool_calls") or []},
+            model=used_model,
+            usage={"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                   "total_tokens": prompt_tokens + completion_tokens},
+        )
+
+
+def _scrub_user_text(message):
+    """Scrub only what a HUMAN wrote. Tool results are our own scoped rows: running a PII
+    scrubber over them would mangle the names and numbers the answer is built from."""
+    if message.get("role") != "user" or not isinstance(message.get("content"), str):
+        return message
+    return {**message, "content": scrub(message["content"])}
+
+
 #: Module-level singleton for convenience.
 gateway = LLMGateway()

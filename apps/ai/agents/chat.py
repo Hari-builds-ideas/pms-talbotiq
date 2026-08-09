@@ -326,9 +326,19 @@ _LIST_GOALS_RE = re.compile(
 #: Resolved against the entities just referenced (AGENT_INTEL_V2 §2 Example C).
 #: Team-wide phrasings ("…on my team", "…of my reports") are excluded so the
 #: team-scan path still owns those.
+#:
+#: `behind` and `at risk` are deliberately NOT here, though they read like the rest.
+#: They name the COMPUTED status `_TEAM_SCAN_RE` owns, and a team word is not required
+#: to mean the whole team: "who's at risk and why?" is a population question. While they
+#: were listed, that question — asked after any turn that offered ≥2 people — was
+#: answered over the previously-offered set instead of the team, so a manager who had
+#: just asked about trends got the top IMPROVERS back as the people "at risk": every
+#: number real, every name in scope, and the wrong four people. Relative judgments
+#: ("needs support", "worse", "which one") stay, because those only mean anything
+#: against a set that was just discussed.
 _GROUP_SUPPORT_RE = re.compile(
     r"\bwho\b.{0,30}\b(needs?|more\s+support|more\s+help|attention|worse|weaker|"
-    r"struggl|behind|at\s+risk|focus|concern|prioriti)\w*|"
+    r"struggl|focus|concern|prioriti)\w*|"
     r"\bwhich\s+(one|of\s+them|of\s+the\s+two)\b",
     re.I,
 )

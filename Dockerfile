@@ -40,6 +40,20 @@ RUN pip install --upgrade pip \
 
 COPY . .
 
+# Collect static AT BUILD TIME, not at deploy time.
+#
+# STORAGES uses whitenoise's CompressedManifestStaticFilesStorage, which resolves
+# every {% static %} through staticfiles.json and raises "Missing staticfiles
+# manifest entry" when that file is absent — so under prod settings the allauth
+# SSO pages (/accounts/) and the DRF browsable API 500 without this step. The JSON
+# API never renders a template, which is why the test suite stays green either way.
+#
+# It belongs in the image rather than a release command because a PaaS one-off job
+# runs in its own throwaway container: files written there never reach the web
+# process. Baking it in also gives worker and beat the identical filesystem.
+# Uses the image's default dev settings, so no secret is needed to build.
+RUN python manage.py collectstatic --noinput
+
 EXPOSE 8000
 
 # Production app server: gunicorn driven by gunicorn.conf.py (workers/threads/

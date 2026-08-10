@@ -40,3 +40,11 @@ Enterprise AI Performance Management/
 
 # Scratch: overnight run prompts/logs (not part of the codebase)
 overnight/
+
+# collectstatic output — a build artifact, produced in the image (see Dockerfile).
+# The directory itself stays (STATIC_ROOT), so .gitkeep is kept explicitly.
+staticfiles/*
+!staticfiles/.gitkeep
+
+# Local env files that are not the committed placeholder template.
+env-for-testing.txt

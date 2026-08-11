@@ -7,6 +7,7 @@ Paths are declared WITHOUT a leading slash because they are appended to the
 from django.urls import path
 
 from .views import (
+    AiUsageView,
     CheckoutView,
     EntitlementView,
     FeatureFlagsView,
@@ -25,6 +26,9 @@ app_name = "billing"
 
 urlpatterns = [
     path("entitlement", EntitlementView.as_view(), name="entitlement"),
+    # AI consumption + estimated cost for THIS tenant (admin). The tenant is
+    # taken from the caller, never from a query param — see the view.
+    path("ai-usage", AiUsageView.as_view(), name="ai-usage"),
     path("upgrade", UpgradeView.as_view(), name="upgrade"),
     path("seats", SeatsView.as_view(), name="seats"),
     path("feature-flags", FeatureFlagsView.as_view(), name="feature-flags"),

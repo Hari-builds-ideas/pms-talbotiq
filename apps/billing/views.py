@@ -267,6 +267,86 @@ class _WebhookView(APIView):
         return Response(body, status=code)
 
 
+class AiUsageView(RBACMixin, APIView):
+    """``GET /api/billing/ai-usage`` (MANAGE_TENANT — Admin) — this tenant's AI
+    consumption and an ESTIMATED cost, plus the budgets that cap it.
+
+    The enforcement side already existed (``AgentBudget`` + the gateway's reservation)
+    but there was no way to SEE any of it without shell access to run the ``ai_usage``
+    management command. An admin who cannot see spend cannot manage it, and the first
+    they would learn of a runaway agent is the provider's invoice.
+
+    **Tenant scoping is structural, not a filter.** ``collect()`` takes a tenant SLUG,
+    and this view passes ``request.user.tenant.slug`` — never anything from the query
+    string. There is deliberately no way for an admin to name another tenant: a
+    parameter that accepted one would be a cross-tenant read one typo away, and the
+    operator-wide roll-up already exists as a CLI command for whoever runs the platform.
+
+    ``?days=`` is clamped to 1..365 so a caller cannot turn this into an unbounded scan.
+    """
+
+    required_capability = Capability.MANAGE_TENANT
+
+    #: Cost is an ESTIMATE from a price table in the repo. Published prices move, free
+    #: tiers and discounts are invisible from here, and only the provider's invoice is
+    #: authoritative — so every payload says so rather than implying a billing figure.
+    DISCLAIMER = ("Estimated from settings.LLM_PRICES; only the provider's invoice "
+                  "is authoritative.")
+
+    def get(self, request):
+        from .usage import collect
+
+        try:
+            days = int(request.query_params.get("days", 30))
+        except (TypeError, ValueError):
+            days = 30
+        days = max(1, min(days, 365))
+
+        usage = collect(days=days, tenant_slug=request.user.tenant.slug)
+
+        by_agent = [
+            {"agent_code": name, "calls": calls, "tokens": tokens,
+             "cost_usd": round(cost, 4)}
+            for name, (calls, tokens, cost) in usage.by("agent_code")
+        ]
+        by_model = [
+            {"model": name, "calls": calls, "tokens": tokens, "cost_usd": round(cost, 4)}
+            for name, (calls, tokens, cost) in usage.by("model")
+        ]
+
+        return Response({
+            "days": usage.days,
+            "since": usage.since,
+            "calls": usage.calls,
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+            "estimated_cost_usd": round(usage.cost_usd, 4),
+            # Models we have usage for but no price. Reported explicitly rather than
+            # folded in as zero, because a silent zero reads as "this was free".
+            "unpriced_models": usage.unpriced_models,
+            "by_agent": by_agent,
+            "by_model": by_model,
+            "budgets": self._budgets(),
+            "cost_is_estimate": True,
+            "note": self.DISCLAIMER,
+        })
+
+    @staticmethod
+    def _budgets():
+        """The caps in force for this tenant — the number the usage above runs against.
+
+        Read through the ordinary tenant-scoped manager, so this cannot see another
+        tenant's rows even if it wanted to.
+        """
+        from .models import AgentBudget
+
+        return [
+            {"agent_code": b.agent_code, "window": b.window, "limit": b.limit}
+            for b in AgentBudget.objects.all()
+        ]
+
+
 class StripeWebhookView(_WebhookView):
     """``POST /api/billing/webhooks/stripe`` — Stripe-signed events."""
     provider_name = "STRIPE"

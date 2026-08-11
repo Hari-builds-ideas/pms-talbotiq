@@ -294,3 +294,35 @@ Also states plainly that Docker's local driver loses logs on redeploy.
   Caddyfile deliberately does not publish it.
 - Ship logs off the host before needing to investigate last week.
 - Configure alerts on the SLIs already listed in `docs/OBSERVABILITY.md`.
+
+---
+
+## Tier 2 (items 7–10) ✅ all four already built — verified, not rebuilt
+
+| # | Item | Verified by |
+|---|---|---|
+| 7 | Self-serve signup | 16 tests green (`test_signup.py` + `test_invitations.py`): workspace creation, first admin, invite → accept |
+| 8 | CSV bulk import | `bulk_import_employees` returns `{created, updated, skipped, total, errors:[{row,email,error}]}`; a bad row is reported and skipped, never aborting the import; seat limit + role ceiling enforced server-side; manager lines resolved in a second pass so order in the file does not matter |
+| 9 | Empty-state UX | shared `EmptyState` component used across **19** screens |
+| 10 | Roles/permissions | 8/8 RBAC + 7/7 cross-tenant isolation in the 131-check handover suite, plus 97 billing/entitlement tests |
+
+Nothing to change. Item 7 is only *usable* once SMTP exists (item 3's human step).
+
+---
+
+## Tier 3 (items 11–16) — 1 done, 2 partial, 3 missing
+
+| # | Item | Status | Finding |
+|---|---|---|---|
+| 11 | Per-tenant AI config | ❌ missing | No per-tenant key storage, no AI toggle. One server env var serves every tenant — so one key, one bill, and an admin cannot rotate or disable AI themselves |
+| 12 | Cost controls | 🟡 partial | Enforcement is real (`AgentBudget` per tenant; the global ceiling tripped during testing). Visibility is not: `ai_usage` is CLI-only, with no admin endpoint or screen |
+| 13 | Plan gating | ✅ done | Starter/Professional/Enterprise, server-side entitlement gating, 97 tests; the handover suite proves a plan flip changes access server-side |
+| 14 | A11y + responsive | 🟡 partial | 29 a11y tests pass — axe WCAG 2.1 A/AA clean over the Admin Hub including the ⌘K palette. Responsive **not** verified: no phone pass was run, and I will not claim what I did not test |
+| 15 | Legal pages | ❌ missing | No Privacy Policy, Terms, or support contact. Blocks selling into any GDPR jurisdiction |
+| 16 | In-app help | ❌ missing | No getting-started for a new admin (the chat's "How to use" is chat-specific) |
+
+**Deliberately not built.** 11, 15 and 16 are features rather than hardening. Item 15
+especially needs a lawyer's words — a plausible-looking placeholder privacy policy is
+worse than none, because it reads as a promise nobody actually made.
+
+See `docs/PROD/PRODUCTION_CHECKLIST.md` for the verdict and blocker shortlist.

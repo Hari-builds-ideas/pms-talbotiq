@@ -24,6 +24,8 @@ import { ProfilePage } from "@/features/people/ProfilePage";
 import { RecognitionPage } from "@/features/recognition/RecognitionPage";
 import { CheckInsPage } from "@/features/checkins/CheckInsPage";
 import { AuditPage } from "@/features/audit/AuditPage";
+import { PrivacyPage, SupportPage, TermsPage } from "@/features/legal/LegalPages";
+import { GettingStartedPage } from "@/features/help/GettingStartedPage";
 
 /**
  * App routes. Each management/admin area is wrapped in a RoleGate so a
@@ -37,6 +39,10 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
         {/* Public self-serve new-organization signup (PROD_B). */}
         <Route path="/signup" element={<SignupPage />} />
+        {/* Public by necessity: a privacy policy behind a login is not one. */}
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/support" element={<SupportPage />} />
         {/* Public self-service password reset (FINAL F). */}
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -50,6 +56,7 @@ export function AppRouter() {
           }
         >
           <Route index element={<DashboardPage />} />
+          <Route path="help" element={<GettingStartedPage />} />
 
           <Route
             path="approvals/*"

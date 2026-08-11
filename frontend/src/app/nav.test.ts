@@ -12,7 +12,8 @@ import type { Role } from "@/lib/enums";
 const labels = (role: Role) => navForRole(role).flatMap((s) => s.items.map((i) => i.label));
 const sections = (role: Role) => navForRole(role).map((s) => s.title);
 
-const DASHBOARD = ["Dashboard"];
+// The untitled top section: Dashboard plus the always-available help page.
+const DASHBOARD = ["Dashboard", "Getting started"];
 const PERF_EMP = ["Goals & OKRs", "Reviews", "Feedback", "Check-ins", "Recognition"];
 const PERF_MGR = [...PERF_EMP, "Approvals"];
 // v1 scope cut (app/v1.ts): Career Paths, Succession and the "Configure" (raw-JSON
@@ -84,7 +85,8 @@ describe("navForRole — per-role sidebar surface (TalbotIQ IA)", () => {
 
   it("employee surface is strictly minimal and a subset of every higher role", () => {
     const emp = labels("EMPLOYEE");
-    expect(emp).toHaveLength(6); // Dashboard + 5 Performance items (Career Paths hidden in v1)
+    // Dashboard + Getting started + 5 Performance items (Career Paths hidden in v1)
+    expect(emp).toHaveLength(7);
     for (const role of ["MANAGER", "HRBP", "ADMIN"] as Role[]) {
       for (const item of emp) expect(labels(role)).toContain(item);
     }

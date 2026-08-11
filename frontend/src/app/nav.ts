@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Award,
+  LifeBuoy,
   BarChart3,
   CalendarCheck,
   ClipboardCheck,
@@ -57,6 +58,11 @@ export const NAV: NavSection[] = [
     title: "",
     items: [
       { label: "Dashboard", to: "/", icon: LayoutDashboard, minRole: "EMPLOYEE", end: true },
+      // Beside Dashboard rather than under Settings: it is for every role, and
+      // putting it in Settings dragged that whole section into an employee's
+      // sidebar. The page itself adapts — admin setup steps, or everyday
+      // orientation for everyone else.
+      { label: "Getting started", to: "/help", icon: LifeBuoy, minRole: "EMPLOYEE" },
     ],
   },
   {

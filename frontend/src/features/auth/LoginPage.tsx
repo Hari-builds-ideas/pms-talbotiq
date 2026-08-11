@@ -196,6 +196,22 @@ export function LoginPage() {
                 </Link>
               </p>
 
+              {/* Legal + support, reachable WITHOUT signing in — which is the only
+                  way they are any use to somebody deciding whether to sign up. */}
+              <p className="mt-6 text-center text-2xs text-muted-foreground">
+                <Link to="/privacy" className="hover:text-foreground hover:underline">
+                  Privacy
+                </Link>
+                <span aria-hidden className="mx-2">·</span>
+                <Link to="/terms" className="hover:text-foreground hover:underline">
+                  Terms
+                </Link>
+                <span aria-hidden className="mx-2">·</span>
+                <Link to="/support" className="hover:text-foreground hover:underline">
+                  Support
+                </Link>
+              </p>
+
               {USING_MOCKS && (
                 <div className="mt-6 rounded-lg border border-dashed border-border bg-secondary/40 p-3">
                   <p className="mb-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">

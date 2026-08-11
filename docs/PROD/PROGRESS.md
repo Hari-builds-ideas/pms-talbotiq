@@ -209,3 +209,54 @@ can write to. Fixed with `NUM_PROXIES` and covered by two tests.
 - Set `DJANGO_NUM_PROXIES=2` if a CDN is placed in front of Caddy.
 - Consider a WAF / edge rate limit for volumetric abuse — these limits are per
   application process and do not protect the network.
+
+---
+
+## Item 5 — Backups + a tested restore ✅ done (was entirely missing)
+
+**Changed**
+- `scripts/backup_db.sh` (new) — consistent (`--single-transaction`, InnoDB throughout,
+  so no lock-out), complete (`--routines --triggers --events`), replayable
+  (`--set-gtid-purged=OFF`, and no `--databases` so it can land in a differently named
+  DB), compressed, and **verified**: gzip-tested plus a grep for mysqldump's
+  `Dump completed` marker, deleting the file and exiting non-zero if either fails.
+  Optional `S3_BUCKET` offsite copy; local retention pruning.
+- `scripts/restore_db.sh` (new) — restores into a scratch DB **by default**, counts rows
+  in five core tables, and refuses a truncated dump before dropping anything. Restoring
+  over live data requires naming it in `RESTORE_TARGET` *and* typing it at a prompt.
+- `docs/PROD/BACKUP_RESTORE.md` (new) — the procedure, with the real output.
+
+**Tested for real, against this database — not described.**
+
+```
+✓ pms-20260811-183509.sql.gz ( 27M, 78 tables)
+
+▶ restoring -> pms_restore_check
+  tables: 78 · identity_user 80914 · tenant 6 · goals_goal 81566
+  reviews_review 219 · audit_log 15208
+✓ restore verified   (live database untouched; scratch DB dropped afterwards)
+
+✗ /tmp/truncated.sql.gz is truncated (no 'Dump completed' marker) — do not restore it
+```
+
+**Three bugs found by running it rather than reading it**
+1. `${DB_PASSWORD:?…(the app's database password)}` — the apostrophe inside a
+   `${VAR:?message}` broke bash's quote parsing and failed the script with a syntax
+   error reported **40 lines further down**. A comment now warns against it.
+2. `MYSQL_PWD=… docker compose exec …` sets the variable on the *host* shell, where the
+   in-container client never sees it → `Access denied … (using password: NO)`. Fixed by
+   exporting it and forwarding by name (`-e MYSQL_PWD`), which also keeps the value out
+   of the docker command line.
+3. The verification queried `tenancy_tenant` and `audit_auditlog`; the real tables are
+   `tenant` and `audit_log`. Both reported `n/a` — which reads like a footnote and would
+   have let a genuinely missing table pass the drill. Now `MISSING`, and it fails.
+
+**A human must**
+- Set `S3_BUCKET` (or equivalent). Until then every backup shares a disk with the
+  database it protects, which is the failure being insured against. Enable versioning +
+  write-only credentials so host-level ransomware cannot delete the backups.
+- Schedule it (cron line in the doc) and **put the monthly restore drill in the
+  calendar** — it is safe, takes a minute, and touches nothing live.
+- Decide RPO: nightly dumps mean up to 24h of loss; binlog archiving is needed for
+  point-in-time recovery.
+- Encrypt the dumps at rest — they hold every employee's performance data.

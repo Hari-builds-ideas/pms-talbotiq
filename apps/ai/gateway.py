@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from apps.billing.exceptions import BudgetExceeded
 from apps.billing.services import check_and_reserve_budget, record_usage, release_budget
 
+from .tenant_switch import ai_enabled_for
+
 from .exceptions import LLMGlobalCeilingError, LLMNotConfiguredError
 from .pii import scrub
 from .providers import get_llm_provider
@@ -32,6 +34,10 @@ from .tracing import trace
 logger = logging.getLogger("pms.ai.gateway")
 
 DEFAULT_CONFIDENCE_FLOOR = 0.70
+
+#: Carried in ``GatewayResult.errors`` when the tenant has switched AI off, so the
+#: "administrator turned this off" case is distinguishable from "no provider key".
+AI_DISABLED_DETAIL = "AI is switched off for this organisation."
 
 
 @dataclass
@@ -57,6 +63,22 @@ class LLMGateway:
         self, *, tenant, agent_code, prompt, model="default", schema=None,
         confidence_floor=DEFAULT_CONFIDENCE_FLOOR,
     ) -> GatewayResult:
+        # 0. The tenant's own AI switch, checked before anything else.
+        #
+        # Distinct from the entitlement: the plan says what a tenant MAY use, this
+        # says what they WANT enabled. An organisation with a policy against sending
+        # employee data to a model provider needs an off switch that does not require
+        # a downgrade, and it has to bind HERE rather than in the UI — hiding the
+        # buttons leaves every endpoint reachable.
+        #
+        # Reported as NOT_CONFIGURED rather than a new status on purpose. A dozen call
+        # sites already branch on it and degrade cleanly — 503, DEGRADED job, honest
+        # "assistant unavailable", never fabricated output. A new status would be
+        # unhandled in most of them, which is how an off switch turns into a 500. The
+        # reason travels in `errors` for anyone who needs to tell the two apart.
+        if not ai_enabled_for(tenant):
+            return GatewayResult(status="NOT_CONFIGURED", errors=[AI_DISABLED_DETAIL])
+
         provider = get_llm_provider()
         if not getattr(provider, "configured", False):
             return GatewayResult(status="NOT_CONFIGURED")
@@ -148,6 +170,11 @@ class LLMGateway:
         Returns a :class:`GatewayResult` whose ``content`` is
         ``{"text": …, "tool_calls": […]}``.
         """
+        # The tenant switch again — this is the OTHER way out to a provider, and a
+        # kill switch that covers one of two doors is not a kill switch.
+        if not ai_enabled_for(tenant):
+            return GatewayResult(status="NOT_CONFIGURED", errors=[AI_DISABLED_DETAIL])
+
         provider = get_llm_provider()
         if not getattr(provider, "configured", False):
             return GatewayResult(status="NOT_CONFIGURED")

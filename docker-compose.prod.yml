@@ -26,6 +26,12 @@ x-app-environment: &app_environment
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set a long random production secret}
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?comma-separated prod hostnames}
   DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+  # TLS is terminated at Caddy, which forwards X-Forwarded-Proto; prod.py reads it
+  # via SECURE_PROXY_SSL_HEADER, so this redirect sees the real scheme and does not
+  # loop. Both default to on in prod.py — pinned here so the posture is visible in
+  # the deployment file rather than only in code.
+  DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-true}
+  DJANGO_HSTS_SECONDS: ${DJANGO_HSTS_SECONDS:-31536000}
   DB_NAME: ${DB_NAME:-pms}
   DB_USER: ${DB_USER:-pms}
   DB_PASSWORD: ${DB_PASSWORD:?set the database password}
@@ -58,6 +64,46 @@ x-app-build: &app_build
   image: pms-talbotiq:prod
 
 services:
+  # ── public TLS edge (the ONLY container that binds a public port) ───────────
+  # Obtains and renews a Let's Encrypt certificate automatically; see ./Caddyfile
+  # for the routing split. DOMAIN must already resolve to this host, and :80 must
+  # be reachable from the internet — the HTTP-01 challenge is answered on it, so
+  # closing :80 breaks renewal ~60 days later, not today.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?the public hostname pointed at this server, e.g. pms.acme.com}
+      ACME_EMAIL: ${ACME_EMAIL:?an address Let's Encrypt can send expiry warnings to}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # KEEP caddy_data: it holds the issued certificates and the ACME account key.
+      # Losing it forces re-issue, and Let's Encrypt allows only 5 duplicate
+      # certificates per week — lose it twice in a week and the site is HTTP-only
+      # until the window rolls.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - frontend
+    restart: unless-stopped
+
+  # ── the built SPA (internal only; Caddy is the public door) ────────────────
+  frontend:
+    build:
+      # Repo-root context: the SPA imports the sibling shared/ via the @shared
+      # alias, and a ./frontend context omits it (see frontend/Dockerfile).
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_USE_MOCKS: "false"
+        VITE_API_BASE_URL: /api
+    expose:
+      - "80"
+    restart: unless-stopped
+
   # ── one-shot migration (the SINGLE place migrations run in prod) ────────────
   # deploy_migrate (E2) wraps `migrate` in a MySQL advisory lock: even if this job
   # is ever run more than once concurrently, only one session migrates; the rest
@@ -129,3 +175,6 @@ services:
 
 volumes:
   mysql_data:
+  # Issued certificates + the ACME account key. Treat as state, not cache.
+  caddy_data:
+  caddy_config:

@@ -32,3 +32,20 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
+
+# How many reverse proxies sit in front of Django — REQUIRED once one does.
+#
+# Behind the TLS edge every request arrives with REMOTE_ADDR set to the proxy, so
+# DRF identifies anonymous clients from X-Forwarded-For instead. With NUM_PROXIES
+# unset it keys on the WHOLE header, and a proxy APPENDS to that header rather
+# than replacing it — so a client that sends its own X-Forwarded-For gets a
+# different throttle key on every request and the per-IP limit protecting the
+# login surface stops existing. Demonstrated: rotating a forged value yields the
+# keys '1.1.1.1,203.0.113.9', '2.2.2.2,203.0.113.9', … one bucket each.
+#
+# Set to the number of proxies and DRF takes the address that many hops from the
+# right — the one the outermost proxy actually observed, which a client cannot
+# forge. 1 = Caddy alone. Put a CDN in front (Cloudflare, CloudFront) and this
+# becomes 2; get it wrong and you either trust a forged hop (too high) or throttle
+# every user as one (too low).
+REST_FRAMEWORK = {**REST_FRAMEWORK, "NUM_PROXIES": env.int("DJANGO_NUM_PROXIES", default=1)}  # noqa: F405

@@ -1,0 +1,69 @@
+# Axiom PMS — public TLS edge.
+#
+# Caddy is the ONLY container that binds a public port. It terminates TLS with a
+# certificate it obtains and renews from Let's Encrypt automatically (HTTP-01 on
+# :80), then splits traffic two ways:
+#
+#   Django paths  -> web:8000        (the API, allauth SSO, whitenoise static)
+#   everything else -> frontend:80   (the built SPA; unknown paths fall to index.html)
+#
+# Routing the API here rather than chaining through the SPA's nginx keeps ONE
+# reverse proxy in the request path and one place that decides who owns a URL.
+#
+# REQUIREMENTS (both from the environment, never hardcoded):
+#   DOMAIN      the hostname pointed at this server, e.g. pms.acme.com
+#   ACME_EMAIL  the address Let's Encrypt uses for expiry warnings
+#
+# Certificates live in the `caddy_data` volume. Keep that volume: destroying it
+# forces a re-issue, and Let's Encrypt rate-limits (5 duplicate certs/week).
+
+{
+	# Expiry notices + recovery contact for the ACME account.
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# Uploads: keep in step with nginx's client_max_body_size (10m) so a large
+	# avatar fails the same way at both tiers instead of only at the inner one.
+	request_body {
+		max_size 10MB
+	}
+
+	# ── Django-owned paths ───────────────────────────────────────────────────
+	# /metrics is deliberately ABSENT: it is token-gated but there is no reason to
+	# publish it. Scrape it from inside the compose network. To expose it anyway,
+	# add `/metrics` to the matcher below and keep METRICS_TOKEN long and secret.
+	@django path /api/* /accounts/* /static/* /healthz /readyz
+	handle @django {
+		reverse_proxy web:8000 {
+			# Django reads X-Forwarded-Proto via SECURE_PROXY_SSL_HEADER to know the
+			# original request was HTTPS. Without it, SECURE_SSL_REDIRECT=true sees
+			# "http" on every proxied request and redirects forever. Caddy sets the
+			# X-Forwarded-* family by default; named here because the app depends on it.
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# ── the SPA ──────────────────────────────────────────────────────────────
+	handle {
+		# Django sets these on its own responses (config/settings/prod.py). The SPA
+		# is served by nginx, which sets none, so the edge supplies them here —
+		# scoped to this block so Django-proxied responses are not double-stamped.
+		header {
+			Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			-Server
+		}
+		reverse_proxy frontend:80
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

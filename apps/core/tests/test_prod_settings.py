@@ -84,3 +84,79 @@ def test_compose_never_pins_the_token_budget_below_the_settings_default():
             f"{path} pins LLM_MAX_TOKENS={pinned}, below the settings default "
             f"{settings.LLM_MAX_TOKENS} — long-form drafts will be truncated mid-JSON"
         )
+
+
+# ── the TLS edge (Caddy), and what putting a proxy in front changes ───────────
+
+
+def test_prod_declares_how_many_proxies_front_it():
+    """Behind the TLS edge, the per-IP limit on the login surface must still bind.
+
+    Every request now reaches Django with REMOTE_ADDR set to Caddy, so DRF
+    identifies anonymous clients from X-Forwarded-For instead. A proxy APPENDS to
+    that header rather than replacing it, so with NUM_PROXIES unset DRF keys on the
+    whole chain — and a client that sends its own X-Forwarded-For lands in a fresh
+    bucket on every request, which is unlimited login attempts. See the companion
+    test below for the behaviour this buys.
+    """
+    probe = (
+        "import django; django.setup(); from django.conf import settings; "
+        "print(settings.REST_FRAMEWORK.get('NUM_PROXIES'))"
+    )
+    env = dict(os.environ)
+    env["DJANGO_SETTINGS_MODULE"] = "config.settings.prod"
+    env["PMS_DOTENV_PATH"] = "/nonexistent/.env"
+    env.setdefault("DJANGO_SECRET_KEY", "x" * 50)
+    env.setdefault("DJANGO_ALLOWED_HOSTS", "example.com")
+    out = subprocess.run([sys.executable, "-c", probe], env=env,
+                         capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert int(out.stdout.strip()) >= 1, (
+        "prod must declare how many proxies front it, or the anon throttle is forgeable"
+    )
+
+
+def test_a_forged_forwarded_for_cannot_buy_a_fresh_throttle_bucket():
+    from django.conf import settings
+    from django.test import RequestFactory, override_settings
+    from rest_framework.throttling import AnonRateThrottle
+
+    real = "203.0.113.9"
+
+    def req(forged):
+        # What Caddy hands Django: the client's own header, then the address Caddy saw.
+        return RequestFactory().get(
+            "/api/auth/login",
+            REMOTE_ADDR="172.18.0.5",
+            HTTP_X_FORWARDED_FOR=f"{forged}, {real}",
+        )
+
+    with override_settings(REST_FRAMEWORK={**settings.REST_FRAMEWORK, "NUM_PROXIES": 1}):
+        throttle = AnonRateThrottle()
+        assert throttle.get_ident(req("1.1.1.1")) == real
+        assert throttle.get_ident(req("1.1.1.1")) == throttle.get_ident(req("2.2.2.2")), (
+            "rotating a forged X-Forwarded-For still yields a different bucket"
+        )
+
+
+def test_only_the_tls_edge_publishes_a_host_port():
+    """Caddy is the single public door. Anything else binding a host port is
+    reachable without TLS and without the headers the edge adds."""
+    import pathlib
+
+    import yaml
+
+    compose = yaml.safe_load(pathlib.Path("docker-compose.prod.yml").read_text())
+    publishing = sorted(n for n, s in compose["services"].items() if s.get("ports"))
+    assert publishing == ["caddy"], f"these services publish host ports: {publishing}"
+
+
+def test_the_caddyfile_bakes_in_no_hostname():
+    """A committed domain is somebody else's certificate; both come from the env."""
+    import pathlib
+    import re
+
+    text = pathlib.Path("Caddyfile").read_text()
+    assert "{$DOMAIN}" in text
+    assert "{$ACME_EMAIL}" in text
+    assert not re.search(r"^[a-z0-9.-]+\.(com|io|net|org|dev)\s*\{", text, re.M | re.I)

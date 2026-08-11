@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//": "FREE Vercel deploy for the React SPA (V1_C / DEPLOY_DEMO.md). Built from the REPO ROOT (not a frontend/ root dir) because the SPA imports the sibling ../shared/src via the @shared alias. The /api rewrite PROXIES to the Render backend so the browser sees ONE origin — no CORS + no backend change needed. ⚠ Replace the destination host below with YOUR Render URL after the backend deploys (one edit). With the proxy in place, leave VITE_API_BASE_URL unset (the SPA defaults to same-origin /api).",
+  "//": "Vercel deploy for the React SPA (see docs/RAILWAY_DEPLOY.md for the API side). Built from the REPO ROOT (not a frontend/ root dir) because the SPA imports the sibling ../shared/src via the @shared alias. The /api rewrite PROXIES to the Railway backend so the browser sees ONE origin — no CORS + no backend change needed. Leave VITE_API_BASE_URL unset: the SPA then defaults to same-origin /api (frontend/src/lib/api/configure.ts) and this rewrite carries it to Railway. If the API host ever changes, the destination below is the ONE line to edit.",
   "framework": null,
   "installCommand": "cd frontend && npm ci",
   "buildCommand": "cd frontend && npm run build",
@@ -8,7 +8,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE-WITH-YOUR-RENDER-HOST.onrender.com/api/:path*"
+      "destination": "https://talbotiq-pms-api-production.up.railway.app/api/:path*"
     },
     { "source": "/(.*)", "destination": "/index.html" }
   ]

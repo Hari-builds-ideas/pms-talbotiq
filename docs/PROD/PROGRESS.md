@@ -260,3 +260,37 @@ can write to. Fixed with `NUM_PROXIES` and covered by two tests.
 - Decide RPO: nightly dumps mean up to 24h of loss; binlog archiving is needed for
   point-in-time recovery.
 - Encrypt the dumps at rest — they hold every employee's performance data.
+
+---
+
+## Item 6 — Health + monitoring ✅ done (already strong; documented the gap)
+
+**Verified live, not read:**
+
+| Endpoint | Result |
+|---|---|
+| `/healthz` | **200** — liveness (process is up) |
+| `/readyz` | **200**, and it names every dependency: `DatabaseBackend`, `DatabaseReplica`, `Cache backend: default`, `Cache backend: sessions`, `CeleryBroker`, `RedisHealthCheck`, `MigrationsHealthCheck` — all `up` |
+| `/metrics` | **401** — token-gated, not disabled (correct: it is enabled and refusing an unauthenticated scrape) |
+
+`/readyz` naming the failing dependency is the difference between a five-minute and a
+fifty-minute outage, so it is the first triage step in the runbook.
+
+**Sentry** is already correct and needs no change: no-op without `SENTRY_DSN`, lazy
+import so disabling it costs nothing, **both** Django and Celery integrations (async AI
+job failures are captured, not just HTTP), `send_default_pii=False`, and a `before_send`
+that scrubs headers/body/cookies/extra and tags each event with `tenant_id` +
+`request_id`.
+
+**Changed** — `docs/OBSERVABILITY.md` gained a *Reading the logs* section: the actual
+commands, the `[req=… tenant=…]` prefix explained against a real line, how to follow one
+request across `web` and `celery-worker` with a single grep on the correlation id, `jq`
+recipes for the JSON format prod emits, and a triage order that starts at `/readyz`.
+Also states plainly that Docker's local driver loses logs on redeploy.
+
+**A human must**
+- Set `SENTRY_DSN` + `SENTRY_ENVIRONMENT` (blank disables cleanly — no error, no events).
+- Set `METRICS_TOKEN` and point a scraper at `/metrics` **from inside the network**; the
+  Caddyfile deliberately does not publish it.
+- Ship logs off the host before needing to investigate last week.
+- Configure alerts on the SLIs already listed in `docs/OBSERVABILITY.md`.

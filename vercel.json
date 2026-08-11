@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//": "Vercel deploy for the React SPA (see docs/RAILWAY_DEPLOY.md for the API side). Built from the REPO ROOT (not a frontend/ root dir) because the SPA imports the sibling ../shared/src via the @shared alias. The /api rewrite PROXIES to the Railway backend so the browser sees ONE origin — no CORS + no backend change needed. Leave VITE_API_BASE_URL unset: the SPA then defaults to same-origin /api (frontend/src/lib/api/configure.ts) and this rewrite carries it to Railway. If the API host ever changes, the destination below is the ONE line to edit.",
   "framework": null,
   "installCommand": "cd frontend && npm ci",
   "buildCommand": "cd frontend && npm run build",

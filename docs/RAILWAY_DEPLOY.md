@@ -277,9 +277,34 @@ will vanish. Attach a Railway **Volume** mounted at `/app/media` on the web serv
 object storage (the documented upgrade path). Not a blocker for a demo; a data-loss bug if
 anyone treats it as real.
 
-**Frontend.** This deploys the **API only**. The React SPA deploys separately (Vercel,
-`vercel.json`). After the API is live, point the SPA's API base URL at the Railway domain and
-set `DJANGO_CSRF_TRUSTED_ORIGINS` + `PUBLIC_APP_URL` to the SPA origin.
+---
+
+## 8. The frontend (Vercel) — this guide deploys the API only
+
+Django serves no frontend: `config/urls.py` is API-only, and locally it is the `frontend/`
+nginx container — not Django — that serves the bundle and reverse-proxies `/api` to the web
+tier. So a Railway-only deploy answers `/healthz` and 404s `/`, `/signup` and `/admin/`. That
+is correct, and it is not a usable app until the SPA ships somewhere.
+
+`vercel.json` at the repo root does that. Three things about it are easy to get wrong, and
+Vercel's config format allows no comments to warn you in place:
+
+1. **Import with the root directory set to the REPO ROOT**, not `frontend/`. The SPA imports
+   the sibling `../shared/src` through the `@shared` alias, so a `frontend/` root cannot see
+   it and the build fails. `vercel.json` already sets `installCommand`, `buildCommand` and
+   `outputDirectory` to reach into `frontend/` from the root.
+2. **Leave `VITE_API_BASE_URL` unset.** The SPA then defaults to same-origin `/api`
+   (`frontend/src/lib/api/configure.ts`), and the `/api/:path*` rewrite proxies that to
+   Railway. One origin in the browser means there is no CORS to configure at all. Setting it
+   to the Railway URL works too, but then you own the CORS config.
+3. **If the API host changes, the `rewrites[0].destination` in `vercel.json` is the one line
+   to edit.**
+
+Then set `DJANGO_CSRF_TRUSTED_ORIGINS` and `PUBLIC_APP_URL` on the Railway `web` service to
+the Vercel origin, and seed the database (`python manage.py seed_demo_rich`) or there will be
+no accounts to log in with.
+
+Users visit **`https://<your-app>.vercel.app/login`** — never the Railway domain.
 
 **No secrets in git.** Every secret above goes in Railway's **Variables** UI. `.env` is
 gitignored (`.gitignore:16`); only `.env.example` placeholders are committed. Nothing in this

@@ -17,3 +17,7 @@ class CoreConfig(AppConfig):
 
         plugin_dir.register(CeleryBrokerHealthCheck)
         plugin_dir.register(ReplicaDatabaseHealthCheck)
+
+        # Deploy-time configuration checks. Importing the module is what registers
+        # them; they run only under `manage.py check --deploy`.
+        from . import checks  # noqa: F401

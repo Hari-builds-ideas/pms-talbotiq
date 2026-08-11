@@ -120,3 +120,92 @@ is the single function to repoint for per-tenant integration tokens.
 - **Rotate the Gemini key that is currently in the local `.env`** — it is not committed,
   but it has been pasted into terminals and is known-invalid anyway (see the API-key
   check in the previous session).
+
+---
+
+## Item 3 — Real email/SMTP ✅ done (code was ready; the failure mode was not guarded)
+
+**Already correct.** All four mail paths — password reset (`identity/views.py:269`),
+welcome (`signup_views.py:96`), invitation (`invite_views.py:82`) and email-change
+verification (`profile_views.py:256`) — go through `send_mail`, are fully env-driven,
+and keep the console backend as the dev default. `fail_silently` is never passed
+anywhere, so a real SMTP failure raises rather than vanishing; the reset path
+deliberately catches and logs it so a mail outage cannot 500 or leak whether an
+account exists.
+
+**Proven, not assumed.** Stood up a real SMTP server on a socket, pointed Django's
+**actual** `smtp.EmailBackend` at it via the same env vars a deployment sets, and sent
+through the product's own code path:
+
+```
+send_mail returned: 1
+messages received over SMTP: 1
+RESULT: SMTP PATH WORKS
+```
+
+**The gap that was real.** Nothing stopped a deployment shipping with the console
+backend, and that failure is silent in the worst way: every request returns 200, the
+reset link is written to a container log, and *no one can join the product or recover
+an account*. Same for `PUBLIC_APP_URL` left at localhost — the mail is delivered,
+opened, and useless, and the failure lands on the recipient where nothing alerts.
+
+**Changed**
+- `apps/core/checks.py` (new) — deploy-time checks, registered `deploy=True` so they
+  run under `manage.py check --deploy` and never during ordinary tests:
+  - `pms.E001` non-delivering `EMAIL_BACKEND` (console/dummy/locmem/filebased)
+  - `pms.E002` SMTP selected but `EMAIL_HOST`/`DEFAULT_FROM_EMAIL` unset
+  - `pms.E003` `PUBLIC_APP_URL` missing, localhost, or not absolute
+  - `pms.W001` `LLM_MAX_CALLS` still at the dev-sized ceiling
+- `apps/core/apps.py` — import the module so the checks register.
+- `apps/core/tests/test_deploy_checks.py` (new) — 8 tests, each asserting the check
+  **fires** on the development default, not merely that it passes when correct.
+
+**Verified end to end.** With the trap config the deploy is blocked:
+`SystemCheckError … (pms.E001) … (pms.E003) … (pms.W001)`. With SMTP, a real
+`DEFAULT_FROM_EMAIL`, an https `PUBLIC_APP_URL` and a production ceiling, all `pms.*`
+issues are silent. 18/18 tests pass.
+
+**A human must**
+- Provide SMTP credentials (SES / SendGrid / Mailgun / Postmark) and set
+  `EMAIL_BACKEND`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`,
+  `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, `PUBLIC_APP_URL`.
+- Complete the provider's **domain authentication (SPF/DKIM)** — without it this mail
+  lands in spam, which looks identical to "the product is broken" to a new customer.
+- Run `manage.py check --deploy` as a release gate; it now fails the deploy on the
+  above rather than letting it through.
+
+---
+
+## Item 4 — Security headers + rate limiting ✅ done (verified; one real fix in item 1)
+
+**Headers** — all set in `config/settings/prod.py` and asserted by
+`test_prod_loads_secure_with_required_env`:
+
+| Control | Setting | Value |
+|---|---|---|
+| HSTS | `SECURE_HSTS_SECONDS` + subdomains + preload | 1 year |
+| Clickjacking | `X_FRAME_OPTIONS` | `DENY` |
+| MIME sniffing | `SECURE_CONTENT_TYPE_NOSNIFF` | on |
+| Session cookie | `SESSION_COOKIE_SECURE` / `HTTPONLY` / `SAMESITE` | True / True / Lax |
+| CSRF cookie | `CSRF_COOKIE_SECURE`, `CSRF_TRUSTED_ORIGINS` | True, env-driven |
+| HTTPS | `SECURE_SSL_REDIRECT` + `SECURE_PROXY_SSL_HEADER` | on, proxy-aware |
+| `DEBUG` | hard-coded | `False` |
+
+The SPA is served by nginx, which sets none of these, so the Caddy config adds HSTS,
+nosniff, `X-Frame-Options` and a referrer policy on the SPA branch only — Django-served
+responses are not double-stamped.
+
+**Rate limiting** — `TenantThrottle` + `UserThrottle` globally (rates resolved per
+request from the tenant's entitlement, not from settings), `AnonRateThrottle` on the
+login surface (`THROTTLE_ANON`, default 100/min), a dedicated `AIThrottle` attached per
+view, and a per-`(tenant, email)` login lockout (`LOGIN_LOCKOUT_ATTEMPTS`, default 8 per
+15 min) independent of IP.
+
+**The real finding is recorded under item 1**: terminating TLS upstream silently made
+the per-IP limit forgeable, because DRF keys anonymous clients on a header the client
+can write to. Fixed with `NUM_PROXIES` and covered by two tests.
+
+**A human must**
+- Set `DJANGO_NUM_PROXIES=2` if a CDN is placed in front of Caddy.
+- Consider a WAF / edge rate limit for volumetric abuse — these limits are per
+  application process and do not protect the network.

@@ -8,6 +8,7 @@ because the failure is at settings import — the running test process is alread
 test settings.
 """
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -149,6 +150,56 @@ def test_only_the_tls_edge_publishes_a_host_port():
     compose = yaml.safe_load(pathlib.Path("docker-compose.prod.yml").read_text())
     publishing = sorted(n for n, s in compose["services"].items() if s.get("ports"))
     assert publishing == ["caddy"], f"these services publish host ports: {publishing}"
+
+
+def test_no_committed_file_carries_a_credential_shaped_string():
+    """The templates are placeholders; a real key reaching git is the one mistake
+    that cannot be undone by a later commit."""
+    import re
+
+    from django.conf import settings
+
+    pattern = re.compile(
+        r"AIza[0-9A-Za-z_-]{30,}|AQ\.[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{20,}|"
+        r"sk_live_[A-Za-z0-9]{10,}|rzp_live_[A-Za-z0-9]{10,}|ghp_[A-Za-z0-9]{20,}|"
+        r"AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|whsec_[A-Za-z0-9]{20,}"
+    )
+    # Walk the tree rather than shelling out to git: the runtime image ships no git
+    # binary, and a guard that skips in the only place it runs guards nothing.
+    skip_dirs = {"node_modules", ".git", "staticfiles", "media", "dist", "__pycache__",
+                 ".venv", "venv", ".mypy_cache", ".pytest_cache"}
+    suffixes = (".py", ".md", ".yml", ".yaml", ".json", ".ts", ".tsx", ".sh",
+                ".conf", ".example", ".env", ".toml", ".cfg")
+    root = pathlib.Path(settings.BASE_DIR)
+    offenders = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.suffix not in suffixes:
+            continue
+        if skip_dirs & set(path.relative_to(root).parts):
+            continue
+        # The developer's own .env is gitignored and legitimately holds real keys.
+        if path.name == ".env":
+            continue
+        try:
+            if pattern.search(path.read_text(errors="ignore")):
+                offenders.append(str(path.relative_to(root)))
+        except OSError:
+            continue
+    assert not offenders, f"credential-shaped strings in committed files: {offenders}"
+
+
+def test_local_secret_files_are_gitignored():
+    from django.conf import settings
+
+    # Read .gitignore directly — see the note above about git not existing here.
+    rules = {
+        line.strip()
+        for line in (pathlib.Path(settings.BASE_DIR) / ".gitignore").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    for name, covering in ((".env", {".env", "*.env"}),
+                           ("env-for-testing.txt", {"env-for-testing.txt"})):
+        assert rules & covering, f"{name} is not covered by .gitignore (looked for {covering})"
 
 
 def test_the_caddyfile_bakes_in_no_hostname():

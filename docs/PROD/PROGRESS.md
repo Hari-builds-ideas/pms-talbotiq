@@ -75,3 +75,48 @@ only control, but it is exactly the control that makes password spraying expensi
 - **Back up the `caddy_data` volume.** It holds the issued certificate and the ACME
   account key; Let's Encrypt allows 5 duplicate certs per week, so losing it twice in a
   week leaves the site HTTP-only until the window rolls.
+
+---
+
+## Item 2 — Secrets ✅ done (was already sound; now proven and documented)
+
+**Audited, not assumed.** Scanned **all 444 commits** in the repo's history — every
+diff, not just the working tree — for credential-shaped strings (Google `AIza…`/`AQ.…`,
+OpenAI `sk-…`, Stripe `sk_live_`/`whsec_`, Razorpay `rzp_live_`, GitHub `ghp_`, AWS
+`AKIA…`, PEM private keys).
+
+| Check | Result |
+|---|---|
+| Credential-shaped strings in any committed diff | **NONE** |
+| `.env` ever committed | **never** |
+| `.env` / `env-for-testing.txt` gitignored | ✅ both |
+| Tracked env files | only `.env.example`, `frontend/.env.example` — placeholders (`CHANGE-ME`) |
+| `apps/integrations/secrets.py` (flagged by name) | legitimate: resolves tokens from the env by name, no literals, already documents the KMS/Vault swap |
+
+**Changed**
+- `docs/PROD/ENVIRONMENT.md` (new) — the single "what must I set" reference, split into
+  fail-closed (won't boot without), required-to-actually-work (boots and silently
+  degrades — the more dangerous class), and deployment-shape. Marks every secret, and
+  derives the fail-closed list from the code rather than by hand.
+- Two guards in `apps/core/tests/test_prod_settings.py`: a credential-pattern scan over
+  the tree, and a `.gitignore` coverage check.
+
+**A note on those guards.** Both first shelled out to `git` — and the runtime image has
+no git binary, so both errored. Making them `skip` would have been worse than useless:
+they'd skip in the only place they ever run. They now walk the filesystem and parse
+`.gitignore` directly, so they actually execute (10/10 pass, no skips).
+
+**Secret-store recommendation** (in `ENVIRONMENT.md`): a `.env` file is fine locally but
+is the weakest link in production — plaintext on the host, survives into backups and
+images, no rotation or audit trail. Preferred order: the platform's own secret store
+(injected as env vars, so **no code change** — everything already reads the environment)
+→ a managed manager (AWS/GCP Secret Manager, Vault) fetched at boot via an IAM role →
+and only then a `chmod 600` file on an encrypted volume. `apps/integrations/secrets.py`
+is the single function to repoint for per-tenant integration tokens.
+
+**A human must**
+- Decide the secret store and move `DJANGO_SECRET_KEY`, `DB_PASSWORD`, `GEMINI_API_KEY`,
+  `EMAIL_HOST_PASSWORD` and `METRICS_TOKEN` into it before real customer data lands.
+- **Rotate the Gemini key that is currently in the local `.env`** — it is not committed,
+  but it has been pasted into terminals and is known-invalid anyway (see the API-key
+  check in the previous session).

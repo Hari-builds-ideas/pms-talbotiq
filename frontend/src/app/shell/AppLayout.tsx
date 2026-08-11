@@ -30,6 +30,20 @@ export function AppLayout() {
   );
 }
 
+/** Is the viewport at Tailwind's `lg` breakpoint or wider?
+ *
+ * Guarded rather than calling `window.matchMedia` directly: it does not exist under
+ * SSR, and jsdom does not implement it either, so an unguarded call takes out every
+ * test that renders the shell. Absent → assume desktop, which is the layout this app
+ * has always had. */
+function isDesktopViewport(): boolean {
+  return (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function" ||
+    window.matchMedia("(min-width: 1024px)").matches
+  );
+}
+
 /** hex "#RRGGBB" → the "H S% L%" triple the CSS tokens use. */
 function hexToHslTriple(hex: string): string | null {
   const m = /^#([0-9a-f]{6})$/i.exec(hex);
@@ -59,7 +73,16 @@ function hexToHslTriple(hex: string): string | null {
  * tenant's primary brand color when the plan includes custom_branding (L1.5). */
 function ShellFrame() {
   const location = useLocation();
-  const [navOpen, setNavOpen] = useState(true);
+  // Open on desktop, CLOSED on a phone. It used to start open at every width, and
+  // since the sidebar is 256px wide that left a 390px screen about 130px of content:
+  // the dashboard rendered with its stat cards overlapping each other. The topbar's
+  // menu button already toggled it — only the default was wrong.
+  const [navOpen, setNavOpen] = useState(isDesktopViewport);
+  // Close it again after navigating on mobile, where it sits ON TOP of the page —
+  // otherwise tapping a nav item leaves the menu covering the screen you asked for.
+  useEffect(() => {
+    if (!isDesktopViewport()) setNavOpen(false);
+  }, [location.pathname]);
   const { open: chatOpen, width: chatWidth } = useChatPanel();
   const { me } = useAuth();
   const brandColor = me?.tenant_branding?.primary_color;
@@ -79,6 +102,16 @@ function ShellFrame() {
       style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}
     >
       {navOpen && <Sidebar />}
+      {/* Backdrop for the overlaying mobile sidebar: gives it an obvious way to be
+          dismissed. lg:hidden so the desktop layout is untouched. */}
+      {navOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setNavOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onToggleNav={() => setNavOpen((v) => !v)} />
         <main

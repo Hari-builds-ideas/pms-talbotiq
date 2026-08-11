@@ -62,7 +62,11 @@ export function Sidebar() {
   const sections = navForRole(me?.role ?? "EMPLOYEE");
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+    // Below lg the sidebar OVERLAYS the content instead of sitting beside it.
+    // Inline, its w-64 is 256 of a phone's 390px and the page is left with ~130 —
+    // enough for the dashboard stat cards to land on top of each other. From lg up
+    // this is `relative` again, i.e. exactly the desktop layout it has always had.
+    <aside className="fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar shadow-xl lg:relative lg:z-auto lg:shadow-none">
       {/* Brand lockup (see SidebarBrand — tenant logo overrides, with fallback). */}
       <div className="flex h-16 items-center px-5">
         <SidebarBrand

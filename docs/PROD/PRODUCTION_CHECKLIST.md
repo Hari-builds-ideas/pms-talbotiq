@@ -3,24 +3,25 @@
 Branch `hari/prod-hardening`. Every "done" below was **verified by running something**,
 not by reading code; the evidence is in `docs/PROD/PROGRESS.md`.
 
-## Production-ready: **NO — but the security tier is done**
+## Production-ready: **NO — but every remaining blocker is yours, not the code's**
 
-Nothing in Tier 1 is outstanding as *engineering*. What remains is (a) configuration only
-a human can supply, and (b) four product gaps, one of which you cannot legally sell
-without.
+All 16 items are now built as far as is possible without human-supplied inputs. Nothing
+is outstanding as *engineering*. What remains is configuration, one piece of legal text,
+and one deliberate refusal (per-tenant API key storage — see item 11).
 
 ### Blockers before a real company uses this
 
 | # | Blocker | Who |
 |---|---|---|
-| B1 | **Legal pages** — no Privacy Policy or Terms exist. You are processing employee performance data; in the EU/UK that is GDPR-regulated. Not sellable without them. | human (item 15) |
-| B2 | **SMTP credentials** — without them nobody can accept an invite or reset a password. Code is done and proven; the account is not. | human (item 3) |
+| B1 | **Legal text.** The Privacy/Terms **pages, routes and links now exist**, carrying a visible "Draft — pending legal review" banner. You process employee performance data (GDPR-regulated in the EU/UK), so the bodies need counsel's words before you sell. A test asserts the banner, so removing it is a deliberate line in a diff. | human (item 15) |
+| B2 | **SMTP credentials** — without them nobody can accept an invite or reset a password. The code is done and proven over a real socket, and the deploy check now *fails* rather than silently swallowing mail. | human (item 3) |
 | B3 | **Domain + DNS** for TLS, and `:80`/`:443` open. | human (item 1) |
-| B4 | **Offsite backups** — `S3_BUCKET` is unset, so every backup currently shares a disk with the database it protects. | human (item 5) |
+| B4 | **Offsite backups** — `S3_BUCKET` unset, so every backup shares a disk with the database it protects. | human (item 5) |
 | B5 | **A working Gemini key** — the one in `.env` is rejected by Google (401, wrong credential type). AI degrades to a clean 503, so this blocks the AI story, not the app. | human |
 | B6 | **Secret store decision** — `.env` on a host is the weakest link once real customer data lands. | human (item 2) |
+| B7 | **Set `VITE_SUPPORT_EMAIL`** — it falls back to an obvious `support@example.com` placeholder rather than a plausible address nobody reads. | human (item 15) |
 
-None of B1–B6 needs more code.
+None of B1–B7 needs more code.
 
 ---
 
@@ -50,12 +51,12 @@ None of B1–B6 needs more code.
 
 | # | Item | Status | Reality | Human must |
 |---|---|---|---|---|
-| 11 | Per-tenant AI config | ❌ **missing** | There is no per-tenant key storage and no AI on/off toggle. The Gemini key is a **single server env var**, so every tenant shares one key and one bill, and an admin cannot rotate or disable AI themselves | Decide: acceptable for early customers (you operate the key), or build it |
-| 12 | Cost controls | 🟡 **partial** | *Enforcement exists* — `AgentBudget` is per-tenant, and the global ceiling works (it tripped during testing). *Visibility does not* — `ai_usage` is a CLI command; there is no admin-facing usage/cost endpoint or screen | Build the admin view, or report cost manually |
-| 13 | Billing/plan gating | ✅ **done** | Starter/Professional/Enterprise with server-side entitlement gating; 97 tests, and the handover suite proves a plan flip changes feature access server-side | Payments stay in test mode until you go live |
-| 14 | Accessibility + responsive | 🟡 **partial** | **a11y verified**: 29 tests, axe WCAG 2.1 A/AA clean across Admin Hub screens including the command palette. **Responsive not verified by me** — no phone-browser pass was run | Walk the app on a real phone before demoing it as mobile-ready |
-| 15 | Legal/marketing pages | ❌ **missing** | No Privacy Policy, no Terms, no support contact anywhere in the app | **Blocker B1.** Needs real legal text, not placeholder |
-| 16 | Product docs / in-app help | ❌ **missing** | No getting-started or help surface for a new admin. (The chat has a "How to use" affordance with example prompts, but that is chat-specific) | Write it, or accept a guided first call with each customer |
+| 11 | Per-tenant AI config | 🟡 **switch done, keys refused** | **Built:** a per-tenant AI off switch enforced at the `LLMGateway` — both `run()` and `run_tools()`, so the chat assistant is covered too. Stored in `TenantConfig.settings` (no migration; inherits the audit trail). Absent ⇒ ON. Fails open, because it is a preference, not a security control. 9 tests. **Refused:** per-tenant API key storage — see below | Decide whether one operator-held key is acceptable (it is, for early customers) |
+| 12 | Cost controls | ✅ **done** | `GET /api/billing/ai-usage` (admin): calls, tokens, estimated cost, by-agent and by-model breakdowns, budgets in force. Tenant taken from the caller — no parameter can widen it (2 isolation tests). Unpriced models named, never counted as free. 10 tests | Nothing |
+| 13 | Billing/plan gating | ✅ **done** | Starter/Professional/Enterprise with server-side entitlement gating; 97 tests, and the handover suite proves a plan flip changes access server-side | Payments stay in test mode until you go live |
+| 14 | Accessibility + responsive | ✅ **done** | **a11y**: 29 tests, axe WCAG 2.1 A/AA clean. **Responsive now verified** on an emulated iPhone 13 — and it was **broken**: the sidebar started open at every width, leaving a phone ~130px of content with the dashboard cards overlapping. Fixed (overlay + backdrop below `lg`); desktop asserted unchanged. 4 tests | Glance at it on a real handset — emulation is close, not identical |
+| 15 | Legal/marketing pages | 🟡 **structure done, text pending** | `/privacy`, `/terms`, `/support` exist as **public** routes (outside the auth guard), linked from the login page, with a visible draft banner and a configurable support address. 5 tests | **B1** — replace the bodies with counsel's text, then delete the banner |
+| 16 | Product docs / in-app help | ✅ **done** | `/help`, role-aware: a six-step admin setup path ordered to avoid this product's real dead ends (people → reporting lines → cycle → goals), or a short orientation for everyone else. In the sidebar for all roles | Nothing |
 
 ---
 
@@ -64,25 +65,43 @@ None of B1–B6 needs more code.
 - **Tier 1 (security & deployment): 6/6 done.** This is the tier that decides whether it
   is *safe* to put a real company on it.
 - **Tier 2 (onboarding): 4/4 done.**
-- **Tier 3 (polish): 1 done, 2 partial, 3 missing.** This is the tier that decides
-  whether it is *sellable*.
+- **Tier 3 (polish): 4 done, 2 partial, 0 missing.** The two partials are partial by
+  choice, not omission: item 15 waits on a lawyer, item 11 on a KMS decision.
 
 ## What I did not do, and why
 
-- **Did not build items 11, 15, 16.** Each is a real feature (per-tenant key management,
-  legal copy, a help surface), not a hardening task. Item 15 in particular needs a
-  lawyer's text, and shipping a plausible-looking placeholder privacy policy would be
-  worse than shipping none — it reads as a promise you have not actually made.
-- **Did not verify responsive on a phone.** I can assert the a11y suite passes because I
-  ran it; I have no device and would only be guessing.
-- **Did not weaken** tenant isolation, RBAC, HITL or the audit log anywhere. The one
-  security-relevant change (`NUM_PROXIES`) tightened a control that terminating TLS
-  would otherwise have silently removed.
+- **Did not store per-tenant API keys.** Accepting a customer's Gemini key into MySQL
+  needs envelope encryption with a KMS-held key, a rotation path, and a guarantee it
+  never reaches a log or an error report. A plaintext credential in a JSON column would
+  be a security regression dressed as a feature — an architecture decision for you, not
+  something to slip into a hardening pass.
+- **Did not write the legal text.** The pages, routes, links and support address exist;
+  the words need counsel. A plausible-looking placeholder policy is worse than an
+  obviously-draft one, because a customer's legal team skims it and assumes sign-off —
+  hence the banner, and the test that keeps it there.
+- **Did not test on physical hardware.** Responsive is verified under Chrome device
+  emulation at 390×844, which is close to but not the same as a real handset.
+- **Did not weaken** tenant isolation, RBAC, HITL or the audit log anywhere. Two changes
+  tightened things: `NUM_PROXIES` restored a rate limit that terminating TLS would have
+  silently removed, and the AI switch is enforced server-side at the gateway rather than
+  by hiding buttons.
+
+## A note on what automation missed
+
+The responsive sweep reported **no horizontal overflow on any of ten authenticated
+routes** — and the dashboard was unusable on a phone, with stat cards drawn on top of
+each other. `scrollWidth` equalled the viewport because nothing overflowed; the layout
+was simply broken inside it. The check was measuring the wrong property, and only a
+screenshot showed it. Worth remembering when reading any green result here.
 
 ## Suggested order from here
 
-1. B1 legal pages (blocks selling), B2 SMTP (blocks onboarding) — both human-supplied.
-2. B3/B4 domain + offsite backups — an afternoon of ops.
-3. Item 12's admin usage view — small, and it is what stops a surprise AI bill.
-4. Item 11 per-tenant keys — only once you have more than a couple of customers.
-5. Item 16 in-app help — replaceable by a guided onboarding call at first.
+1. **B2 SMTP** — nothing else matters if nobody can accept an invite. An hour with a
+   provider account, then `manage.py check --deploy` tells you whether you got it right.
+2. **B3 domain + B4 offsite backups** — an afternoon of ops, and B4 is the one that
+   stops a bad day becoming a fatal one.
+3. **B1 legal text** — the only thing between you and selling. Send counsel the drafts
+   at `/privacy` and `/terms`; the structure is done.
+4. **B5/B6/B7** — a working Gemini key, a secret store, a real support address.
+5. **Item 11 per-tenant keys** — only when a customer actually asks to bring their own,
+   and only with a KMS.

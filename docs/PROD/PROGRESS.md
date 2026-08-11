@@ -321,8 +321,82 @@ Nothing to change. Item 7 is only *usable* once SMTP exists (item 3's human step
 | 15 | Legal pages | ❌ missing | No Privacy Policy, Terms, or support contact. Blocks selling into any GDPR jurisdiction |
 | 16 | In-app help | ❌ missing | No getting-started for a new admin (the chat's "How to use" is chat-specific) |
 
-**Deliberately not built.** 11, 15 and 16 are features rather than hardening. Item 15
-especially needs a lawyer's words — a plausible-looking placeholder privacy policy is
-worse than none, because it reads as a promise nobody actually made.
+---
+
+## Tier 3, second pass — everything safely buildable, built
+
+The table above was the first assessment. A follow-up pass built the parts that do
+not need a human to supply something.
+
+### Item 12 — admin-visible AI cost ✅ now done
+
+`GET /api/billing/ai-usage` (MANAGE_TENANT): calls, tokens, estimated cost, breakdown
+by agent and model, and the budgets in force. Enforcement already existed; this is the
+half that lets an admin *see* it instead of needing shell access.
+
+**Tenant scoping is structural.** `collect()` takes a slug and the view passes
+`request.user.tenant.slug` — there is deliberately no parameter to name another tenant,
+because one that accepted one would be a cross-tenant read one typo away. Two tests
+cover it, one crossing a real second tenant, one trying the parameter names the CLI
+uses. Cost is labelled an estimate in the payload; models with usage but no price are
+named in `unpriced_models` rather than folded in as zero, since a silent zero reads as
+"this was free". `?days=` clamped to 1..365. **10 tests.**
+
+### Item 14 — responsive ✅ now verified, and it was broken
+
+Previously recorded as unverified. Verified with real device emulation (iPhone 13), and
+it found a genuine bug: the sidebar is `w-64` and started open at **every** viewport, so
+a 390px phone had ~130px of content left and the dashboard rendered with its stat cards
+**overlapping each other**.
+
+The instructive part: an automated sweep of ten authenticated routes reported **no
+horizontal overflow on any of them** — `scrollWidth` equalled the viewport every time,
+because nothing overflowed. The layout was simply unusable inside it. Only a screenshot
+showed that. The check was not wrong; it was measuring the wrong property.
+
+Fixed: open at `lg`+, closed below, and below `lg` it overlays with a backdrop rather
+than competing for width. Navigating closes it. **Desktop asserted unchanged** — sidebar
+256px, `position: relative`, main at x=256, no backdrop. `matchMedia` is read through a
+guard because jsdom lacks it and an unguarded call took out 14 tests at once. **4 tests.**
+
+### Items 15 + 16 — legal pages and in-app help ✅ now done
+
+`/privacy`, `/terms`, `/support` sit **outside** the auth guard — a privacy policy you
+must sign in to read is not one; it is what a prospect reads while deciding to sign up.
+Both policy pages carry a visible **"Draft — pending legal review"** banner, and a test
+asserts it. That is the design: a page that *looks* like reviewed policy is worse than an
+obviously unfinished one, because a customer's legal team skims it and assumes sign-off.
+With the test in place, removing the banner is a deliberate line in a diff.
+
+Support address from `VITE_SUPPORT_EMAIL`, with a deliberately obvious
+`support@example.com` fallback rather than a plausible address nobody monitors.
+
+`/help` adapts by role. The admin path is ordered to avoid this product's real dead ends:
+people before cycles, reporting lines before anything team-scoped — without them a
+manager signs in to an empty team and concludes the app is broken. **5 tests.**
+
+*(Got this wrong once: the nav entry went under Settings, which dragged that whole
+section into an employee's sidebar and broke four role-surface tests. It belongs beside
+Dashboard.)*
+
+### Item 11 — per-tenant AI 🟡 the switch is built; key storage is not
+
+**Built:** a per-tenant AI **off switch**, enforced at the `LLMGateway` — the single
+choke point every agent uses. Enforcing it in the UI would leave every endpoint
+reachable; enforcing it in `run()` alone would leave `run_tools()` (the whole chat
+assistant) still calling out. Both doors covered, both tested. Stored in
+`TenantConfig.settings`, so no migration and it inherits the existing audit trail and
+optimistic locking. Absent ⇒ ON, so nobody loses a paid feature to an unwritten row.
+Reports `NOT_CONFIGURED` — a dozen call sites already degrade cleanly on it, whereas a
+new status would be unhandled in most and turn an off switch into a 500. Fails **open**,
+because it is a preference, not a security control. **9 tests.**
+
+**Not built, and this is a deliberate refusal: per-tenant API key storage.** Accepting a
+customer's Gemini key into MySQL needs envelope encryption with a KMS-held key, a
+rotation path, and a guarantee it never reaches a log or an error report. Dropping a
+plaintext credential into a JSON column would be a security regression dressed as a
+feature, and it is exactly the kind of decision that should not be made unilaterally
+inside a hardening pass. What exists today — one operator-held server key plus the
+per-tenant budget and this off switch — is sound for early customers.
 
 See `docs/PROD/PRODUCTION_CHECKLIST.md` for the verdict and blocker shortlist.

@@ -19,9 +19,18 @@ from .views import (
     StaleGoalsView,
 )
 
+from .admin_views import AIConfigView, AITestConnectionView
+
 app_name = "ai"
 
 urlpatterns = [
+    # ── Admin Hub: AI provider configuration (B2, MANAGE_TENANT_CONFIG) ──
+    path("admin/config", AIConfigView.as_view(), name="admin-config"),
+    path(
+        "admin/test-connection",
+        AITestConnectionView.as_view(),
+        name="admin-test-connection",
+    ),
     path("chat", ChatView.as_view(), name="chat"),
     path("actions/execute", ChatActionExecuteView.as_view(), name="action-execute"),
     path("actions/schema", ChatActionsSchemaView.as_view(), name="action-schema"),

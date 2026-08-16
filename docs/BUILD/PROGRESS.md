@@ -283,3 +283,89 @@ at 360 only; `/feedback` tab strip 5px before it scrolls; 2 checkboxes under 16p
 (iOS doesn't zoom for those); 13 inline prose links where a 44px box would
 overlap the neighbouring line.
 
+---
+
+# PHASE B
+
+## B1 — Per-tenant AI configuration, encrypted at rest
+Status: DONE
+Changed: apps/ai/{crypto,tenant_config,models,providers,gateway}.py,
+apps/ai/{gemini_provider,openai_provider,groq}.py, apps/ai/migrations/0005_*,
+apps/ai/tests/test_tenant_ai_config.py, config/settings/base.py, .env.example,
+docs/BUILD/ENV_REFERENCE.md
+Verified by: 19 new tests; `pytest apps/ai apps/administration` → 590 passed.
+Needs from human: `FIELD_ENCRYPTION_KEY` (generate per environment) before
+per-tenant keys can be stored. Unset is safe — see ENV_REFERENCE.md.
+
+- New `ai.TenantAIConfig` model (not a corner of `TenantConfig.settings`, which is
+  returned and replaced wholesale by the admin API and would leak/clobber the key).
+- Fernet, authenticated, with comma-separated key rotation.
+- **Fails closed on write** (no key → refuse, never plaintext), **degrades on
+  read** (undecryptable → fall back to the environment key, don't 500).
+- Resolution: tenant key → environment key → not configured.
+- Provider stored as a **slug**, mapped to a dotted path in code — an admin form
+  accepting an importable path would be an RCE shape.
+- The decrypted value never leaves `apps/ai/tenant_config`.
+
+## B4 — Invert the AI switch failure mode
+Status: DONE
+Changed: apps/ai/tenant_switch.py, apps/ai/tests/test_ai_switch_fails_closed.py
+Verified by: 5 tests including an exploding manager asserting `False`.
+Needs from human: nothing.
+
+- Was fail-**open**: an unreadable setting meant AI stayed on. Since we tell
+  customers this switch is how they stop employee data reaching a model provider,
+  "we couldn't read your preference so we sent it anyway" is never acceptable.
+- Now fail-**closed**; default stays ON for a tenant that never set it (absent ≠
+  off). Reads the new model, falling back to the legacy
+  `TenantConfig.settings["ai_enabled"]` so pre-B1 choices survive.
+
+## B5 — Extend the PII scrubber
+Status: DONE
+Changed: apps/ai/pii.py, apps/ai/gateway.py, apps/ai/tests/test_pii_scrub.py,
+config/settings/base.py
+Verified by: 28 new tests; `pytest apps/ai apps/feedback apps/reviews` → 728
+passed.
+Needs from human: decide whether `PII_SCRUB_NAMES` should be on for this
+deployment (default off — see below).
+
+- Adds phone numbers (7–15 digits, bounded at both ends) and **labelled**
+  employee/staff/payroll ids.
+- The digit bound is the important part: an unbounded number pattern eats
+  "attainment 87.5% against 120" and "cohort size 42, T-score 61.3" — the exact
+  values a review is built from. Mangling those produces confidently wrong AI
+  output, which is worse than redacting too little. 5 tests guard this.
+- Employee ids only in labelled form; a bare token is indistinguishable from a
+  goal title or KPI unit. The label survives so the model knows an id was there.
+- **Names stay unredacted by default** — `evidence.py` passes the subject's first
+  name deliberately. `PII_SCRUB_NAMES=True` swaps them for role tokens.
+- The docstring now states plainly what is *not* redacted and why, which is what
+  a customer asking "what leaves our tenant?" actually needs.
+
+## B2 — Admin UI for AI configuration
+Status: DONE
+Changed: apps/ai/admin_views.py (new), apps/ai/urls.py,
+apps/ai/tests/test_admin_ai_config.py (new), shared/src/api/endpoints.ts,
+frontend/src/features/admin/AISettingsPage.tsx (new),
+frontend/src/app/{router.tsx,nav.ts,nav.test.ts}
+Verified by: 18 backend tests (RBAC ×4 roles, no key in any response or audit
+row, 409 path, rotation audit, PATCH-doesn't-clobber, 4 test-connection states,
+cross-tenant invisibility); frontend `tsc` clean + 181 tests.
+Needs from human: nothing to build; `FIELD_ENCRYPTION_KEY` to actually store a
+key (the UI explains this state rather than failing).
+
+- `GET/PATCH /api/ai/admin/config` + `POST /api/ai/admin/test-connection`, gated
+  on the existing `MANAGE_TENANT_CONFIG` — no new authority.
+- **No endpoint returns the key.** Reads give a last-4 hint only; rotating means
+  typing a new one.
+- PATCH not PUT, so "turn AI off" cannot arrive as a document that drops the key.
+  There is a test for that specific regression.
+- Failures are specific: 409 naming `FIELD_ENCRYPTION_KEY`; 400 listing allowed
+  providers; test-connection distinguishes not-configured / switched-off /
+  budget-exhausted / provider-rejected.
+- Test-connection runs through the normal gateway so budget, ceiling and PII
+  scrubbing all apply — testing a path that doesn't exist in production would be
+  worse than not testing.
+- Key set/rotate/clear/switch/test are all audited with actor + action; metadata
+  carries `key_last4` only.
+

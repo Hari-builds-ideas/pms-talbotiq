@@ -502,6 +502,53 @@ export const integrationsApi = {
 
 // ---- AI --------------------------------------------------------------------
 
+/** What the admin AI-config endpoint is allowed to tell us. Note the absence of
+ *  the key itself: the server has no endpoint that returns it, by design. */
+export interface AIConfigState {
+  enabled: boolean;
+  provider: string;
+  model_overrides: Record<string, string>;
+  /** Will an AI request work right now, from any key source? */
+  configured: boolean;
+  key_source: "tenant" | "environment" | "unconfigured";
+  tenant_key_set: boolean;
+  /** Masked hint, e.g. "••••9xyz". Never the key. */
+  key_hint: string;
+  key_set_at: string | null;
+  /** False when FIELD_ENCRYPTION_KEY is unset — storing a key is impossible. */
+  encryption_available: boolean;
+  available_providers: string[];
+  changed?: string[];
+}
+
+export interface AIConnectionTest {
+  ok: boolean;
+  state:
+    | "ok"
+    | "not_configured"
+    | "ai_disabled"
+    | "budget_exceeded"
+    | "provider_error";
+  detail: string;
+  provider?: string;
+  model?: string;
+  key_source?: string;
+}
+
+/** Admin Hub — AI provider configuration (B2). MANAGE_TENANT_CONFIG (Admin). */
+export const aiAdminApi = {
+  config: () => unwrap<AIConfigState>(api.get("/ai/admin/config")),
+  update: (body: {
+    enabled?: boolean;
+    provider?: string;
+    model_overrides?: Record<string, string>;
+    api_key?: string;
+    clear_api_key?: boolean;
+  }) => unwrap<AIConfigState>(api.patch("/ai/admin/config", body)),
+  testConnection: () =>
+    unwrap<AIConnectionTest>(api.post("/ai/admin/test-connection", {})),
+};
+
 export const aiApi = {
   chat: (query: string, sessionId?: string) =>
     unwrap<ChatResponse>(api.post("/ai/chat", { query, session_id: sessionId })),

@@ -10,6 +10,7 @@ import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { UsersPage } from "@/features/admin/UsersPage";
 import { TenantConfigPage } from "@/features/admin/TenantConfigPage";
 import { BillingPage } from "@/features/admin/BillingPage";
+import { AISettingsPage } from "@/features/admin/AISettingsPage";
 import { ApprovalsPage } from "@/features/approvals/ApprovalsPage";
 import { ReviewsRoutes } from "@/features/reviews/ReviewsRoutes";
 import { GoalsPage } from "@/features/goals/GoalsPage";
@@ -163,6 +164,15 @@ export function AppRouter() {
             element={
               <RoleGate min="ADMIN">
                 <BillingPage />
+              </RoleGate>
+            }
+          />
+          {/* Admin Hub → AI (B2): provider, key rotation, on/off, spend. */}
+          <Route
+            path="admin/ai/*"
+            element={
+              <RoleGate min="ADMIN">
+                <AISettingsPage />
               </RoleGate>
             }
           />

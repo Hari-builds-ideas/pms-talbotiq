@@ -93,7 +93,8 @@ class LLMGateway:
             return GatewayResult(status="BUDGET_EXCEEDED", errors=[exc.detail])
 
         # 3. PII-scrub the prompt before it ever reaches the provider.
-        scrubbed = scrub(prompt)
+        # tenant is passed so PII_SCRUB_NAMES can resolve names when enabled (B5).
+        scrubbed = scrub(prompt, tenant=tenant)
 
         # 4. Provider call inside a trace span.
         try:
@@ -195,7 +196,7 @@ class LLMGateway:
         except BudgetExceeded as exc:
             return GatewayResult(status="BUDGET_EXCEEDED", errors=[exc.detail])
 
-        cleaned = [_scrub_user_text(m) for m in messages]
+        cleaned = [_scrub_user_text(m, tenant=tenant) for m in messages]
 
         try:
             with trace(agent_code, model=model):
@@ -226,12 +227,12 @@ class LLMGateway:
         )
 
 
-def _scrub_user_text(message):
+def _scrub_user_text(message, tenant=None):
     """Scrub only what a HUMAN wrote. Tool results are our own scoped rows: running a PII
     scrubber over them would mangle the names and numbers the answer is built from."""
     if message.get("role") != "user" or not isinstance(message.get("content"), str):
         return message
-    return {**message, "content": scrub(message["content"])}
+    return {**message, "content": scrub(message["content"], tenant=tenant)}
 
 
 #: Module-level singleton for convenience.

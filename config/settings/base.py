@@ -514,6 +514,18 @@ LLM_PROVIDER = env("LLM_PROVIDER", default="apps.ai.providers.NotConfiguredProvi
 #
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
+
+# ── PII scrubbing (B5) ────────────────────────────────────────────────────────
+# The gateway ALWAYS redacts emails, phone numbers and labelled employee ids from
+# a prompt. Names are NOT redacted by default: apps/ai/evidence.py puts the
+# subject's first name into a review prompt on purpose, because "write a review of
+# Priya" grounds far better than "write a review of the employee".
+#
+# Turn this on for a deployment whose customers require that names never reach a
+# model provider: every tenant user's display name is replaced with a role token
+# ([EMPLOYEE], [MANAGER], …). It costs one query per prompt and measurably lowers
+# output quality, which is why it is opt-in rather than the default.
+PII_SCRUB_NAMES = env.bool("PII_SCRUB_NAMES", default=False)
 # LangSmith tracing is opt-in: a no-op until a key is set.
 LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
 

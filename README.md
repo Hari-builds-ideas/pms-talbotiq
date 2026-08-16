@@ -205,22 +205,62 @@ sequenceDiagram
 | [`docs/PROD_READY_REPORT.md`](docs/PROD_READY_REPORT.md) | Production-readiness summary + morning checklist |
 | [`docs/AI_ROBUSTNESS.md`](docs/AI_ROBUSTNESS.md) · [`docs/SSO.md`](docs/SSO.md) · [`docs/RUNBOOK.md`](docs/RUNBOOK.md) | AI under load · SSO · ops runbook |
 
+**Operating the production deployment** — start here, these are the current ones:
+
+| Doc | For |
+|---|---|
+| [`docs/BUILD/ENABLE_TLS.md`](docs/BUILD/ENABLE_TLS.md) | Switching HTTPS on. One variable, once DNS exists |
+| [`docs/BUILD/BACKUP_RESTORE.md`](docs/BUILD/BACKUP_RESTORE.md) | Nightly backups, the restore drill, and restoring for real |
+| [`docs/BUILD/EMAIL.md`](docs/BUILD/EMAIL.md) | Going live with SMTP — exact values per provider |
+| [`docs/BUILD/DATA_RETENTION.md`](docs/BUILD/DATA_RETENTION.md) | What is stored, why, and for how long |
+| [`docs/BUILD/DATA_RIGHTS_DESIGN.md`](docs/BUILD/DATA_RIGHTS_DESIGN.md) | Export and erasure semantics |
+| [`docs/BUILD/CI.md`](docs/BUILD/CI.md) · [`docs/BUILD/ENV_REFERENCE.md`](docs/BUILD/ENV_REFERENCE.md) | CI and branch protection · every environment variable |
+| [`docs/BUILD/PROGRESS.md`](docs/BUILD/PROGRESS.md) | Why each piece of the hardening work looks the way it does |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) · [`SECURITY.md`](SECURITY.md) | Working on this codebase · reporting a vulnerability |
+
+[`docs/archive/`](docs/archive/README.md) holds superseded plans and build-session
+notes. It is history, not instructions — if it contradicts anything above, the
+document above is right.
+
 ## Data: production starts empty
 
 A fresh production deploy comes up with an **empty database** — migrations only, **no
 mock data auto-loads**. `seed_demo_rich` is for testing/demo **only** and is never run
-in production. Real data enters via self-serve signup + CSV import. Details in
+in production. Real data enters via invitation + CSV import. Details in
 [`docs/DATA_HANDOVER.md`](docs/DATA_HANDOVER.md).
 
-## Staged / not yet live (honest status)
+Once there is real data in it, it is backed up nightly to GCS and the backup is
+restored into a scratch database every week to prove it still works — neither of
+which happens until the timers in `deploy/systemd/` are installed. See
+[`docs/BUILD/BACKUP_RESTORE.md`](docs/BUILD/BACKUP_RESTORE.md).
 
-- **Payments** are built and verified in **TEST MODE** (signature-verified webhooks,
-  idempotent, tenant-isolated). Live keys + the provider `create_checkout` SDK call
-  are a supervised go-live step. Off by default (`PAYMENTS_ENABLED=false`).
-- **Sign-in with Google / enterprise SSO** is wired (allauth OIDC + SAML, no-JIT) but
-  needs the customer's real OAuth creds / IdP to exercise end to end.
-- **Mobile app** is deferred to **v2** — the web app is responsive.
-- **Email** uses the console backend in dev; production needs a real SMTP provider.
+## Not yet live (honest status)
+
+Each of these is built up to the point where it needs a credential, a DNS record
+or a decision that is not ours to make. None of them is half-finished code.
+
+- **HTTPS is off.** There is no domain yet, and Let's Encrypt cannot issue a
+  certificate for a bare IP, so the deployment serves plain HTTP. `DOMAIN` is the
+  single switch that turns on the certificate, the redirect, Secure cookies and
+  HSTS together; `check --deploy` reports `pms.W003` until it is set. Steps:
+  [`docs/BUILD/ENABLE_TLS.md`](docs/BUILD/ENABLE_TLS.md).
+- **Email does not send.** The console backend is active, so password resets and
+  invitations are written to the log and delivered to nobody. Going live is
+  environment variables only: [`docs/BUILD/EMAIL.md`](docs/BUILD/EMAIL.md).
+- **Payments cannot take money.** `create_checkout` returns 501 rather than a
+  fabricated session id — the webhook side is real and signature-verified, but
+  nothing charges a card. Wiring a provider SDK is a supervised step.
+- **Self-serve signup is closed** (`SIGNUP_MODE=invite_only`) precisely because
+  of the line above: a new workspace today would be a real tenant on a plan no
+  invoice can follow. Invitations are unaffected — existing customers onboard
+  their own people normally.
+- **AI needs a key.** Without one the gateway reports *not configured* and every
+  AI surface says so; it never fabricates. The Gemini Enterprise key is added by
+  an admin, per tenant, and is stored encrypted.
+- **Sign-in with Google / enterprise SSO** is wired (allauth OIDC + SAML, no JIT
+  provisioning) but needs the customer's real credentials or IdP to exercise end
+  to end.
+- **Mobile app** is deferred to v2 — the web app is responsive.
 
 ## Configuration
 

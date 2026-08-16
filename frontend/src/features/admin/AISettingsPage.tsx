@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Plug, ShieldCheck, Sparkles } from "lucide-react";
+import { Gauge, KeyRound, Plug, ShieldCheck, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel } from "@/components/Panel";
 import { Field } from "@/components/Field";
@@ -230,7 +230,106 @@ export function AISettingsPage() {
             </p>
           </div>
         </Panel>
+
+        <SpendPanel />
       </div>
+    </div>
+  );
+}
+
+/**
+ * AI spend for this tenant (B6). Read-only.
+ *
+ * The enforcement side (AgentBudget + the gateway's reservation) already existed,
+ * but there was no way to SEE it without shell access — and an admin who cannot
+ * see spend cannot manage it. The first they would learn of a runaway agent is
+ * the provider's invoice.
+ */
+function SpendPanel() {
+  const [days, setDays] = React.useState(30);
+  const q = useQuery({
+    queryKey: ["ai", "admin", "usage", days],
+    queryFn: () => aiAdminApi.usage(days),
+  });
+
+  return (
+    <Panel title="Usage and spend" icon={Gauge} className="lg:col-span-2">
+      {q.isLoading ? (
+        <LinesSkeleton lines={5} />
+      ) : q.isError || !q.data ? (
+        <p className="text-sm text-muted-foreground">
+          Couldn't load usage. The figures are informational — nothing else is
+          affected.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {[7, 30, 90].map((d) => (
+              <Button
+                key={d}
+                size="sm"
+                variant={d === days ? "default" : "outline"}
+                onClick={() => setDays(d)}
+              >
+                {d} days
+              </Button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Calls" value={q.data.calls.toLocaleString()} />
+            <Stat label="Tokens" value={q.data.total_tokens.toLocaleString()} />
+            <Stat
+              label="Estimated cost"
+              value={`$${q.data.estimated_cost_usd.toFixed(2)}`}
+            />
+            <Stat label="Budgets set" value={String(q.data.budgets.length)} />
+          </div>
+
+          {q.data.by_agent.length > 0 && (
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                By agent
+              </h4>
+              <ul className="divide-y divide-border">
+                {q.data.by_agent.map((row) => {
+                  const budget = q.data.budgets.find((b) => b.agent_code === row.agent_code);
+                  return (
+                    <li key={row.agent_code} className="flex items-center justify-between gap-3 py-2 text-sm">
+                      <span className="min-w-0 truncate font-medium">{row.agent_code}</span>
+                      <span className="shrink-0 text-muted-foreground tabular-nums">
+                        {row.calls.toLocaleString()} calls · {row.tokens.toLocaleString()} tok
+                        {budget ? ` · cap ${budget.limit.toLocaleString()}/${budget.window.toLowerCase()}` : ""}
+                        {" · "}${row.cost_usd.toFixed(2)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {q.data.unpriced_models.length > 0 && (
+            // Surfaced rather than folded into the total as zero: a silent zero
+            // reads as "this was free".
+            <p className="text-xs text-warning">
+              No price on file for {q.data.unpriced_models.join(", ")} — their usage
+              is counted but their cost is not included above.
+            </p>
+          )}
+
+          <p className="text-xs text-muted-foreground">{q.data.note}</p>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

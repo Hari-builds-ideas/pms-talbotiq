@@ -23,6 +23,8 @@ from apps.ai.agents.kpi import team_nudges
 from apps.ai.models import AIJob
 from apps.ai.serializers import AIJobSerializer
 from apps.billing.gate import requires_entitlement
+
+from .http import unavailable_response
 from apps.core.throttling import AI_THROTTLES
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -54,19 +56,17 @@ class ChatView(RBACMixin, APIView):
         sessions.append_turn(session, ChatTurn.Role.USER, query)
         result = chat_answer(request.user, query, session=session)
         if result["status"] == "not_configured":
-            return Response(
-                {"detail": "The Chat Assistant is not configured (LLM provider unset; "
-                           "lands with the Module-10 provider activation)."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return unavailable_response(request.user.tenant)
         if result["status"] == "budget":
-            return Response(
-                {"detail": "Chat budget exhausted for this window.", "errors": result.get("errors")},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            return unavailable_response(
+                request.user.tenant,
+                gateway_status="BUDGET_EXCEEDED",
+                errors=result.get("errors"),
             )
         if result["status"] == "error":
-            return Response({"detail": f"chat unavailable: {result.get('detail')}"},
-                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return unavailable_response(
+                request.user.tenant, gateway_status="PROVIDER_ERROR"
+            )
         if result["status"] == "plan":
             # A write → an ordered, INERT plan the human approves step by step.
             from apps.ai.planner import refs_for_plan
@@ -175,18 +175,17 @@ class ChatPlanCreateView(RBACMixin, APIView):
 
         out = build_plan(request.user, session, query)
         if out["status"] == "not_configured":
-            return Response(
-                {"detail": "The assistant is not configured (no LLM provider)."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return unavailable_response(request.user.tenant)
         if out["status"] == "budget":
-            return Response(
-                {"detail": "Assistant budget exhausted for this window.", "errors": out.get("errors")},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            return unavailable_response(
+                request.user.tenant,
+                gateway_status="BUDGET_EXCEEDED",
+                errors=out.get("errors"),
             )
         if out["status"] == "error":
-            return Response({"detail": f"assistant unavailable: {out.get('detail')}"},
-                            status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return unavailable_response(
+                request.user.tenant, gateway_status="PROVIDER_ERROR"
+            )
 
         plan = out["plan"]
         sessions.append_turn(
@@ -282,19 +281,16 @@ class MeetingSummaryView(RBACMixin, APIView):
 
         out = summarize_meeting(request.user, notes)
         if out["status"] == "not_configured":
-            return Response(
-                {"detail": "The AI summary is not configured (no LLM provider)."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return unavailable_response(request.user.tenant)
         if out["status"] == "budget":
-            return Response(
-                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            return unavailable_response(
+                request.user.tenant,
+                gateway_status="BUDGET_EXCEEDED",
+                errors=out.get("errors"),
             )
         if out["status"] == "error":
-            return Response(
-                {"detail": f"AI summary unavailable: {out.get('detail')}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            return unavailable_response(
+                request.user.tenant, gateway_status="PROVIDER_ERROR"
             )
         return Response(out)
 
@@ -316,19 +312,16 @@ class ReviewQualityView(RBACMixin, APIView):
 
         out = flag_review_quality(request.user, text)
         if out["status"] == "not_configured":
-            return Response(
-                {"detail": "The AI review check is not configured (no LLM provider)."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return unavailable_response(request.user.tenant)
         if out["status"] == "budget":
-            return Response(
-                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            return unavailable_response(
+                request.user.tenant,
+                gateway_status="BUDGET_EXCEEDED",
+                errors=out.get("errors"),
             )
         if out["status"] == "error":
-            return Response(
-                {"detail": f"AI review check unavailable: {out.get('detail')}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            return unavailable_response(
+                request.user.tenant, gateway_status="PROVIDER_ERROR"
             )
         return Response(out)
 
@@ -369,19 +362,16 @@ class NLSearchView(RBACMixin, APIView):
 
         out = nl_search(request.user, query)
         if out["status"] == "not_configured":
-            return Response(
-                {"detail": "AI search is not configured (no LLM provider)."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+            return unavailable_response(request.user.tenant)
         if out["status"] == "budget":
-            return Response(
-                {"detail": "AI budget exhausted for this window.", "errors": out.get("errors")},
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            return unavailable_response(
+                request.user.tenant,
+                gateway_status="BUDGET_EXCEEDED",
+                errors=out.get("errors"),
             )
         if out["status"] == "error":
-            return Response(
-                {"detail": f"AI search unavailable: {out.get('detail')}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            return unavailable_response(
+                request.user.tenant, gateway_status="PROVIDER_ERROR"
             )
         return Response({"search": out["search"], "results": out["results"]})
 

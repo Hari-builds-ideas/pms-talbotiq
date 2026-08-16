@@ -369,3 +369,39 @@ key (the UI explains this state rather than failing).
 - Key set/rotate/clear/switch/test are all audited with actor + action; metadata
   carries `key_last4` only.
 
+## B3 — Honest "AI unavailable" states
+Status: DONE
+Changed: apps/ai/http.py (new), apps/ai/views.py (12 response sites),
+apps/ai/tests/test_ai_unavailable_states.py (new),
+frontend/src/components/AIUnavailable.tsx (new),
+frontend/src/features/chat/ChatPanel.tsx
+Verified by: 7 new backend tests incl. an end-to-end sweep of 5 AI endpoints;
+`pytest apps/ai` → 612 passed; frontend `tsc` clean + 181 tests.
+Needs from human: nothing.
+
+- Four codes: `ai_disabled`, `ai_not_configured`, `ai_budget_exhausted`,
+  `ai_provider_error` — previously all flattened into one 503 with prose like
+  "chat unavailable: PROVIDER_ERROR".
+- Budget exhaustion is **429, not 503**: a 503 tells monitoring the service is
+  broken when it is behaving exactly as configured.
+- "Switched off" vs "never configured" resolved by asking the switch rather than
+  threading it through every agent call site.
+- One `AIUnavailable` component renders all four; the admin-only remediation line
+  is shown **only to admins** — telling an employee to change a setting they
+  can't reach is worse than saying nothing.
+
+## B6 — Per-tenant AI spend visibility
+Status: DONE
+Changed: shared/src/api/endpoints.ts,
+frontend/src/features/admin/AISettingsPage.tsx
+Verified by: frontend `tsc` clean + 181 tests. Backend endpoint pre-existed and
+is covered by the billing suite.
+Needs from human: nothing.
+
+- `GET /api/billing/ai-usage` already existed and was well built, but **nothing
+  called it** — an admin still needed shell access to see spend.
+- Now on the admin AI page: calls / tokens / estimated cost / budget count over
+  7·30·90 days, a per-agent breakdown showing usage against each cap, and the
+  unpriced-models warning surfaced rather than folded in as zero (a silent zero
+  reads as "this was free"). The estimate disclaimer travels with the figures.
+

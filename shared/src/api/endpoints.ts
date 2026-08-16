@@ -535,8 +535,31 @@ export interface AIConnectionTest {
   key_source?: string;
 }
 
+/** This tenant's AI consumption and estimated cost (B6). The tenant is taken
+ *  from the caller server-side — there is deliberately no tenant parameter. */
+export interface AIUsage {
+  days: number;
+  since: string;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost_usd: number;
+  /** Models with usage but no price entry — reported rather than folded in as 0,
+   *  because a silent zero reads as "this was free". */
+  unpriced_models: string[];
+  by_agent: { agent_code: string; calls: number; tokens: number; cost_usd: number }[];
+  by_model: { model: string; calls: number; tokens: number; cost_usd: number }[];
+  budgets: { agent_code: string; window: string; limit: number }[];
+  cost_is_estimate: boolean;
+  note: string;
+}
+
 /** Admin Hub — AI provider configuration (B2). MANAGE_TENANT_CONFIG (Admin). */
 export const aiAdminApi = {
+  /** MANAGE_TENANT (Admin). `days` is clamped 1..365 server-side. */
+  usage: (days = 30) =>
+    unwrap<AIUsage>(api.get("/billing/ai-usage", { params: { days } })),
   config: () => unwrap<AIConfigState>(api.get("/ai/admin/config")),
   update: (body: {
     enabled?: boolean;

@@ -10,10 +10,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { aiApi } from "@/lib/api/endpoints";
 import { mapApiError } from "@/lib/errors";
+import { AIUnavailable, aiUnavailableCode, type AIUnavailableCode } from "@/components/AIUnavailable";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { cn } from "@/lib/utils";
@@ -127,7 +127,9 @@ function ChatSheet() {
   const canSeeTeam = atLeast("MANAGER");
   const [turns, setTurns] = React.useState<Turn[]>([]);
   const [input, setInput] = React.useState("");
-  const [unavailable, setUnavailable] = React.useState(false);
+  // WHICH unavailable state, not just whether (B3): switched off, never
+  // configured, out of budget and provider-down need different answers.
+  const [unavailable, setUnavailable] = React.useState<AIUnavailableCode | null>(null);
   const sessionId = React.useRef<string | undefined>(undefined);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
@@ -197,9 +199,16 @@ function ChatSheet() {
       ]);
     },
     onError: (err) => {
+      const code = aiUnavailableCode(err);
+      if (code) {
+        setUnavailable(code);
+        return;
+      }
       const mapped = mapApiError(err);
       if (mapped.kind === "ai_unavailable") {
-        setUnavailable(true);
+        // No code on the body — an older server, or a 503 from somewhere else in
+        // the stack. Fall back to the least presumptuous of the four.
+        setUnavailable("ai_not_configured");
       } else {
         setTurns((t) => [
           ...t,
@@ -256,7 +265,7 @@ function ChatSheet() {
   const newChat = React.useCallback(() => {
     setTurns([]);
     setInput("");
-    setUnavailable(false);
+    setUnavailable(null);
     sessionId.current = undefined;
     try {
       localStorage.removeItem(CHAT_SESSION_KEY);
@@ -325,16 +334,7 @@ function ChatSheet() {
               ref={scrollRef}
               className="flex-1 space-y-3 overflow-y-auto scrollbar-thin p-5"
             >
-              {unavailable && (
-                <Alert variant="ai">
-                  <Sparkles />
-                  <AlertTitle>Chat not available yet</AlertTitle>
-                  <AlertDescription>
-                    No AI provider is configured for this tenant. The rest of the
-                    Hub works normally.
-                  </AlertDescription>
-                </Alert>
-              )}
+              {unavailable && <AIUnavailable code={unavailable} />}
               {turns.length === 0 && !unavailable && (
                 <div className="space-y-4 pt-8 text-center">
                   <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-ai-subtle text-ai">
@@ -401,7 +401,7 @@ function ChatSheet() {
                 }}
                 rows={1}
                 placeholder="Ask, or describe a multi-step task…"
-                disabled={unavailable}
+                disabled={Boolean(unavailable)}
                 aria-label="Chat message"
                 className={cn(
                   "flex-1 resize-none rounded-md border border-input bg-input-background px-3 py-2 text-sm leading-5 transition-colors",
@@ -410,7 +410,7 @@ function ChatSheet() {
                   "disabled:cursor-not-allowed disabled:opacity-50",
                 )}
               />
-              <Button type="submit" size="icon" disabled={unavailable || !input.trim()}>
+              <Button type="submit" size="icon" disabled={Boolean(unavailable) || !input.trim()}>
                 <Send className="h-4 w-4" />
               </Button>
             </form>

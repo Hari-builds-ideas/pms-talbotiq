@@ -26,6 +26,12 @@ x-app-environment: &app_environment
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set a long random production secret}
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?comma-separated prod hostnames}
   DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+  # REQUIRED (C4): every password-reset and invitation link is built from this.
+  # Its base default is http://localhost:8080, which does not fail — it SENDS, and
+  # every recovery email goes out with a dead link to the recipient's own machine.
+  # On a bare IP today this is http://<IP>:8090; it becomes https://<domain> the
+  # moment DNS exists (see docs/BUILD/ENABLE_TLS.md).
+  PUBLIC_APP_URL: ${PUBLIC_APP_URL:?the public base URL of the SPA, e.g. http://34.1.2.3:8090 or https://pms.acme.com — password-reset links are built from it}
   # TLS is terminated at Caddy, which forwards X-Forwarded-Proto; prod.py reads it
   # via SECURE_PROXY_SSL_HEADER, so this redirect sees the real scheme and does not
   # loop. Both default to on in prod.py — pinned here so the posture is visible in

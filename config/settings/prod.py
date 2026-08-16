@@ -16,6 +16,16 @@ SIMPLE_JWT["SIGNING_KEY"] = SECRET_KEY
 # Must be provided explicitly in production — no wildcard fallback.
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
+# REQUIRED in production, no default (C4).
+#
+# This builds the links in password-reset and invitation emails. The base default
+# is http://localhost:8080, which does not fail — it sends. Every recovery email
+# would go out with a link to the recipient's own machine, they would all be dead,
+# and the only signal would be users saying "the link doesn't work". A missing
+# variable that breaks at startup is strictly better than one that breaks silently
+# in someone else's inbox.
+PUBLIC_APP_URL = env("PUBLIC_APP_URL")
+
 # HTTPS / transport security
 SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

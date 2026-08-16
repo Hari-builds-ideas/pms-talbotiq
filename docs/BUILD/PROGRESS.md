@@ -804,3 +804,47 @@ Needs from human: nothing.
   record belongs to the employer's obligations, not to us.
 - Names the residuals: audit justification text, backups holding pre-erasure rows
   until they age out, and the deliberate absence of a tenant-delete button.
+
+## PHASE E — Real email (E1–E4)
+Status: DONE
+Changed: apps/core/{mail.py (new),management/commands/send_test_email.py (new),
+tests/test_mail.py (new)}, apps/identity/{views,invite_views,profile_views,
+signup_views}.py, apps/identity/tests/test_email_links.py (new),
+config/settings/base.py, templates/emails/* (11 new), docs/BUILD/EMAIL.md (new)
+Verified by: `pytest apps/identity apps/core` → 236 passed (21 new);
+`send_test_email` exercised in-container in both modes.
+Needs from human: SMTP credentials. Set `EMAIL_BACKEND`, `EMAIL_HOST`,
+`EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`,
+`DEFAULT_FROM_EMAIL`, `EMAIL_REPLY_TO`. **No code change** — exact values per
+provider in `docs/BUILD/EMAIL.md`.
+
+- Four flows each built a plaintext body inline with its own try/except. Four
+  copies of the same decisions, already drifted — same failure logged four
+  different ways. Now one sender, `send_templated_email`.
+- **E3 found a real bug** via the existing password-reset tests: Django
+  autoescapes for HTML, so in the *plaintext* body `&` became `&amp;` and the
+  link a recipient copies arrives with a parameter named `amp;uid`. The reset
+  then fails with an invalid-token error pointing at the token, not the
+  escaping. Fixed in the sender, not with an `{% autoescape off %}` wrapper per
+  template — the wrapper is a thing every future template must remember.
+  Pinned by a test, plus the inverse (the same `&` MUST stay escaped in HTML).
+- Link tests read the **rendered** message for all four flows and check the
+  hostname in **both** parts: it's entirely possible to fix the plaintext link
+  and leave the HTML one, which is the half almost everyone clicks.
+- `send_test_email` refuses to run on a non-delivering backend rather than
+  reporting a console-backend success, prints the config but never the password
+  (it runs from a deploy shell), and says plainly that accepted ≠ delivered.
+- `EMAIL_TIMEOUT=10` — Django's default is *wait forever*, so a provider that
+  accepts and stalls pins a gunicorn worker; enough reset requests during an
+  SMTP outage takes the app down. `EMAIL_REPLY_TO` defaults to `SUPPORT_EMAIL`
+  because replies to no-reply vanish at the moment someone is locked out.
+- HTML is tables + inline styles, no external assets, no images: Outlook renders
+  through Word, and a tracking pixel in a password-reset email is not something
+  this product should do. The raw URL is printed beside every button for
+  gateways that rewrite hrefs.
+
+## Note on a test-run artefact
+A foreground `pytest` started while a background `pytest` was still running
+against the same test database produced 80 spurious failures. Both suites pass
+cleanly when run one at a time (236, then 132). Worth knowing before trusting a
+red result: **do not run two pytest processes against this stack at once.**

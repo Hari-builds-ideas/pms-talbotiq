@@ -86,6 +86,60 @@ def ai_call_ceiling_is_production_sized(app_configs, **kwargs):
 
 
 @register(Tags.security, deploy=True)
+def tls_is_terminated(app_configs, **kwargs):
+    """Keep an HTTP-only deployment loud, and a TLS one honest.
+
+    A deployment with no DNS name cannot have a certificate, so ``prod.py`` derives
+    the whole transport posture from ``DOMAIN`` and runs HTTP-only while it is
+    unset. That is the correct behaviour and a genuine reduction in security:
+    every request, every JWT and every password crosses the network in the clear,
+    and anyone on the path can read or alter it.
+
+    The danger is not the state itself — it is planned — but that it becomes
+    permanent by nobody remembering. So it is reported at every ``check --deploy``
+    until DNS exists, and the reverse case (a domain, but the redirect switched
+    off, or reset links still built over ``http://``) is reported too: both are
+    silent downgrades that leave the product looking entirely healthy.
+    """
+    domain = (getattr(settings, "PUBLIC_DOMAIN", "") or "").strip()
+    public_url = (getattr(settings, "PUBLIC_APP_URL", "") or "").strip()
+
+    if not domain:
+        return [Warning(
+            "DOMAIN is not set, so this deployment is served over plain HTTP.",
+            hint=("Traffic — including JWTs and passwords — is readable and "
+                  "alterable by anyone on the network path. This is expected only "
+                  "while the product runs on a bare IP: Let's Encrypt cannot issue "
+                  "a certificate for one. Point a hostname at this VM and set "
+                  "DOMAIN; TLS, the HTTPS redirect, Secure cookies and HSTS all "
+                  "turn on together. Steps: docs/BUILD/ENABLE_TLS.md."),
+            id="pms.W003",
+        )]
+
+    issues = []
+    if not settings.SECURE_SSL_REDIRECT:
+        issues.append(Warning(
+            f"DOMAIN is {domain!r} (so TLS is available) but SECURE_SSL_REDIRECT "
+            "is off.",
+            hint=("Anything that reaches the app over http:// stays on http:// — "
+                  "a link, an old bookmark or a typed hostname downgrades the "
+                  "whole session silently. Unset DJANGO_SECURE_SSL_REDIRECT to "
+                  "get the default, which follows DOMAIN."),
+            id="pms.W003",
+        ))
+    if public_url.startswith("http://"):
+        issues.append(Warning(
+            f"PUBLIC_APP_URL is {public_url!r} but DOMAIN is set.",
+            hint=("Password-reset and invitation links are built from this value, "
+                  "so every recovery email would send its single-use token over "
+                  "plain HTTP before the redirect upgrades it. Change it to "
+                  f"https://{domain}."),
+            id="pms.W003",
+        ))
+    return issues
+
+
+@register(Tags.security, deploy=True)
 def proxy_depth_is_declared(app_configs, **kwargs):
     """A wrong NUM_PROXIES silently disables the login brute-force throttle (C11).
 

@@ -10,19 +10,30 @@
 # Routing the API here rather than chaining through the SPA's nginx keeps ONE
 # reverse proxy in the request path and one place that decides who owns a URL.
 #
-# REQUIREMENTS (both from the environment, never hardcoded):
-#   DOMAIN      the hostname pointed at this server, e.g. pms.acme.com
-#   ACME_EMAIL  the address Let's Encrypt uses for expiry warnings
+# ONE VARIABLE decides the mode, because Let's Encrypt cannot issue a certificate
+# for a bare IP address and this deployment does not have DNS yet:
+#
+#   DOMAIN unset  ->  site address falls back to `:80`. Plain HTTP, any Host, no
+#                     ACME attempted. This is the posture on a bare IP.
+#   DOMAIN set    ->  site address is the hostname. Caddy obtains and renews a
+#                     Let's Encrypt certificate automatically and redirects
+#                     http:// to https:// on its own.
+#
+# ACME_EMAIL is the address Let's Encrypt uses for expiry warnings. It is optional
+# to Caddy but worth setting the moment DOMAIN is — without it there is no warning
+# before a renewal failure becomes an outage.
+#
+# Django's side of the same switch lives in config/settings/prod.py, which reads
+# DOMAIN too. Switch-on steps: docs/BUILD/ENABLE_TLS.md.
 #
 # Certificates live in the `caddy_data` volume. Keep that volume: destroying it
 # forces a re-issue, and Let's Encrypt rate-limits (5 duplicate certs/week).
-
 {
 	# Expiry notices + recovery contact for the ACME account.
-	email {$ACME_EMAIL}
+	email "{$ACME_EMAIL}"
 }
 
-{$DOMAIN} {
+{$DOMAIN::80} {
 	encode zstd gzip
 
 	# Uploads: keep in step with nginx's client_max_body_size (10m) so a large
@@ -53,12 +64,20 @@
 		# is served by nginx, which sets none, so the edge supplies them here —
 		# scoped to this block so Django-proxied responses are not double-stamped.
 		header {
-			Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 			X-Content-Type-Options "nosniff"
 			X-Frame-Options "DENY"
 			Referrer-Policy "strict-origin-when-cross-origin"
 			-Server
 		}
+
+		# HSTS only on connections that are actually TLS. On a bare IP the site is
+		# HTTP-only, and RFC 6797 is explicit that the header MUST NOT be sent over
+		# a non-secure transport — a browser that honoured it would refuse to reach
+		# this host at all once DNS finally existed. Matching on the connection
+		# rather than on an env var means this needs no second variable and stays
+		# correct in both modes, forever.
+		@tls expression {http.request.tls.version} != ""
+		header @tls Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		reverse_proxy frontend:80
 	}
 

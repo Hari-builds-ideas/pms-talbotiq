@@ -15,9 +15,16 @@ import sys
 _SMOKE = (
     "import django; django.setup(); from django.conf import settings; "
     "assert settings.DEBUG is False; "
-    "print('OK', settings.SESSION_COOKIE_SECURE, settings.SECURE_HSTS_SECONDS > 0, "
-    "settings.CSRF_COOKIE_SECURE)"
+    "print('OK', settings.SECURE_SSL_REDIRECT, settings.SESSION_COOKIE_SECURE, "
+    "settings.SECURE_HSTS_SECONDS > 0, settings.CSRF_COOKIE_SECURE)"
 )
+
+#: The env every prod boot needs, minus whatever the test is probing.
+_REQUIRED = {
+    "DJANGO_SECRET_KEY": "a-long-random-production-secret-" + "0" * 40,
+    "DJANGO_ALLOWED_HOSTS": "app.example.com",
+    "PUBLIC_APP_URL": "https://app.example.com",
+}
 
 
 def _setup(extra_env=None, *, drop=()):
@@ -58,16 +65,75 @@ def test_prod_fails_closed_without_public_app_url():
 
 
 def test_prod_loads_secure_with_required_env():
-    r = _setup(
-        {
-            "DJANGO_SECRET_KEY": "a-long-random-production-secret-" + "0" * 40,
-            "DJANGO_ALLOWED_HOSTS": "app.example.com",
-            "PUBLIC_APP_URL": "https://app.example.com",
-        }
-    )
+    r = _setup({**_REQUIRED, "DOMAIN": "app.example.com"})
     assert r.returncode == 0, r.stderr
-    # DEBUG off + secure session cookie + HSTS on + secure CSRF cookie.
-    assert "OK True True True" in r.stdout
+    # DEBUG off + HTTPS redirect + secure session cookie + HSTS + secure CSRF cookie.
+    assert "OK True True True True" in r.stdout
+
+
+# ── the transport switch: one variable, both halves (C14) ────────────────────
+
+
+def test_without_a_domain_the_stack_runs_http_only():
+    """Let's Encrypt cannot issue a certificate for a bare IP, so a deployment
+    with no DNS name is necessarily HTTP-only — and the TLS settings must follow,
+    not merely be "on and ignored". SECURE_SSL_REDIRECT on plain HTTP is an
+    infinite redirect loop, and Secure cookies are never sent at all, so the
+    admin and the whole allauth SSO session stop working. Not less secure:
+    not working, and it would look like the app's fault rather than DNS's."""
+    r = _setup({**_REQUIRED, "PUBLIC_APP_URL": "http://34.1.2.3"}, drop=("DOMAIN",))
+    assert r.returncode == 0, r.stderr
+    assert "OK False False False False" in r.stdout
+
+
+def test_setting_domain_turns_the_whole_posture_on_together():
+    """The switch-on has to be one variable. Four separate ones means a deploy
+    where the certificate exists and the cookies are still not Secure."""
+    r = _setup({**_REQUIRED, "DOMAIN": "pms.example.com"})
+    assert r.returncode == 0, r.stderr
+    assert "OK True True True True" in r.stdout
+
+
+def test_an_empty_override_means_follow_domain_not_false():
+    """Compose passes these as ``${VAR:-}``, so they arrive as empty strings on
+    every deploy that does not override them. ``env.bool`` raises on "", which
+    would take the whole stack down because somebody declined to override a
+    default — and reading "" as False would silently disable TLS instead."""
+    r = _setup({
+        **_REQUIRED,
+        "DOMAIN": "pms.example.com",
+        "DJANGO_SECURE_SSL_REDIRECT": "",
+        "DJANGO_SESSION_COOKIE_SECURE": "",
+        "DJANGO_CSRF_COOKIE_SECURE": "",
+        "DJANGO_HSTS_SECONDS": "",
+    })
+    assert r.returncode == 0, r.stderr
+    assert "OK True True True True" in r.stdout
+
+
+def test_an_explicit_override_still_wins():
+    """TLS terminated at a load balancer that does not forward to us over HTTPS
+    is a real topology; the derived default must remain overridable."""
+    r = _setup({
+        **_REQUIRED,
+        "DOMAIN": "pms.example.com",
+        "DJANGO_SECURE_SSL_REDIRECT": "false",
+    })
+    assert r.returncode == 0, r.stderr
+    assert "OK False True True True" in r.stdout
+
+
+def test_the_caddyfile_and_django_read_the_same_variable():
+    """Two switches that must be flipped together are one switch somebody will
+    flip halfway. Caddy decides ACME from DOMAIN; prod.py decides the redirect,
+    the cookies and HSTS from the same name."""
+    caddyfile = pathlib.Path("Caddyfile").read_text()
+    assert "{$DOMAIN::80}" in caddyfile, (
+        "the Caddy site address must fall back to :80 so a bare-IP deploy serves "
+        "plain HTTP instead of attempting ACME for an address"
+    )
+    prod = pathlib.Path("config/settings/prod.py").read_text()
+    assert 'env.str("DOMAIN"' in prod
 
 
 def _compose_default(path, key):
@@ -223,6 +289,8 @@ def test_the_caddyfile_bakes_in_no_hostname():
     import re
 
     text = pathlib.Path("Caddyfile").read_text()
-    assert "{$DOMAIN}" in text
+    # `{$DOMAIN::80}` — the env var, falling back to the bare :80 listener when
+    # there is no hostname yet (C14). Still no hostname in the file either way.
+    assert "{$DOMAIN" in text
     assert "{$ACME_EMAIL}" in text
     assert not re.search(r"^[a-z0-9.-]+\.(com|io|net|org|dev)\s*\{", text, re.M | re.I)

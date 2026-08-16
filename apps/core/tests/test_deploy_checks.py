@@ -59,3 +59,44 @@ def test_production_sized_ai_ceiling_is_quiet():
 def test_a_disabled_ceiling_is_deliberate_not_a_warning():
     """0 means "rely on the per-tenant AgentBudget", which is a valid choice."""
     assert checks.ai_call_ceiling_is_production_sized(None) == []
+
+
+# ── the transport switch (C14) ────────────────────────────────────────────────
+# One variable, DOMAIN, decides whether the stack runs HTTP-only on a bare IP or
+# with TLS end to end. The check exists so the HTTP-only half stays a decision
+# somebody made rather than a state everybody forgot.
+
+
+@override_settings(PUBLIC_DOMAIN="")
+def test_http_only_deployment_warns_every_deploy():
+    """Planned, but it must not go quiet. On a bare IP every JWT and every
+    password crosses the network readable and alterable; the risk is that this
+    becomes permanent because nothing ever mentions it again."""
+    results = checks.tls_is_terminated(None)
+    assert "pms.W003" in _ids(results)
+    assert "ENABLE_TLS" in results[0].hint
+
+
+@override_settings(PUBLIC_DOMAIN="pms.example.com", SECURE_SSL_REDIRECT=True,
+                   PUBLIC_APP_URL="https://pms.example.com")
+def test_a_domain_with_tls_on_is_quiet():
+    assert checks.tls_is_terminated(None) == []
+
+
+@override_settings(PUBLIC_DOMAIN="pms.example.com", SECURE_SSL_REDIRECT=False,
+                   PUBLIC_APP_URL="https://pms.example.com")
+def test_a_domain_with_the_redirect_switched_off_warns():
+    """The silent downgrade: a certificate exists, everything looks healthy, and
+    anything arriving over http:// simply stays there for the whole session."""
+    assert "pms.W003" in _ids(checks.tls_is_terminated(None))
+
+
+@override_settings(PUBLIC_DOMAIN="pms.example.com", SECURE_SSL_REDIRECT=True,
+                   PUBLIC_APP_URL="http://pms.example.com")
+def test_a_domain_with_http_reset_links_warns():
+    """Reset and invitation links carry a single-use token. Built over http://,
+    the token crosses the network in the clear before the redirect upgrades it —
+    and the redirect happens after the request that already leaked it."""
+    results = checks.tls_is_terminated(None)
+    assert "pms.W003" in _ids(results)
+    assert "https://pms.example.com" in results[0].hint

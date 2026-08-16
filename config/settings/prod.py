@@ -26,16 +26,59 @@ ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 # in someone else's inbox.
 PUBLIC_APP_URL = env("PUBLIC_APP_URL")
 
-# HTTPS / transport security
-SECURE_SSL_REDIRECT = env.bool("DJANGO_SECURE_SSL_REDIRECT", default=True)
+# ── HTTPS / transport security ───────────────────────────────────────────────
+#
+# ONE variable decides the transport posture: DOMAIN.
+#
+# Let's Encrypt cannot issue a certificate for a bare IP address, so a deployment
+# that has no DNS name yet is necessarily HTTP-only. Every TLS-dependent setting
+# below therefore derives from whether DOMAIN is set, and each is still individually
+# overridable for the odd topology (TLS terminated at a load balancer, say).
+#
+# The alternative — leave these on and deploy on an IP — is worse than it looks.
+# SECURE_SSL_REDIRECT=True on plain HTTP is an infinite redirect loop, and Secure
+# cookies are simply never sent, so the admin and the whole allauth SSO session
+# stop working. Not "less secure": not working. The failure would be blamed on the
+# app rather than on the missing DNS record.
+#
+# Turning them off is a real reduction in security, so it is not silent: the
+# tls_is_terminated check (apps/core/checks.py) warns at every `check --deploy`
+# while DOMAIN is unset. See docs/BUILD/ENABLE_TLS.md for the switch-on steps.
+PUBLIC_DOMAIN = env.str("DOMAIN", default="").strip()
+_HAS_TLS = bool(PUBLIC_DOMAIN)
+
+
+def _tls_flag(name, *, default):
+    """Read a TLS override, treating an unset OR EMPTY value as 'not overridden'.
+
+    Compose passes ``DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-}``
+    so the deployer *can* override it, which means the variable arrives as an empty
+    string when they have not. ``env.bool`` raises on ``""``; the whole stack would
+    then fail to boot because someone declined to override a default.
+    """
+    raw = env.str(name, default="").strip().lower()
+    if raw == "":
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+SECURE_SSL_REDIRECT = _tls_flag("DJANGO_SECURE_SSL_REDIRECT", default=_HAS_TLS)
+# Kept unconditionally. Caddy sends X-Forwarded-Proto in both modes ("http" on a
+# bare IP), so Django reads the real scheme either way — and the header must
+# already be trusted at the instant TLS is switched on.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = _tls_flag("DJANGO_SESSION_COOKIE_SECURE", default=_HAS_TLS)
 # Pin the session-cookie hardening explicitly (Django's defaults happen to match,
 # but the SSO/allauth session cookie must not depend on defaults staying put).
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = env.int("DJANGO_HSTS_SECONDS", default=31536000)
+CSRF_COOKIE_SECURE = _tls_flag("DJANGO_CSRF_COOKIE_SECURE", default=_HAS_TLS)
+# HSTS tells a browser to refuse plain HTTP to this host for a year. Sending it
+# before TLS works would lock users out of their own deployment, and RFC 6797
+# forbids sending it over a non-secure transport at all — so it is 0 until DOMAIN
+# exists, then the full year.
+_hsts_override = env.str("DJANGO_HSTS_SECONDS", default="").strip()
+SECURE_HSTS_SECONDS = int(_hsts_override) if _hsts_override else (31536000 if _HAS_TLS else 0)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

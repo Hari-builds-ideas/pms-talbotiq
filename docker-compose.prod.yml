@@ -29,15 +29,23 @@ x-app-environment: &app_environment
   # REQUIRED (C4): every password-reset and invitation link is built from this.
   # Its base default is http://localhost:8080, which does not fail — it SENDS, and
   # every recovery email goes out with a dead link to the recipient's own machine.
-  # On a bare IP today this is http://<IP>:8090; it becomes https://<domain> the
-  # moment DNS exists (see docs/BUILD/ENABLE_TLS.md).
-  PUBLIC_APP_URL: ${PUBLIC_APP_URL:?the public base URL of the SPA, e.g. http://34.1.2.3:8090 or https://pms.acme.com — password-reset links are built from it}
-  # TLS is terminated at Caddy, which forwards X-Forwarded-Proto; prod.py reads it
-  # via SECURE_PROXY_SSL_HEADER, so this redirect sees the real scheme and does not
-  # loop. Both default to on in prod.py — pinned here so the posture is visible in
-  # the deployment file rather than only in code.
-  DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-true}
-  DJANGO_HSTS_SECONDS: ${DJANGO_HSTS_SECONDS:-31536000}
+  # On a bare IP today this is http://<IP> (Caddy publishes :80); it becomes
+  # https://<domain> the moment DNS exists (see docs/BUILD/ENABLE_TLS.md).
+  PUBLIC_APP_URL: ${PUBLIC_APP_URL:?the public base URL of the SPA, e.g. http://34.1.2.3 or https://pms.acme.com — password-reset links are built from it}
+  # THE transport switch. Empty = no DNS name yet, so no certificate is possible
+  # and the stack runs HTTP-only. Set it and Caddy obtains a certificate while
+  # prod.py turns on the HTTPS redirect, Secure cookies and HSTS together — one
+  # variable, both halves. `check --deploy` warns (pms.W003) the whole time it is
+  # empty, so HTTP-only stays a decision rather than an oversight.
+  # Full steps: docs/BUILD/ENABLE_TLS.md.
+  DOMAIN: ${DOMAIN:-}
+  # Overrides for the odd topology (TLS terminated at a load balancer, say).
+  # LEAVE THESE EMPTY unless you mean it: empty means "follow DOMAIN", which is
+  # right in both modes. prod.py treats empty as not-overridden.
+  DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-}
+  DJANGO_SESSION_COOKIE_SECURE: ${DJANGO_SESSION_COOKIE_SECURE:-}
+  DJANGO_CSRF_COOKIE_SECURE: ${DJANGO_CSRF_COOKIE_SECURE:-}
+  DJANGO_HSTS_SECONDS: ${DJANGO_HSTS_SECONDS:-}
   DB_NAME: ${DB_NAME:-pms}
   DB_USER: ${DB_USER:-pms}
   DB_PASSWORD: ${DB_PASSWORD:?set the database password}
@@ -79,19 +87,26 @@ x-app-build: &app_build
   image: pms-talbotiq:prod
 
 services:
-  # ── public TLS edge (the ONLY container that binds a public port) ───────────
-  # Obtains and renews a Let's Encrypt certificate automatically; see ./Caddyfile
-  # for the routing split. DOMAIN must already resolve to this host, and :80 must
-  # be reachable from the internet — the HTTP-01 challenge is answered on it, so
-  # closing :80 breaks renewal ~60 days later, not today.
+  # ── public edge (the ONLY container that binds a public port) ──────────────
+  # With DOMAIN set: obtains and renews a Let's Encrypt certificate automatically
+  # and redirects http -> https. DOMAIN must already resolve to this host, and :80
+  # must be reachable from the internet — the HTTP-01 challenge is answered on it,
+  # so closing :80 breaks renewal ~60 days later, not today.
+  #
+  # With DOMAIN empty: serves plain HTTP on :80 for any Host and attempts no ACME,
+  # because Let's Encrypt cannot issue a certificate for a bare IP. 443 stays
+  # published so that switching DOMAIN on needs no compose edit and no downtime
+  # beyond the restart. See ./Caddyfile and docs/BUILD/ENABLE_TLS.md.
   caddy:
     image: caddy:2-alpine
     ports:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN: ${DOMAIN:?the public hostname pointed at this server, e.g. pms.acme.com}
-      ACME_EMAIL: ${ACME_EMAIL:?an address Let's Encrypt can send expiry warnings to}
+      DOMAIN: ${DOMAIN:-}
+      # Optional to Caddy, but set it with DOMAIN: it is the only warning you get
+      # before a failed renewal becomes an outage.
+      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # KEEP caddy_data: it holds the issued certificates and the ACME account key.

@@ -5,6 +5,10 @@ __pycache__/
 .eggs/
 build/
 dist/
+# `build/` above is a Python artifact rule, but macOS matches ignore patterns
+# case-insensitively, so it also swallows docs/BUILD/ — which is documentation,
+# not an artifact. Re-include it explicitly.
+!docs/BUILD/
 
 # Virtualenvs
 .venv/
@@ -48,3 +52,4 @@ staticfiles/*
 
 # Local env files that are not the committed placeholder template.
 env-for-testing.txt
+.gstack/

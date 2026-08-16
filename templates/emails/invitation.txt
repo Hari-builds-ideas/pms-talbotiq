@@ -1,0 +1,12 @@
+{{ inviter }} invited you to join {{ tenant_name }} on {{ app_name }} as {{ role }}.
+
+Accept the invitation:
+{{ url }}
+
+The link expires in 7 days.
+
+If you were not expecting this, you can ignore it — no account is created until
+you accept.
+{% if support_email %}
+Questions: {{ support_email }}
+{% endif %}

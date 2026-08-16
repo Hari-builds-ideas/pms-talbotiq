@@ -20,7 +20,6 @@ import logging
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.mail import send_mail
 from django.utils.text import slugify
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
@@ -28,6 +27,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import record
+from apps.core.mail import send_templated_email
 from apps.core.throttling import AtomicAnonThrottle
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import Tenant
@@ -91,24 +91,17 @@ def _unique_slug(preferred: str) -> str | None:
 
 def _send_welcome_email(admin: User, tenant: Tenant) -> bool:
     """Best-effort welcome / verify-your-email. Never blocks signup."""
-    try:
-        login_url = f"{settings.PUBLIC_APP_URL.rstrip('/')}/login"
-        send_mail(
-            subject=f"Welcome to {settings.APP_NAME} — your workspace is ready",
-            message=(
-                f"Hi {admin.display},\n\n"
-                f"Your {settings.APP_NAME} workspace \"{tenant.name}\" is ready.\n"
-                f"Workspace ID: {tenant.slug}\n\n"
-                f"Sign in any time at {login_url} using this workspace ID and your email.\n\n"
-                "You can now invite your team or bulk-import employees from Admin → Users.\n"
-            ),
-            from_email=None,
-            recipient_list=[admin.email],
-        )
-        return True
-    except Exception:  # noqa: BLE001 — email is best-effort; signup already succeeded
-        logger.exception("signup welcome email send failed")
-        return False
+    return send_templated_email(
+        "welcome",
+        to=admin.email,
+        subject=f"Welcome to {settings.APP_NAME} — your workspace is ready",
+        context={
+            "name": admin.display,
+            "tenant_name": tenant.name,
+            "tenant_slug": tenant.slug,
+            "url": f"{settings.PUBLIC_APP_URL.rstrip('/')}/login",
+        },
+    )
 
 
 class PublicConfigView(APIView):

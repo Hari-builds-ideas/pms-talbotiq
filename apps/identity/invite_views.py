@@ -14,7 +14,6 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.mail import send_mail
 from django.db import IntegrityError, models as dj_models
 from django.utils import timezone
 from rest_framework import serializers, status
@@ -23,6 +22,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.services import record
+from apps.core.mail import send_templated_email
 from apps.core.throttling import AtomicAnonThrottle
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
@@ -78,21 +78,17 @@ def _load_pending(token: str) -> Invitation | None:
 
 def _send_invite_email(request, invitation: Invitation, url: str) -> bool:
     """Best-effort invite email; the link is always returned to the inviter."""
-    try:
-        send_mail(
-            subject=f"You're invited to {request.user.tenant.name} on {settings.APP_NAME}",
-            message=(
-                f"{request.user.display} invited you to join {request.user.tenant.name} "
-                f"as {invitation.get_role_display()}.\n\nAccept here: {url}\n\n"
-                "The link expires in 7 days."
-            ),
-            from_email=None,
-            recipient_list=[invitation.email],
-        )
-        return True
-    except Exception:  # noqa: BLE001 — email is best-effort; the link is returned
-        logger.exception("invitation email send failed")
-        return False
+    return send_templated_email(
+        "invitation",
+        to=invitation.email,
+        subject=f"You're invited to {request.user.tenant.name} on {settings.APP_NAME}",
+        context={
+            "inviter": request.user.display,
+            "tenant_name": request.user.tenant.name,
+            "role": invitation.get_role_display(),
+            "url": url,
+        },
+    )
 
 
 class InvitationCreateSerializer(serializers.Serializer):

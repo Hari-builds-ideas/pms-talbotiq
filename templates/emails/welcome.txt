@@ -1,0 +1,16 @@
+Hi {{ name }},
+
+Your {{ app_name }} workspace "{{ tenant_name }}" is ready.
+
+Workspace ID: {{ tenant_slug }}
+
+Sign in any time:
+{{ url }}
+
+You will need the workspace ID above along with your email address, so keep this
+message — it is the only place the ID is sent to you.
+
+Next: invite your team, or bulk-import employees, from Admin -> Users.
+{% if support_email %}
+Questions: {{ support_email }}
+{% endif %}

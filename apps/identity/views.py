@@ -4,7 +4,6 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.mail import send_mail
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import status
@@ -19,6 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.audit.services import record
+from apps.core.mail import send_templated_email
 from apps.tenancy.context import tenant_context
 from apps.tenancy.models import Tenant
 
@@ -266,20 +266,16 @@ class PasswordResetRequestView(APIView):
             f"{settings.PUBLIC_APP_URL.rstrip('/')}/reset-password"
             f"?tenant={tenant.slug}&uid={uid}&token={token}"
         )
-        try:
-            send_mail(
-                subject=f"Reset your {settings.APP_NAME} password",
-                message=(
-                    f"A password reset was requested for your {tenant.name} account.\n\n"
-                    f"Reset it here: {link}\n\n"
-                    "The link is single-use and expires. If you didn't request this, "
-                    "ignore this email — your password is unchanged."
-                ),
-                from_email=None,  # DEFAULT_FROM_EMAIL
-                recipient_list=[user.email],
-            )
-        except Exception:  # noqa: BLE001 — a mail outage must not 500 (or leak existence)
-            logger.exception("password-reset email send failed")
+        # send_templated_email never raises. A mail outage must not 500 here, and
+        # a 500 on this endpoint is itself a disclosure: it separates "we tried to
+        # send" from "no such account", which the rest of this view goes out of
+        # its way to keep indistinguishable.
+        send_templated_email(
+            "password_reset",
+            to=user.email,
+            subject=f"Reset your {settings.APP_NAME} password",
+            context={"tenant_name": tenant.name, "url": link},
+        )
 
 
 class PasswordResetConfirmView(APIView):

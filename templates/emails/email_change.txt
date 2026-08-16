@@ -1,0 +1,12 @@
+Confirm changing your {{ app_name }} account email to {{ new_email }}.
+
+Confirm here:
+{{ url }}
+
+The link expires in 1 hour.
+
+If you did not request this, ignore this email — your address is unchanged. It is
+worth checking that nobody else has access to your account.
+{% if support_email %}
+Questions: {{ support_email }}
+{% endif %}

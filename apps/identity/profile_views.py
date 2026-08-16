@@ -16,7 +16,6 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.mail import send_mail
 from django.http import FileResponse, Http404
 from django.utils import timezone as dj_timezone
 from rest_framework import serializers, status
@@ -26,6 +25,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 from apps.audit.services import record
+from apps.core.mail import send_templated_email
 from apps.rbac.scope import actor_can_access
 
 from . import security
@@ -252,18 +252,12 @@ class EmailChangeRequestView(APIView):
             salt=_EMAIL_CHANGE_SALT,
         )
         link = f"{settings.PUBLIC_APP_URL.rstrip('/')}/settings?email_change_token={token}"
-        try:
-            send_mail(
-                subject=f"Confirm your new {settings.APP_NAME} email address",
-                message=(
-                    f"Confirm changing your account email to {new_email}:\n\n{link}\n\n"
-                    "The link expires in 1 hour. If you didn't request this, ignore it."
-                ),
-                from_email=None,
-                recipient_list=[new_email],
-            )
-        except Exception:  # noqa: BLE001 — mail outage must not 500
-            logger.exception("email-change mail send failed")
+        send_templated_email(
+            "email_change",
+            to=new_email,
+            subject=f"Confirm your new {settings.APP_NAME} email address",
+            context={"new_email": new_email, "url": link},
+        )
         return Response({"ok": True})
 
 

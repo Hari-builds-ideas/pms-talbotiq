@@ -375,6 +375,8 @@ SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="")
 # PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus
 # the EMAIL_HOST/PORT/USER/PASSWORD/TLS of a real provider — password reset for
 # local (non-SSO) accounts depends on this being configured.
+# Going live is env vars ONLY — no code change. The full list, with a worked
+# example per provider, is in docs/BUILD/EMAIL.md.
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
 )
@@ -383,9 +385,22 @@ EMAIL_PORT = env.int("EMAIL_PORT", default=587)
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+# Implicit TLS on 465, as opposed to STARTTLS on 587. Django raises if both are
+# set, which is the correct failure — silently preferring one would connect in a
+# mode the provider did not expect and fail later with a confusing error.
+EMAIL_USE_SSL = env.bool("EMAIL_USE_SSL", default=False)
+# Seconds. Django's default is None, i.e. wait forever: a provider that accepts
+# the connection and then stalls would hold a gunicorn worker indefinitely, and
+# enough password-reset requests during an SMTP outage would take the whole app
+# down with it. 10s is generous for an SMTP handshake.
+EMAIL_TIMEOUT = env.int("EMAIL_TIMEOUT", default=10)
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL", default=f"{APP_NAME} <no-reply@localhost>"
 )
+# Where a reply goes when a human hits reply to an automated message. Without
+# it, replies to a no-reply address disappear — which is how a support request
+# gets lost at the exact moment somebody could not get into their account.
+EMAIL_REPLY_TO = env("EMAIL_REPLY_TO", default=SUPPORT_EMAIL)
 #: The public base URL of the SPA — used to build password-reset links in email.
 PUBLIC_APP_URL = env("PUBLIC_APP_URL", default="http://localhost:8080")
 

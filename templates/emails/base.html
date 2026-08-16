@@ -1,0 +1,64 @@
+{% comment %}
+Layout for every message this product sends.
+
+Deliberately plain HTML with INLINE styles and a table for the button. Email
+clients are not browsers: Outlook renders through Word, Gmail strips <style>
+blocks in some views, and a flexbox layout collapses into a stack of unstyled
+text. Every rule here is one that survives that.
+
+No images and no external assets at all — a remote image is blocked by default
+in most clients, so a layout that depends on one arrives broken, and a tracking
+pixel in a password-reset email is not something this product should be doing.
+{% endcomment %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ subject|default:app_name }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f5f7;">
+  {# Preheader: the grey line a client shows next to the subject. Left empty it #}
+  {# shows the first words of the body, which is usually "View this email in". #}
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{% block preheader %}{% endblock %}</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+         style="background-color:#f4f5f7;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:560px;background-color:#ffffff;border-radius:8px;
+                      border:1px solid #e4e6ea;">
+          <tr>
+            <td style="padding:24px 28px 8px 28px;font-family:-apple-system,BlinkMacSystemFont,
+                       'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;
+                       font-weight:600;color:#111827;">
+              {{ app_name }}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 28px 28px;font-family:-apple-system,BlinkMacSystemFont,
+                       'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;
+                       line-height:1.55;color:#374151;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+        </table>
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="max-width:560px;">
+          <tr>
+            <td style="padding:16px 28px;font-family:-apple-system,BlinkMacSystemFont,
+                       'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;
+                       line-height:1.5;color:#6b7280;">
+              {% block footer %}
+                This message was sent by {{ app_name }}.
+                {% if support_email %}Questions: {{ support_email }}.{% endif %}
+              {% endblock %}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

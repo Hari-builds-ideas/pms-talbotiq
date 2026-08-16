@@ -1,0 +1,12 @@
+This is a test message from {{ app_name }}.
+
+If you are reading it, SMTP is configured correctly and password resets,
+invitations and email-change confirmations will reach their recipients.
+
+Sent:           {{ sent_at }}
+Backend:        {{ backend }}
+From:           {{ from_email }}
+Public app URL: {{ public_app_url }}
+
+The public app URL above is the hostname every link in every other email is built
+from. If it is wrong, mail will still send and every link in it will be dead.

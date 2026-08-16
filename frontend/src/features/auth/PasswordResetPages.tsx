@@ -78,7 +78,7 @@ export function ForgotPasswordPage() {
             <Input value={tenant} onChange={(e) => setTenant(e.target.value)} placeholder="acme" autoFocus />
           </Field>
           <Field label="Email" required>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
+            <Input type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" />
           </Field>
           <Button type="submit" className="w-full" loading={busy} disabled={!tenant.trim() || !email.trim()}>
             Send reset link

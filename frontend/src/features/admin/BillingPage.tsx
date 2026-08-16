@@ -363,6 +363,7 @@ function SeatsPanel({ seats, loading }: { seats?: number; loading: boolean }) {
             </Button>
             <Input
               type="number"
+              inputMode="numeric"
               min={0}
               value={value}
               onChange={(e) => setValue(Number(e.target.value))}

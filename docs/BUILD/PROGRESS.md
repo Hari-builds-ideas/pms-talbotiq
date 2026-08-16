@@ -171,3 +171,29 @@ Needs from human: nothing.
 - `goals`, `feedback`, `approvals` from the A6 list are **not** table-based
   (measured `tableCount: 0`) — they already render as cards/lists, nothing to do.
 
+## A7 — Forms, modals and dialogs on small screens
+Status: DONE
+Changed: frontend/src/components/ui/{input,textarea,select,dialog,sheet}.tsx,
+frontend/src/features/auth/{LoginPage,SignupPage,PasswordResetPages}.tsx,
+frontend/src/features/settings/SettingsPage.tsx,
+frontend/src/features/admin/{UsersPage,BillingPage}.tsx,
+frontend/src/features/approvals/WorkflowDialog.tsx
+Verified by: live walk at 390×844 — `/settings` off-screen **570 → 0** and
+sub-16px inputs **9 → 2** (both checkboxes, which don't zoom); `/checkins` 4→0,
+`/audit` 3→0, `/admin/users` 1→0, `/admin/billing` 1→0. `tsc` clean; 167 pass.
+Needs from human: nothing.
+
+- **Gotcha worth remembering:** this project's Tailwind scale defines `base` as
+  0.875rem (**14px**), so the obvious `text-base` fix still tripped iOS zoom.
+  Controls use a literal `text-[16px]` below `sm` — 16 is a platform threshold,
+  not a design token. Only caught by measuring computed style.
+- Dialogs → full-screen sheets below `md` (`inset-0`, `100dvh`, own scroll,
+  safe-area padding); close button 16px glyph → 44×44.
+- Side sheets full-bleed below `sm` (were `w-3/4` = 292px on a 390px screen).
+- Select dropdowns capped at `min(24rem, 60dvh)` with own scroll.
+- `inputMode`/`autoCapitalize`/`autoCorrect` on email, `tel` on phone, `numeric`
+  on billing + workflow number fields.
+- Real bug fixed: the `/settings` "This device" badge sat inside a truncating
+  paragraph, so it rendered ~570px off-screen and was clipped — the label
+  identifying your own session was invisible on a phone.
+

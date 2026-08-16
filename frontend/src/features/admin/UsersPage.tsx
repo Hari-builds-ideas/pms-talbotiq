@@ -708,6 +708,11 @@ function InviteDialog() {
           <div className="flex gap-2">
             <Input
               type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="person@company.com"

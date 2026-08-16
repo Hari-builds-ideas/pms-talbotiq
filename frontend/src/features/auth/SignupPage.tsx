@@ -109,6 +109,10 @@ export function SignupPage() {
               <Input
                 type="email"
                 autoComplete="username"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="you@company.com"
                 {...form.register("email")}
               />

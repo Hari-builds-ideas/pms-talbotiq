@@ -134,6 +134,13 @@ export function LoginPage() {
                   <Input
                     type="email"
                     autoComplete="username"
+                    // A phone keyboard defaults to sentence case and autocorrect,
+                    // so "ada@acme.test" is offered as "Ada@acme.test" and the
+                    // login fails on a capital the user never typed.
+                    inputMode="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="you@company.com"
                     {...form.register("email")}
                   />

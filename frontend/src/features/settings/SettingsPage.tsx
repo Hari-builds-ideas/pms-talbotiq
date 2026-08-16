@@ -113,7 +113,10 @@ function ProfileCard({ p }: { p: Profile }) {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Full name"><Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></Field>
-          <Field label="Phone"><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
+          {/* inputMode=tel brings up the dialling keypad instead of the full
+              QWERTY, which is the difference between typing a number and hunting
+              for the digits row. */}
+          <Field label="Phone"><Input type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></Field>
           <Field label="Time zone" hint='e.g. "Asia/Kuala_Lumpur"'>
             <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           </Field>
@@ -157,7 +160,7 @@ function EmailChangeRow() {
   }
   return (
     <div className="space-y-2 rounded-md border border-border p-3">
-      <Field label="New email"><Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></Field>
+      <Field label="New email"><Input type="email" inputMode="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} /></Field>
       <Field label="Current password"><Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} /></Field>
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
@@ -336,10 +339,17 @@ function SessionsCard() {
           {(q.data ?? []).map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-3 py-2 text-sm">
               <div className="min-w-0">
-                <p className="truncate font-medium">
-                  {s.user_agent || "Unknown device"} {s.current && <Badge variant="success" className="ml-1">This device</Badge>}
-                </p>
-                <p className="text-2xs text-muted-foreground">{s.ip ?? "—"} · last seen {formatDateTime(s.last_seen)}</p>
+                {/* The "This device" badge used to live INSIDE the truncating
+                    paragraph. A user agent string is long, so on a phone the
+                    badge was laid out ~570px past the right edge and clipped by
+                    the parent's overflow:hidden — the one label that tells you
+                    which session you are looking at was invisible. Truncate the
+                    user agent on its own; keep the badge outside it. */}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <p className="truncate font-medium">{s.user_agent || "Unknown device"}</p>
+                  {s.current && <Badge variant="success" className="shrink-0">This device</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground">{s.ip ?? "—"} · last seen {formatDateTime(s.last_seen)}</p>
               </div>
               {!s.current && (
                 <Button variant="ghost" size="sm" className="text-danger" onClick={() => revoke.mutate(s.id)}>

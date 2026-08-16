@@ -213,6 +213,7 @@ export function WorkflowDialog({
                     <Field label="Timeout (hours)">
                       <Input
                         type="number"
+                        inputMode="numeric"
                         min={1}
                         value={step.timeout_hours}
                         onChange={(e) => patchStep(i, { timeout_hours: Number(e.target.value) })}

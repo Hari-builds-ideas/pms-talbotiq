@@ -38,7 +38,10 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        {/* Public self-serve new-organization signup (PROD_B). */}
+        {/* Public self-serve new-organization signup (PROD_B), gated on the
+            server's SIGNUP_MODE (C7). When closed the route renders the same
+            "by invitation" explanation the API returns, rather than a form that
+            can only ever 403. */}
         <Route path="/signup" element={<SignupPage />} />
         {/* Public by necessity: a privacy policy behind a login is not one. */}
         <Route path="/privacy" element={<PrivacyPage />} />

@@ -3,6 +3,10 @@
 Covers the abuse/tenant-isolation boundary: signup is public + throttled, creates a
 new tenant and first ADMIN server-side, provisions Starter seats/subscription, and
 returns tenant-scoped JWTs.  A new tenant must not see existing tenant data.
+
+These exercise the signup MECHANICS, so they run with SIGNUP_MODE="open". The
+shipped default is "invite_only" (C7) because checkout cannot take money yet;
+that default and the refusal it produces are covered in test_signup_mode.py.
 """
 import pytest
 from rest_framework.test import APIClient
@@ -15,6 +19,12 @@ from apps.tenancy.models import Tenant
 from apps.testsupport.factories import TenantFactory, UserFactory
 
 pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _open_signup(settings):
+    """These test the signup MECHANICS. The shipped default is invite_only (C7)."""
+    settings.SIGNUP_MODE = "open"
 
 SIGNUP = "/api/auth/signup"
 

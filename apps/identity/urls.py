@@ -8,6 +8,13 @@ app_name = "identity"
 urlpatterns = [
     # ─── self-serve new-organization signup (PUBLIC; PROD_B) ───
     path("signup", signup_views.SignupView.as_view(), name="signup"),
+    # Pre-login facts the SPA needs (signup open? support address? SSO buttons?).
+    # Served rather than baked in so SIGNUP_MODE flips without a frontend rebuild.
+    path(
+        "public-config",
+        signup_views.PublicConfigView.as_view(),
+        name="public-config",
+    ),
     path("login", views.LoginView.as_view(), name="login"),
     # Device-aware refresh (L1.3): stock rotation+blacklist PLUS the did claim
     # is re-checked so a revoked device session cannot rotate.

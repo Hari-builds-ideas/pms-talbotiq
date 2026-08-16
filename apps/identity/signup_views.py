@@ -111,6 +111,33 @@ def _send_welcome_email(admin: User, tenant: Tenant) -> bool:
         return False
 
 
+class PublicConfigView(APIView):
+    """``GET /api/auth/public-config`` (PUBLIC) — the handful of facts the SPA
+    needs BEFORE anyone is signed in.
+
+    Served from the server rather than baked in at build time so flipping
+    ``SIGNUP_MODE`` takes effect on reload instead of requiring a rebuild and
+    redeploy of the frontend — which is the difference between "one env var" and
+    "one env var and a release".
+
+    Deliberately tiny, and deliberately contains nothing that is not already
+    visible to an anonymous visitor: whether signup is open, who to contact, and
+    which SSO buttons to render. No tenant data, no version, no build info.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    throttle_classes = [AtomicAnonThrottle]
+
+    def get(self, request):
+        return Response({
+            "signup_open": getattr(settings, "SIGNUP_MODE", "invite_only") == "open",
+            "support_email": getattr(settings, "SUPPORT_EMAIL", "") or None,
+            "google_sso": bool(getattr(settings, "GOOGLE_SSO_ENABLED", False)),
+            "app_name": getattr(settings, "APP_NAME", "Axiom"),
+        })
+
+
 class SignupView(APIView):
     """``POST /api/auth/signup`` (PUBLIC) — create a workspace + first admin and
     log them in. Body: ``{org_name, display_name, email, password, workspace_slug?}``.
@@ -121,6 +148,28 @@ class SignupView(APIView):
     throttle_classes = [AtomicAnonThrottle]
 
     def post(self, request):
+        # C7 — self-serve signup is CLOSED by default.
+        #
+        # Anyone signing up today gets a real workspace on a real plan that no
+        # invoice will ever follow, because checkout cannot take money yet (C8).
+        # A product that hands out accounts it cannot bill is not "growing", it is
+        # accumulating support obligations. The invitation flow is unaffected:
+        # existing customers still onboard their own people.
+        #
+        # One env var flips it back the moment billing works.
+        if getattr(settings, "SIGNUP_MODE", "invite_only") != "open":
+            return Response(
+                {
+                    "detail": (
+                        "New workspaces are by invitation at the moment. Get in "
+                        "touch and we'll set you up."
+                    ),
+                    "code": "signup_invite_only",
+                    "support_email": getattr(settings, "SUPPORT_EMAIL", "") or None,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = SignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

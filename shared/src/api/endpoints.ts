@@ -96,7 +96,19 @@ export interface AdminUserParams extends PageParams {
 
 // ---- Auth ------------------------------------------------------------------
 
+/** Pre-login facts the SPA needs before anyone is signed in (C7). Served rather
+ *  than baked in at build time, so flipping SIGNUP_MODE takes effect on reload
+ *  instead of needing a frontend rebuild. */
+export interface PublicConfig {
+  signup_open: boolean;
+  support_email: string | null;
+  google_sso: boolean;
+  app_name: string;
+}
+
 export const authApi = {
+  /** PUBLIC — no token required. */
+  publicConfig: () => unwrap<PublicConfig>(api.get("/auth/public-config")),
   login: (body: { email: string; password: string; tenant_slug: string }) =>
     unwrap<import("../types").LoginResponse>(api.post("/auth/login", body)),
   // Self-serve new-organization signup (PROD_B): creates a workspace + first

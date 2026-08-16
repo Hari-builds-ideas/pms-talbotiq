@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { authApi } from "@/lib/api/endpoints";
 import { useAuth } from "@/lib/auth/AuthContext";
+import { usePublicConfig } from "@/lib/hooks/usePublicConfig";
 import { landingPathFor } from "@/app/nav";
 import { mapApiError } from "@/lib/errors";
 import type { TokenPair } from "@/lib/types";
@@ -35,6 +36,7 @@ const DEMO_ACCOUNTS = [
 ];
 
 export function LoginPage() {
+  const { signupOpen } = usePublicConfig();
   const { status, completeLogin, me } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -196,12 +198,17 @@ export function LoginPage() {
                 </Button>
               )}
 
-              <p className="mt-6 text-center text-sm text-muted-foreground">
-                New organization?{" "}
-                <Link to="/signup" className="font-medium text-primary hover:underline">
-                  Create your workspace
-                </Link>
-              </p>
+              {/* Only advertised when the server says self-serve signup is open
+                  (C7). Linking to a form that can only ever be refused is a dead
+                  end dressed as a call to action. */}
+              {signupOpen && (
+                <p className="mt-6 text-center text-sm text-muted-foreground">
+                  New organization?{" "}
+                  <Link to="/signup" className="tap-target font-medium text-primary hover:underline">
+                    Create your workspace
+                  </Link>
+                </p>
+              )}
 
               {/* Legal + support, reachable WITHOUT signing in — which is the only
                   way they are any use to somebody deciding whether to sign up. */}

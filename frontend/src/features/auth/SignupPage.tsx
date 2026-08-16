@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { authApi } from "@/lib/api/endpoints";
 import { useAuth } from "@/lib/auth/AuthContext";
 import { mapApiError } from "@/lib/errors";
+import { usePublicConfig } from "@/lib/hooks/usePublicConfig";
 import { BRAND, BrandWordmark } from "@/brand";
 import type { TokenPair } from "@/lib/types";
 
@@ -25,6 +26,7 @@ type SignupValues = z.infer<typeof signupSchema>;
 /** Self-serve workspace creation (PROD_B). A brand-new organization creates its
  *  workspace, becomes the first admin, and is logged straight in. */
 export function SignupPage() {
+  const { signupOpen, supportEmail } = usePublicConfig();
   const { status, completeLogin } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = React.useState<string | null>(null);
@@ -48,6 +50,43 @@ export function SignupPage() {
       const mapped = mapApiError(err);
       setError(mapped.message);
     }
+  }
+
+  // C7: when self-serve signup is closed, say so plainly instead of rendering a
+  // form whose only possible outcome is a 403. `isLoading` is treated as closed
+  // for the same reason — briefly not offering a working form beats offering one
+  // that will be refused.
+  if (!signupOpen) {
+    return (
+      <div className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center bg-background px-6 pt-safe pb-safe">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <BrandWordmark className="mx-auto h-12 w-auto" />
+          <h1 className="text-2xl font-semibold tracking-tight">
+            New workspaces are by invitation
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            We're onboarding organisations one at a time at the moment. Get in
+            touch and we'll set you up.
+          </p>
+          {supportEmail && (
+            <p className="text-sm">
+              <a
+                href={`mailto:${supportEmail}`}
+                className="tap-target font-medium text-primary hover:underline"
+              >
+                {supportEmail}
+              </a>
+            </p>
+          )}
+          <p className="pt-2 text-sm text-muted-foreground">
+            Already have a workspace?{" "}
+            <Link to="/login" className="tap-target font-medium text-primary hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

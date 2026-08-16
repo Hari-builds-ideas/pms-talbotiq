@@ -355,6 +355,21 @@ APP_NAME = env("APP_NAME", default="Axiom")
 # seat enforcement still applies; the admin buys more when they grow.
 SIGNUP_DEFAULT_SEATS = env.int("SIGNUP_DEFAULT_SEATS", default=5)
 
+# ── Self-serve signup (C7) ────────────────────────────────────────────────────
+# "invite_only" (default) closes POST /api/auth/signup and hides the route in the
+# SPA. Anyone signing up today would get a real workspace on a real plan that no
+# invoice can follow, because checkout cannot take money yet (C8) — that is not
+# growth, it is unbilled support obligation.
+#
+# Set to "open" the moment billing works. The INVITATION flow is unaffected in
+# either mode: existing customers always onboard their own people.
+SIGNUP_MODE = env("SIGNUP_MODE", default="invite_only")
+
+# The address shown to someone who cannot self-serve, and on the legal/support
+# pages. Empty is allowed — the copy simply omits it rather than printing a
+# placeholder address nobody reads.
+SUPPORT_EMAIL = env("SUPPORT_EMAIL", default="")
+
 # ─── Email / SMTP (password reset + notifications) ─────────────────────
 # Default is the console backend (dev: mail prints to the web container log).
 # PRODUCTION sets EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend plus

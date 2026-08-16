@@ -118,6 +118,8 @@ export function ReviewsListPage() {
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : data && data.results.length > 0 ? (
         <DataTable
+          mobilePrimary={["employee", "state", "cycle"]}
+          mobileItemLabel="review"
           columns={columns}
           data={data.results}
           getRowId={(r) => r.id}

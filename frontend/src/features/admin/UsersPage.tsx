@@ -234,6 +234,8 @@ export function UsersPage() {
         )
       ) : (
         <DataTable
+          mobilePrimary={["display", "role", "is_active"]}
+          mobileItemLabel="user"
           columns={columns}
           data={rows}
           getRowId={(u) => u.id}

@@ -149,3 +149,25 @@ Needs from human: nothing.
 - Fallback added: `BrandMark`/`BrandWordmark` now degrade to the inline lucide
   mark via `onError` instead of rendering an empty box when a PNG 404s.
 
+## A6 — Tables and data-dense views
+Status: DONE
+Changed: frontend/src/components/DataTable.tsx,
+frontend/src/lib/hooks/useIsDesktop.ts (new),
+frontend/src/app/shell/AppLayout.tsx, and the `mobilePrimary` wiring on
+AuditPage, UsersPage, ReviewsListPage, OrgPage, JdListPage (×2 tables)
+Verified by: live walk at 390×844 — off-screen content on `/admin/users`,
+`/audit`, `/reviews`, `/jd` went **602/659/607/570 → 0**, each renders **0
+tables**, and `/audit` shows 50 cards under an "audit entry list" label with the
+Details disclosure. `tsc` clean; 167 tests pass.
+Needs from human: nothing.
+
+- Finding: tables were never breaking the page — the `Table` primitive already
+  wraps in `overflow-auto`, so they scrolled inside their own box. The real cost
+  was reading a record one horizontal swipe at a time with no scroll affordance.
+- One seam: every table screen uses the shared `DataTable`, so the card layout
+  lives there rather than in six screens.
+- Cards carry per-value labels, keyboard-operable row activation, and a
+  stop-propagation guard so the Details disclosure cannot trigger navigation.
+- `goals`, `feedback`, `approvals` from the A6 list are **not** table-based
+  (measured `tableCount: 0`) — they already render as cards/lists, nothing to do.
+

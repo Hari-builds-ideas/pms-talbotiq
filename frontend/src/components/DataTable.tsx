@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { useIsDesktop } from "@/lib/hooks/useIsDesktop";
 import { cn } from "@/lib/utils";
 
 export interface ServerPagination {
@@ -37,6 +38,24 @@ interface DataTableProps<TData> {
   className?: string;
   /** Disable client-side sorting (e.g. for already-server-sorted data). */
   enableSorting?: boolean;
+  /**
+   * Column ids to show on the FACE of each card below `md`. The rest fold into a
+   * "Details" disclosure. Defaults to the first three columns, which is a decent
+   * guess but rarely the best one — pass the fields a person actually scans for.
+   */
+  mobilePrimary?: string[];
+  /** Singular noun for the card list's accessible label, e.g. "user". */
+  mobileItemLabel?: string;
+}
+
+/** A column header is usually a plain string; anything else (a sort control, an
+ *  icon) has no sensible text form, so the card falls back to the column id
+ *  humanised. Cards need a LABEL per value — without one a phone shows a column
+ *  of context-free values. */
+function headerLabel(columnDef: { header?: unknown; id?: string }, id: string): string {
+  const h = columnDef.header;
+  if (typeof h === "string") return h;
+  return (id || "").replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**
@@ -52,8 +71,11 @@ export function DataTable<TData>({
   getRowId,
   className,
   enableSorting = true,
+  mobilePrimary,
+  mobileItemLabel = "row",
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
+  const isDesktop = useIsDesktop();
 
   const table = useReactTable({
     data,
@@ -77,6 +99,135 @@ export function DataTable<TData>({
     ? Math.min(pagination.page * pagination.pageSize, pagination.total)
     : 0;
 
+  const pager = pagination && pagination.total > pagination.pageSize && (
+    <div className="flex items-center justify-between text-xs text-muted-foreground">
+      <span className="tabular-nums">
+        {from}–{to} of {pagination.total}
+      </span>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="h-11 w-11 md:h-8 md:w-8"
+          disabled={pagination.page <= 1}
+          onClick={() => pagination.onPageChange(pagination.page - 1)}
+          aria-label="Previous page"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <span className="tabular-nums">
+          Page {pagination.page} / {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="h-11 w-11 md:h-8 md:w-8"
+          disabled={pagination.page >= totalPages}
+          onClick={() => pagination.onPageChange(pagination.page + 1)}
+          aria-label="Next page"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  // ── Below md: stacked cards ────────────────────────────────────────────────
+  // A 585px table inside a 356px column scrolls sideways inside its own box. It
+  // does not break the page, but it does mean a phone user reads a performance
+  // review one horizontal swipe at a time. Each row becomes a card carrying the
+  // fields worth scanning, with the remainder behind a disclosure.
+  if (!isDesktop) {
+    const rows = table.getRowModel().rows;
+    const allIds = table.getAllLeafColumns().map((c) => c.id);
+    const primaryIds = mobilePrimary?.length ? mobilePrimary : allIds.slice(0, 3);
+
+    return (
+      <div className={cn("space-y-3", className)}>
+        <ul className="space-y-2" aria-label={`${mobileItemLabel} list`}>
+          {rows.map((row) => {
+            const cells = row.getVisibleCells();
+            const primary = cells.filter((c) => primaryIds.includes(c.column.id));
+            const rest = cells.filter((c) => !primaryIds.includes(c.column.id));
+            const [lead, ...restPrimary] = primary;
+            return (
+              <li key={row.id}>
+                <div
+                  className={cn(
+                    "rounded-lg border border-border bg-card p-3",
+                    onRowClick && "cursor-pointer active:bg-secondary",
+                  )}
+                  // The whole card is the tap target, matching the desktop
+                  // click-the-row affordance. role/tabIndex so it is reachable
+                  // and operable from a keyboard, not mouse-only.
+                  role={onRowClick ? "button" : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  onKeyDown={
+                    onRowClick
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onRowClick(row.original);
+                          }
+                        }
+                      : undefined
+                  }
+                >
+                  {lead && (
+                    <div className="text-sm font-semibold text-foreground">
+                      {flexRender(lead.column.columnDef.cell, lead.getContext())}
+                    </div>
+                  )}
+                  {restPrimary.length > 0 && (
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {restPrimary.map((cell) => (
+                        <div key={cell.id} className="min-w-0">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {headerLabel(cell.column.columnDef, cell.column.id)}
+                          </dt>
+                          <dd className="truncate text-sm text-foreground">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                  {rest.length > 0 && (
+                    <details
+                      className="mt-2 border-t border-border pt-2"
+                      // Stop the disclosure toggle from also firing the card's
+                      // row-click and navigating away from what you just opened.
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <summary className="cursor-pointer list-none text-xs font-medium text-primary">
+                        Details
+                      </summary>
+                      <dl className="mt-2 space-y-1.5">
+                        {rest.map((cell) => (
+                          <div key={cell.id} className="flex gap-2">
+                            <dt className="w-28 shrink-0 text-xs uppercase tracking-wide text-muted-foreground">
+                              {headerLabel(cell.column.columnDef, cell.column.id)}
+                            </dt>
+                            <dd className="min-w-0 flex-1 text-sm text-foreground">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </details>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {pager}
+      </div>
+    );
+  }
+
+  // ── md and up: the table, unchanged ────────────────────────────────────────
   return (
     <div className={cn("space-y-3", className)}>
       <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -138,36 +289,7 @@ export function DataTable<TData>({
         </Table>
       </div>
 
-      {pagination && pagination.total > pagination.pageSize && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span className="tabular-nums">
-            {from}–{to} of {pagination.total}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={pagination.page <= 1}
-              onClick={() => pagination.onPageChange(pagination.page - 1)}
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="tabular-nums">
-              Page {pagination.page} / {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={pagination.page >= totalPages}
-              onClick={() => pagination.onPageChange(pagination.page + 1)}
-              aria-label="Next page"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      {pager}
     </div>
   );
 }

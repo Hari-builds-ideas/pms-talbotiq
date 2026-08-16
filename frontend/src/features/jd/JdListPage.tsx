@@ -83,6 +83,8 @@ function LibraryTab({ canAuthor }: { canAuthor: boolean }) {
         <ErrorState error={list.error} onRetry={() => list.refetch()} />
       ) : list.data && list.data.results.length > 0 ? (
         <DataTable
+          mobilePrimary={["title", "status", "level"]}
+          mobileItemLabel="job description"
           columns={columns}
           data={list.data.results}
           getRowId={(j) => j.id}
@@ -206,6 +208,8 @@ function RequestsTab() {
         <ErrorState error={requests.error} onRetry={() => requests.refetch()} />
       ) : requests.data && requests.data.results.length > 0 ? (
         <DataTable
+          mobilePrimary={["title", "status", "requested_by"]}
+          mobileItemLabel="JD request"
           columns={columns}
           data={requests.data.results}
           getRowId={(r) => r.id}

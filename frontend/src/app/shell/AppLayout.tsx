@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 import { ChatProvider, useChatPanel } from "@/features/chat/ChatPanel";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { CommandPalette } from "@/features/command/CommandPalette";
+import { isDesktopViewport, useIsDesktop } from "@/lib/hooks/useIsDesktop";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -39,46 +40,9 @@ export function AppLayout() {
   );
 }
 
-/** Tailwind's `md`. Below this the sidebar is a drawer; at or above it is inline.
- *  Keep in step with the `md:` variants in Sidebar.tsx and the backdrop below. */
-const DESKTOP_QUERY = "(min-width: 768px)";
-
 /** Remembers the DESKTOP sidebar preference only. A mobile session always starts
  *  closed (A2), so an open drawer is never restored onto a phone. */
 const NAV_PREF_KEY = "pms.nav.desktopOpen";
-
-/** Is the viewport at Tailwind's `md` breakpoint or wider?
- *
- * Guarded rather than calling `window.matchMedia` directly: it does not exist under
- * SSR, and jsdom does not implement it either, so an unguarded call takes out every
- * test that renders the shell. Absent → assume desktop, which is the layout this app
- * has always had. */
-function isDesktopViewport(): boolean {
-  return (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function" ||
-    window.matchMedia(DESKTOP_QUERY).matches
-  );
-}
-
-/** Live viewport class, so rotating a phone or resizing a window re-lays-out
- *  instead of keeping whatever was true at mount. */
-function useIsDesktop(): boolean {
-  const [desktop, setDesktop] = useState(isDesktopViewport);
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const mql = window.matchMedia(DESKTOP_QUERY);
-    const onChange = () => setDesktop(mql.matches);
-    // addEventListener is the modern API; addListener is the Safari <14 fallback.
-    if (typeof mql.addEventListener === "function") {
-      mql.addEventListener("change", onChange);
-      return () => mql.removeEventListener("change", onChange);
-    }
-    mql.addListener?.(onChange);
-    return () => mql.removeListener?.(onChange);
-  }, []);
-  return desktop;
-}
 
 /** The stored desktop preference, defaulting to open. Never consulted on mobile. */
 function readDesktopPref(): boolean {

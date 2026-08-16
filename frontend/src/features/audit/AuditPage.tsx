@@ -179,6 +179,8 @@ export function AuditPage() {
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       ) : q.data && q.data.results.length > 0 ? (
         <DataTable
+          mobilePrimary={["created_at", "action", "actor"]}
+          mobileItemLabel="audit entry"
           columns={columns}
           data={q.data.results}
           getRowId={(l) => l.id}

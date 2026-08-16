@@ -219,6 +219,8 @@ function PositionsTab({ canManage }: { canManage: boolean }) {
         <ErrorState error={positions.error} onRetry={() => positions.refetch()} />
       ) : positions.data && positions.data.results.length > 0 ? (
         <DataTable
+          mobilePrimary={["title", "status", "filled_by"]}
+          mobileItemLabel="position"
           columns={columns}
           data={positions.data.results}
           getRowId={(p) => p.id}

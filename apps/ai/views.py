@@ -14,6 +14,7 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -401,9 +402,19 @@ class AIJobDetailView(APIView):
 
     Own- and tenant-scoped: ``AIJob.objects`` auto-filters the tenant (a
     cross-tenant id is invisible → 404) and we further scope to
-    ``requested_by=request.user`` (another user's job → 404). No new capability —
-    a user may only ever read a job they themselves enqueued. Authentication is
-    the default ``IsAuthenticated``."""
+    ``requested_by=request.user`` (another user's job → 404). No capability is
+    required — a user may only ever read a job they themselves enqueued.
+
+    ``permission_classes`` is stated explicitly rather than inherited from the
+    project default (C13). The behaviour is identical; what changes is that the
+    guarantee is now visible at the view. This was one of only three authenticated
+    endpoints in the codebase relying on an implicit default, so an audit reading
+    the view could not tell "deliberately open to any authenticated caller" apart
+    from "somebody forgot" — and a future change to DEFAULT_PERMISSION_CLASSES
+    would have moved it silently.
+    """
+
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
         job = get_object_or_404(AIJob.objects.filter(requested_by=request.user), pk=pk)
@@ -413,7 +424,13 @@ class AIJobDetailView(APIView):
 class AIJobListView(APIView):
     """``GET /api/ai/jobs?target=<id>`` — the caller's own recent AI jobs, newest
     first, optionally filtered to one artifact. Lets a screen find the live job
-    for an artifact on load (so a refresh re-attaches to an in-flight run)."""
+    for an artifact on load (so a refresh re-attaches to an in-flight run).
+
+    Scoped to ``requested_by=request.user`` on top of the tenant-scoped manager;
+    ``permission_classes`` stated explicitly for the reason on AIJobDetailView.
+    """
+
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         jobs = AIJob.objects.filter(requested_by=request.user)

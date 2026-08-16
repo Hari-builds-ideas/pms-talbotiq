@@ -1,0 +1,27 @@
+Copyright (c) 2026 Talbotiq Technologies. All rights reserved.
+
+This software and its source code are the confidential and proprietary property
+of Talbotiq Technologies.
+
+No licence, express or implied, is granted by the mere fact that this file is
+present in the repository. Access to this repository does not confer any right
+to use, copy, modify, merge, publish, distribute, sublicense or sell the
+software, in whole or in part, except under a written agreement signed by
+Talbotiq Technologies.
+
+If you have received a copy of this software without such an agreement, you are
+not permitted to use it, and are asked to notify legal@talbotiq.com and delete
+it.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+Third-party components retain their own licences. See requirements.txt and
+frontend/package.json for the dependency set; none of them is relicensed by this
+file.

@@ -1,0 +1,29 @@
+# Code owners
+#
+# Every path here has one owner today. That is the honest state of the project,
+# not an aspiration -- listing a team that does not exist would mean reviews go
+# to nobody and merge unreviewed.
+#
+# GitHub uses the LAST matching pattern, so the specific entries below override
+# the catch-all above them.
+
+* @Hari-builds-ideas
+
+# The invariants. A change under these paths is the kind that looks fine in
+# review and breaks tenant isolation, RBAC, audit immutability or feedback
+# anonymity -- see SECURITY.md. They are called out separately so that when a
+# second reviewer exists, these are the paths they get added to first.
+/apps/tenancy/    @Hari-builds-ideas
+/apps/rbac/       @Hari-builds-ideas
+/apps/audit/      @Hari-builds-ideas
+/apps/feedback/   @Hari-builds-ideas
+/apps/identity/   @Hari-builds-ideas
+
+# Deployment and data-handling surfaces: a mistake here is live before anyone
+# reads the diff.
+/config/settings/ @Hari-builds-ideas
+/deploy/          @Hari-builds-ideas
+/scripts/         @Hari-builds-ideas
+/Caddyfile        @Hari-builds-ideas
+/docker-compose.prod.yml @Hari-builds-ideas
+/.github/         @Hari-builds-ideas

@@ -108,3 +108,29 @@ Needs from human: nothing.
   so the centred loader sat low and the login card scrolled needlessly. Now
   `100dvh` (vh retained as fallback) plus safe-area padding.
 
+## A4 — Time-aware greeting in the user's timezone
+Status: DONE
+Changed: apps/identity/views.py, apps/identity/tests/test_tokens_session.py,
+shared/src/types.ts, frontend/src/lib/greeting.ts (new),
+frontend/src/lib/greeting.test.ts (new),
+frontend/src/features/dashboard/DashboardPage.tsx
+Verified by: 9 new frontend tests against a pinned clock (167 total) + 2 new
+backend tests (`pytest apps/identity/tests/test_tokens_session.py` → 9 passed);
+`tsc --noEmit` clean.
+Needs from human: nothing.
+
+- `/api/auth/me` now returns `timezone`, defaulted to `"UTC"` server-side (never
+  null). Without it the client had no way to be correct.
+- Bands: 05:00–11:59 morning, 12:00–16:59 afternoon, 17:00–20:59 evening,
+  21:00–04:59 night (the night band did not exist before).
+- Hour derived via `Intl.DateTimeFormat` in the target zone, so DST is handled by
+  the platform tz database; an unknown zone falls back rather than throwing.
+- Re-evaluates on `visibilitychange` + `focus`, so an overnight session is
+  correct in the morning. The date label renders in the same zone.
+- The exact reported failure is now a test: `2026-08-17T18:35:00Z` → "Good night"
+  for `Asia/Kolkata`, "Good evening" for `UTC`.
+
+**Follow-up for the human:** `mobile/src/app/(tabs)/index.tsx` has the identical
+three-band device-clock greeting. Mobile is not in the deployed stack and has no
+test harness, so it was left unchanged rather than edited blind.
+

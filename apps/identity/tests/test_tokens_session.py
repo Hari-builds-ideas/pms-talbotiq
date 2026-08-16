@@ -57,6 +57,32 @@ def test_me_includes_server_computed_capabilities(api):
         assert set(caps) == {c for c in CAPABILITIES if role_has_capability(role, c)}
 
 
+def test_me_returns_the_users_own_timezone(api):
+    """The dashboard greeting renders against the USER's day, not the browser's.
+
+    A server (or phone) on UTC and a user in IST are 5.5 hours apart, which is how
+    "Good evening" ended up on screen at midnight. The client cannot fix that
+    without being told the user's zone, so /me carries it.
+    """
+    creds = _login.__defaults__[2]  # the file-wide fixture credential
+    t = TenantFactory(slug="acme")
+    UserFactory(tenant=t, email="a@acme.test", password=creds, timezone="Asia/Kolkata")
+    data = _login(api)
+    api.credentials(HTTP_AUTHORIZATION=f"Bearer {data['access']}")
+    assert api.get("/api/auth/me").json()["timezone"] == "Asia/Kolkata"
+
+
+def test_me_timezone_defaults_to_utc_when_unset(api):
+    """Never null: the client would need a branch for it, and that branch is
+    exactly where a wrong-timezone bug hides."""
+    creds = _login.__defaults__[2]
+    t = TenantFactory(slug="acme")
+    UserFactory(tenant=t, email="a@acme.test", password=creds, timezone="")
+    data = _login(api)
+    api.credentials(HTTP_AUTHORIZATION=f"Bearer {data['access']}")
+    assert api.get("/api/auth/me").json()["timezone"] == "UTC"
+
+
 def test_me_requires_auth(api):
     resp = api.get("/api/auth/me")
     assert resp.status_code == 401

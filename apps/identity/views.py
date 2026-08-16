@@ -357,6 +357,13 @@ class MeView(APIView):
                 "tenant_slug": u.tenant.slug,
                 "mfa_enabled": u.mfa_enabled,
                 "manager_id": str(u.manager_id) if u.manager_id else None,
+                # The user's OWN timezone, so the client can render time-relative
+                # copy (the dashboard greeting) against their day rather than the
+                # browser's. A server in UTC and a user in IST disagree by 5.5h,
+                # which is how "Good evening" ended up on screen at midnight.
+                # Falls back to UTC when unset — never null, so the client has one
+                # less branch to get wrong.
+                "timezone": u.timezone or "UTC",
                 # The caller's capability grants, from the SAME matrix the server
                 # enforces (apps/rbac/matrix.py) — the client's single source of
                 # truth for hiding controls a role can't use (FINAL D2).

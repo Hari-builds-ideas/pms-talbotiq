@@ -49,6 +49,11 @@ export interface Me {
   tenant_slug?: string;
   manager_id?: UUID | null;
   mfa_enabled: boolean;
+  /** The user's OWN IANA timezone (e.g. "Asia/Kolkata"), defaulted to "UTC"
+   *  server-side. Time-relative copy must render against this, not the browser's
+   *  clock — the two disagree whenever the device is set elsewhere, which is how
+   *  the dashboard greeted people with "Good evening" at midnight. */
+  timezone?: string;
   /** The caller's capability grants, computed server-side from the SAME matrix
    *  RBAC enforces (apps/rbac/matrix.py) — the client's single source of truth
    *  for hiding controls the role can't use. Absent → treat as no grants. */

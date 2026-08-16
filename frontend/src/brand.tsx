@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -98,12 +99,18 @@ export function BrandMark({
   onDark?: boolean;
   className?: string;
 }) {
-  if (!REBRAND) return <Sprout className={className} aria-hidden />;
+  // A PNG that 404s renders as nothing (or a browser's broken-image glyph), which
+  // is how "the logo just isn't there" reports happen — a wrong base path, a
+  // missing file in public/, or a CDN rewrite is enough. Fall back to the inline
+  // vector mark so the brand slot is never empty. See A5.
+  const [broken, setBroken] = useState(false);
+  if (!REBRAND || broken) return <Sprout className={className} aria-hidden />;
   return (
     <img
       src={onDark ? BRAND.iconOnDark : BRAND.iconOnLight}
       alt=""
       aria-hidden
+      onError={() => setBroken(true)}
       className={cn("object-contain", className)}
     />
   );
@@ -120,7 +127,10 @@ export function BrandWordmark({
   onDark?: boolean;
   className?: string;
 }) {
-  if (!REBRAND) {
+  // Same fallback as BrandMark: a missing wordmark degrades to the mark + name
+  // lockup rather than an empty box with alt text floating in it.
+  const [broken, setBroken] = useState(false);
+  if (!REBRAND || broken) {
     return (
       <span className="flex items-center gap-2.5">
         <Sprout className="h-5 w-5" aria-hidden />
@@ -132,6 +142,7 @@ export function BrandWordmark({
     <img
       src={onDark ? BRAND.wordmarkOnDark : BRAND.wordmarkOnLight}
       alt={BRAND.name}
+      onError={() => setBroken(true)}
       className={cn("object-contain", className)}
     />
   );

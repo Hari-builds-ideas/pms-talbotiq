@@ -134,3 +134,18 @@ Needs from human: nothing.
 three-band device-clock greeting. Mobile is not in the deployed stack and has no
 test harness, so it was left unchanged rather than edited blind.
 
+## A5 — Missing AI feature icons
+Status: DONE (root cause was A1; fallback added)
+Changed: frontend/src/brand.tsx
+Verified by: live check at 390×844 — Ask AI button now `right:344`, 44×44,
+`onScreen:true`, `svg:true`; every brand asset returns 200 from nginx and
+`document.images` reports `naturalWidth > 0`. `tsc` clean; 167 tests pass.
+Needs from human: nothing.
+
+- Ruled out all three candidate causes: lucide imports fine (11–24 SVGs/route),
+  no asset 404s, no responsive class hides icons.
+- Actual cause: the Ask AI control sat at `right:437` on a 390px viewport, past
+  the edge and clipped by the shell's `overflow-hidden`. A1 fixed it.
+- Fallback added: `BrandMark`/`BrandWordmark` now degrade to the inline lucide
+  mark via `onError` instead of rendering an empty box when a PNG 404s.
+

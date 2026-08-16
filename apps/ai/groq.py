@@ -52,13 +52,14 @@ class GroqProvider(LLMProvider):
 
     name = "groq"
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None):
         self.base_url = (
             getattr(settings, "LLM_BASE_URL", "")
             or "https://api.groq.com/openai/v1"
         ).rstrip("/")
-        # Accept GROQ_API_KEY or the generic LLM_API_KEY.
-        self.api_key = getattr(settings, "LLM_API_KEY", "") or getattr(
+        # A per-tenant key (B1) wins; otherwise the generic LLM_API_KEY or
+        # GROQ_API_KEY. Never hardcoded, never logged.
+        self.api_key = api_key or getattr(settings, "LLM_API_KEY", "") or getattr(
             settings, "GROQ_API_KEY", ""
         )
         self.timeout = float(getattr(settings, "LLM_TIMEOUT_SECONDS", 30))

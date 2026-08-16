@@ -72,12 +72,13 @@ class GeminiProvider(LLMProvider):
 
     name = "gemini"
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None):
         self.base_url = (
             getattr(settings, "GEMINI_BASE_URL", "") or _DEFAULT_BASE_URL
         ).rstrip("/")
-        # Accept GEMINI_API_KEY or the generic LLM_API_KEY (never hardcoded).
-        self.api_key = getattr(settings, "GEMINI_API_KEY", "") or getattr(
+        # A per-tenant key (B1) wins; otherwise GEMINI_API_KEY or the generic
+        # LLM_API_KEY. Never hardcoded, never logged.
+        self.api_key = api_key or getattr(settings, "GEMINI_API_KEY", "") or getattr(
             settings, "LLM_API_KEY", ""
         )
         self.timeout = float(getattr(settings, "LLM_TIMEOUT_SECONDS", 30))

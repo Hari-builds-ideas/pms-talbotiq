@@ -79,7 +79,10 @@ class LLMGateway:
         if not ai_enabled_for(tenant):
             return GatewayResult(status="NOT_CONFIGURED", errors=[AI_DISABLED_DETAIL])
 
-        provider = get_llm_provider()
+        # Resolved PER TENANT (B1): the tenant's own key wins, then the
+        # environment key, then not configured. Passing the tenant is what makes a
+        # customer-supplied key take effect without a redeploy.
+        provider = get_llm_provider(tenant)
         if not getattr(provider, "configured", False):
             return GatewayResult(status="NOT_CONFIGURED")
 
@@ -175,7 +178,10 @@ class LLMGateway:
         if not ai_enabled_for(tenant):
             return GatewayResult(status="NOT_CONFIGURED", errors=[AI_DISABLED_DETAIL])
 
-        provider = get_llm_provider()
+        # Resolved PER TENANT (B1): the tenant's own key wins, then the
+        # environment key, then not configured. Passing the tenant is what makes a
+        # customer-supplied key take effect without a redeploy.
+        provider = get_llm_provider(tenant)
         if not getattr(provider, "configured", False):
             return GatewayResult(status="NOT_CONFIGURED")
         if not hasattr(provider, "generate_with_tools"):

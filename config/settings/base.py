@@ -500,6 +500,20 @@ SLACK_CLIENT_FACTORY = env(
 # key — see NEEDS_HARI_llm_provider.md. Tests set this to the deterministic
 # FakeLLMProvider to exercise the full agent graphs with no network call.
 LLM_PROVIDER = env("LLM_PROVIDER", default="apps.ai.providers.NotConfiguredProvider")
+
+# ── Field encryption (B1) ─────────────────────────────────────────────────────
+# Fernet key(s) for secrets that must be stored and read back — today, a tenant's
+# own LLM API key. Comma-separated for rotation: the FIRST key encrypts, ALL are
+# tried for decryption, so rotating is "prepend new, deploy, re-save rows, drop
+# old" with no unreadable window.
+#
+# UNSET = per-tenant keys cannot be stored at all (the admin endpoint refuses and
+# says why). That is deliberate: writing a provider credential in plaintext
+# because a deployment forgot a variable is worse than refusing. Everything else
+# keeps working on the environment key.
+#
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
 # LangSmith tracing is opt-in: a no-op until a key is set.
 LANGSMITH_API_KEY = env("LANGSMITH_API_KEY", default="")
 

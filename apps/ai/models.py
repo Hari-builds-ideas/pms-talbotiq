@@ -252,3 +252,70 @@ class ChatPlanStep(TenantScopedModel):
 
     def __str__(self):
         return f"ChatPlanStep(#{self.ordinal} {self.action} [{self.status}])"
+
+
+class TenantAIConfig(TenantScopedModel):
+    """Per-tenant AI provider configuration (B1). One row per tenant.
+
+    Deliberately its own model rather than a corner of ``TenantConfig.settings``:
+    that bag is returned WHOLESALE by ``GET /api/admin/tenant-config`` and
+    REPLACED wholesale by the matching PUT, so an encrypted key living there would
+    be handed to every admin client and silently clobbered by an unrelated
+    settings edit. A dedicated row lets the serializer refuse to emit the secret
+    at all.
+
+    The key is stored encrypted (Fernet, ``FIELD_ENCRYPTION_KEY`` — see
+    ``apps.ai.crypto``). ``key_last4`` is the ONLY part kept in the clear: it is
+    what the admin UI shows so a person can tell which key is installed, and it is
+    useless on its own.
+
+    Resolution order in the gateway is tenant key → environment key → not
+    configured, so a tenant can bring its own key without a deploy, and a
+    deployment-wide key still serves tenants that have not set one.
+    """
+
+    class Provider(models.TextChoices):
+        # Short slugs, mapped to dotted paths in apps.ai.providers. An admin picks
+        # from this list, so a stored value can never name an arbitrary importable
+        # class the way a free-text dotted path could.
+        GEMINI = "gemini", "Google Gemini"
+        OPENAI = "openai", "OpenAI"
+        GROQ = "groq", "Groq"
+
+    #: Empty = inherit whatever LLM_PROVIDER the deployment sets.
+    provider = models.CharField(
+        max_length=16, choices=Provider.choices, blank=True, default=""
+    )
+    #: Fernet ciphertext. NEVER returned by any serializer or written to a log.
+    api_key_encrypted = models.TextField(blank=True, default="")
+    #: Last 4 characters of the key, for a recognisable masked hint.
+    key_last4 = models.CharField(max_length=4, blank=True, default="")
+    key_set_at = models.DateTimeField(null=True, blank=True)
+    key_set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    #: Optional per-agent model overrides, e.g. {"review": "gemini-2.5-pro"}.
+    model_overrides = models.JSONField(default=dict, blank=True)
+    #: The tenant's own AI on/off switch. Distinct from the entitlement: the plan
+    #: says what a tenant MAY use, this says what they WANT enabled.
+    enabled = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "ai_tenant_config"
+        constraints = [
+            models.UniqueConstraint(fields=["tenant"], name="uq_ai_config_tenant"),
+        ]
+
+    def __str__(self):
+        return (
+            f"TenantAIConfig(tenant={self.tenant_id}, "
+            f"provider={self.provider or 'inherit'})"
+        )
+
+    @property
+    def has_key(self) -> bool:
+        return bool(self.api_key_encrypted)

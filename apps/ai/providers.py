@@ -18,12 +18,15 @@ defaulting to ``NotConfiguredProvider``.
 """
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 
 from django.conf import settings
 from django.utils.module_loading import import_string
 
 from .exceptions import LLMNotConfiguredError, LLMProviderError
+
+logger = logging.getLogger("pms.ai.providers")
 
 
 class LLMProvider(ABC):
@@ -140,11 +143,49 @@ class HTTPLLMProvider(LLMProvider):
         )
 
 
-def get_llm_provider() -> LLMProvider:
-    """Resolve the configured LLM provider from ``settings.LLM_PROVIDER`` (import
-    string), defaulting to :class:`NotConfiguredProvider`."""
+def get_llm_provider(tenant=None) -> LLMProvider:
+    """Resolve the LLM provider for ``tenant``.
+
+    Order (B1): the tenant's own provider + key → the deployment's
+    ``settings.LLM_PROVIDER`` + environment key → :class:`NotConfiguredProvider`.
+
+    With no tenant this is the old behaviour exactly, so every existing caller and
+    test is unaffected. With a tenant that has stored its own key, the provider is
+    constructed with that key instead of the environment's — which is the whole
+    point of per-tenant configuration: a customer brings their own key without a
+    redeploy, and their spend is theirs.
+    """
+    if tenant is not None:
+        try:
+            from .tenant_config import resolve_provider
+
+            dotted, api_key, _source = resolve_provider(tenant)
+            if dotted:
+                return _instantiate(dotted, api_key)
+        except Exception:  # noqa: BLE001 — a bad row must not break AI entirely
+            logger.exception("Tenant AI config lookup failed; using the environment provider")
+
     dotted = getattr(settings, "LLM_PROVIDER", "apps.ai.providers.NotConfiguredProvider")
-    return import_string(dotted)()
+    return _instantiate(dotted, None)
+
+
+def _instantiate(dotted: str, api_key: str | None) -> LLMProvider:
+    """Build a provider, passing an explicit key only when we have one.
+
+    Providers that predate per-tenant keys take no arguments, so the keyword is
+    only offered when it is needed and a TypeError falls back to the plain
+    constructor rather than failing the request.
+    """
+    cls = import_string(dotted)
+    if api_key:
+        try:
+            return cls(api_key=api_key)
+        except TypeError:
+            logger.warning(
+                "%s does not accept a per-tenant api_key; falling back to its "
+                "environment configuration.", dotted,
+            )
+    return cls()
 
 
 def llm_configured() -> bool:

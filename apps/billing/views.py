@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rbac.matrix import Capability
+from apps.core.idempotency import idempotent
 from apps.rbac.mixins import RBACMixin
 
 from .serializers import EntitlementSerializer
@@ -217,6 +218,7 @@ class PaymentsConfigView(RBACMixin, APIView):
         })
 
 
+@idempotent
 class CheckoutView(RBACMixin, APIView):
     """``POST /api/billing/checkout`` (MANAGE_TENANT) — start a plan change. Body
     ``{plan, cycle}``. With payments off / a free plan → activates immediately

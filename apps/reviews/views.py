@@ -27,6 +27,7 @@ from rest_framework.views import APIView
 
 from apps.ai.serializers import AIJobSerializer
 from apps.ai.services import enqueue_agent_job
+from apps.core.idempotency import idempotent
 from apps.core.pagination import StandardResultsSetPagination
 from apps.core.throttling import AI_THROTTLES
 from apps.cycles.models import PerformanceCycle
@@ -254,6 +255,7 @@ class ReviewStartEditView(_TransitionView):
         return state_machine.start_edit(review, request.user)
 
 
+@idempotent
 class ReviewSubmitView(_TransitionView):
     """``POST /api/reviews/<pk>/submit`` (alias ``/save-draft``) — save the
     draft and submit it for human review: EDITING → PENDING_HUMAN_REVIEW.
@@ -267,6 +269,7 @@ class ReviewSubmitView(_TransitionView):
         )
 
 
+@idempotent
 class ReviewApproveView(_TransitionView):
     """``POST /api/reviews/<pk>/approve`` — THE HITL human approval:
     PENDING_HUMAN_REVIEW → APPROVED (stamps ``human_reviewer``)."""
@@ -287,6 +290,7 @@ class ReviewRejectView(_TransitionView):
         return state_machine.reject(review, request.user, reason=request.data.get("reason"))
 
 
+@idempotent
 class ReviewFinalizeView(_TransitionView):
     """``POST /api/reviews/<pk>/finalize`` — APPROVED → FINALIZED. The HITL
     gate: without a recorded human approval this is 422 HITL_APPROVAL_REQUIRED."""

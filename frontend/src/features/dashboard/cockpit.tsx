@@ -261,7 +261,7 @@ function MyKpiRow({
         </span>
       </span>
       <span className="flex shrink-0 items-center gap-1">
-        <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="actual" className="h-7 w-16 text-xs" inputMode="decimal" />
+        <Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="actual" className="h-11 w-20 text-[16px] sm:h-7 sm:w-16 sm:text-xs" inputMode="decimal" />
         <Button size="sm" variant="ghost" disabled={!value.trim()} loading={saving} onClick={() => { onRecord(value.trim()); setValue(""); }}>
           Log
         </Button>

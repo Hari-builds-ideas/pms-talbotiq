@@ -172,7 +172,10 @@ export function DataTable<TData>({
                         type="button"
                         // The real row action: focusable, announced, and
                         // Enter/Space activated natively.
-                        className="block w-full text-left text-sm font-semibold text-foreground"
+                        // tap-target: the button is full-width but only ~24px
+                        // tall, so it needs the 44px hit area like every other
+                        // small control (A9).
+                        className="tap-target block w-full text-left text-sm font-semibold text-foreground"
                         onClick={(e) => {
                           e.stopPropagation();
                           onRowClick(row.original);

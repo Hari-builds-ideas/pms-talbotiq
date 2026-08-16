@@ -1,4 +1,4 @@
-# Mobile audit — A0 inventory (before)
+# Mobile audit — before and after (A0 inventory, A11 verification)
 
 Measured, not guessed. Every number below came from a real headless Chromium
 walking the real application: the full Docker stack (`docker compose up mysql
@@ -200,3 +200,75 @@ tables wider than the viewport / total tables.
   scrollable**. "Off-screen px" is the honest metric, not `scrollWidth`.
 - Charts, tables and touch targets were measured after a 2s settle per route so
   React Query had returned.
+
+
+---
+
+## A11 — after (verified)
+
+Same harness, same two viewports, same four roles, re-run against a rebuilt
+production image once PHASE A was complete.
+
+| Route | VP | Off-screen px | Wide tables | <16px inputs | Under-sized targets |
+|---|---|---|---|---|---|
+| `/` | 360 | 127 → **0** | 0 | 7 → **0** | 21 → **4** |
+| `/` | 390 | 97 → **0** | 0 | 7 → **0** | 28 → **4** |
+| `/admin/billing` | 390 | 97 → **0** | 0 | 1 → **0** | 18 → **2** |
+| `/admin/users` | 360 | 250 → **19** | 1 → **0** | 1 → **0** | 66 → **0** |
+| `/admin/users` | 390 | 220 → **0** | 1 → **0** | 1 → **0** | 66 → **0** |
+| `/analytics` | 360 | 127 → **0** | 0 | 0 | 10 → **0** |
+| `/analytics` | 390 | 97 → **0** | 0 | 0 | 10 → **0** |
+| `/approvals` | 360 | 127 → **0** | 0 | 0 | 15 → **0** |
+| `/approvals` | 390 | 97 → **0** | 0 | 0 | 16 → **0** |
+| `/audit` | 360 | 307 → **0** | 1 → **0** | 3 → **0** | 13 → **0** |
+| `/audit` | 390 | 277 → **0** | 1 → **0** | 3 → **0** | 13 → **0** |
+| `/checkins` | 360 | 127 → **0** | 0 | 4 → **0** | 14 → **0** |
+| `/checkins` | 390 | 97 → **0** | 0 | 4 → **0** | 15 → **0** |
+| `/feedback` | 360 | 127 → **0** | 0 | 0 | 11 → **0** |
+| `/feedback` | 390 | 97 → **5** | 0 | 0 | 16 → **0** |
+| `/goals` | 360 | 127 → **0** | 0 | 0 | 208 → **0** |
+| `/goals` | 390 | 97 → **0** | 0 | 0 | 208 → **0** |
+| `/help` | 390 | 97 → **0** | 0 | 0 | 14 → **3** |
+| `/jd` | 390 | 180 → **0** | 1 → **0** | 0 | 15 → **0** |
+| `/org` | 360 | 127 → **0** | 0 | 0 | 24 → **0** |
+| `/org` | 390 | 97 → **0** | 0 | 0 | 24 → **0** |
+| `/recognition` | 390 | 97 → **0** | 0 | 0 | 252 → **0** |
+| `/reviews` | 360 | 255 → **0** | 1 → **0** | 0 | 15 → **0** |
+| `/reviews` | 390 | 262 → **0** | 1 → **0** | 0 | 15 → **0** |
+| `/settings` | 360 | 608 → **0** | 0 | 9 → **2** | 71 → **0** |
+| `/settings` | 390 | 578 → **0** | 0 | 9 → **2** | 71 → **0** |
+
+### Totals
+
+| Metric | Before | After |
+|---|---:|---:|
+| Off-screen content (px, summed over route/viewport) | 4796 | **24** |
+| Under-sized touch targets (<44px, no hit area) | 1249 | **13** |
+| Tables wider than the viewport | 6 | **0** |
+| Inputs under 16px (iOS zoom) | 29 | **2** |
+
+393 controls now carry a 44x44 hit area via `.tap-target` rather than being
+resized, so the desktop layout is byte-identical.
+
+### What is deliberately still on the list
+
+Four residuals, all measured and none of them blocking:
+
+- **`/admin/users` at 360px — 19px over.** Fits at 390px; only the narrower
+  Android width clips, and the card layout itself is correct. Worth a look at the
+  card's two-column grid at the very narrow end.
+- **`/feedback` at 390px — 5px over.** The tab strip. It now scrolls rather than
+  pushing the page, so nothing is unreachable; the strip is simply 5px wider than
+  the viewport before it scrolls.
+- **`/settings` — 2 inputs under 16px.** Both are checkboxes. iOS only zooms on
+  text entry, so these do not trigger it; they are counted because the harness
+  measures every input.
+- **13 under-sized targets** across `/`, `/admin/billing` and `/help`. Each is a
+  short inline text link inside prose, where a 44px hit area would overlap the
+  line above or below it.
+
+### Not re-tested here
+
+The greeting fix (A4) is covered by unit tests against a pinned clock rather than
+this walk — the harness would only ever observe whatever time it ran at. See
+`frontend/src/lib/greeting.test.ts`.

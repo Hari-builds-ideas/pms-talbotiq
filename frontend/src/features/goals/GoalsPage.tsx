@@ -550,9 +550,9 @@ function NewGoalDialog({
             <div className="space-y-2">
               {kpis.map((k, i) => (
                 <div key={i} className="grid grid-cols-12 items-end gap-2 rounded-md border border-border p-2.5">
-                  <Field label="Name" className="col-span-4"><Input value={k.name} onChange={(e) => patch(setKpis, i, { name: e.target.value })} className="h-8" /></Field>
-                  <Field label="Weight" className="col-span-2"><Input value={k.weight} onChange={(e) => patch(setKpis, i, { weight: e.target.value })} className="h-8" inputMode="decimal" /></Field>
-                  <Field label="Target" className="col-span-2"><Input value={k.target_value} onChange={(e) => patch(setKpis, i, { target_value: e.target.value })} className="h-8" inputMode="decimal" /></Field>
+                  <Field label="Name" className="col-span-4"><Input value={k.name} onChange={(e) => patch(setKpis, i, { name: e.target.value })} className="h-11 sm:h-8" /></Field>
+                  <Field label="Weight" className="col-span-2"><Input value={k.weight} onChange={(e) => patch(setKpis, i, { weight: e.target.value })} className="h-11 sm:h-8" inputMode="decimal" /></Field>
+                  <Field label="Target" className="col-span-2"><Input value={k.target_value} onChange={(e) => patch(setKpis, i, { target_value: e.target.value })} className="h-11 sm:h-8" inputMode="decimal" /></Field>
                   <Field label="Direction" className="col-span-3">
                     <Select value={k.direction} onValueChange={(v) => patch(setKpis, i, { direction: v })}>
                       <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>

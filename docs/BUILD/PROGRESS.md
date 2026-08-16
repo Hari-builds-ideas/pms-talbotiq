@@ -256,3 +256,30 @@ Needs from human: nothing.
   (`overflow-x-hidden` on the scroll region, `min-w-0` on the content column).
   The test file states this rather than implying wider coverage.
 
+## A11 — Verify
+Status: DONE
+Changed: frontend/src/components/DataTable.tsx, frontend/src/components/ui/tabs.tsx,
+frontend/src/features/dashboard/cockpit.tsx, frontend/src/features/goals/GoalsPage.tsx,
+frontend/src/features/org/{OrgTreeView,LazyOrgTreeView}.tsx,
+frontend/src/features/help/GettingStartedPage.tsx, docs/BUILD/MOBILE_AUDIT.md
+Verified by: rebuilt production image, re-ran the full A0 harness — 26
+route/viewport combinations, 4 roles, 390×844 and 360×800.
+Needs from human: nothing.
+
+**Totals: off-screen 4796px → 24px · under-sized targets 1249 → 13 · wide tables
+6 → 0 · sub-16px inputs 29 → 2.**
+
+Caught on the re-walk (i.e. things the first pass missed or caused):
+- `/reviews` under-sized targets had gone **up** 15 → 50: the A10 lead button is
+  full-width but 24px tall and needed the hit area too.
+- Tab strip pushed `/feedback` 9px over — now scrolls itself.
+- Employee dashboard still had 7 sub-16px inputs: call sites pass
+  `className="text-xs"` and tailwind-merge lets the caller win over the
+  component. Those sites now opt into 16px below `sm` explicitly.
+- Org tree chevrons (20×20), org person rows, getting-started links.
+
+Four documented residuals (in MOBILE_AUDIT.md with reasons): `/admin/users` 19px
+at 360 only; `/feedback` tab strip 5px before it scrolls; 2 checkboxes under 16px
+(iOS doesn't zoom for those); 13 inline prose links where a 44px box would
+overlap the neighbouring line.
+

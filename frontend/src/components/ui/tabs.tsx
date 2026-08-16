@@ -11,7 +11,9 @@ const TabsList = React.forwardRef<
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-11 items-center justify-center gap-1 rounded-md bg-muted p-1 text-muted-foreground md:h-9",
+      // A 3-4 tab row does not fit 390px. Scroll the strip rather than letting it
+      // push the page: max-w-full caps it, scroll-x gives it its own overflow.
+      "inline-flex h-11 w-full max-w-full items-center justify-start gap-1 overflow-x-auto rounded-md bg-muted p-1 text-muted-foreground scroll-x md:h-9 md:w-auto md:justify-center",
       className,
     )}
     {...props}

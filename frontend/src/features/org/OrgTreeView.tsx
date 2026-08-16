@@ -73,7 +73,7 @@ function TreeNode({
           type="button"
           onClick={() => hasKids && setOpen((o) => !o)}
           className={cn(
-            "flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground",
+            "tap-target flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground",
             hasKids ? "hover:bg-secondary" : "invisible",
           )}
           aria-label={open ? "Collapse" : "Expand"}
@@ -83,7 +83,7 @@ function TreeNode({
         <button
           type="button"
           onClick={() => onSelect(id)}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          className="tap-target flex min-w-0 flex-1 items-center gap-2.5 text-left"
         >
           <Avatar className="h-7 w-7">
             <AvatarFallback className="text-[10px]">{initials(node.display || node.email)}</AvatarFallback>

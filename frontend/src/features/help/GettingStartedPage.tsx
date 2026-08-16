@@ -118,7 +118,7 @@ function StepCard({ step }: { step: Step }) {
       {step.to && step.cta ? (
         <Link
           to={step.to}
-          className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
+          className="tap-target mt-3 inline-block text-sm font-medium text-primary hover:underline"
         >
           {step.cta} →
         </Link>

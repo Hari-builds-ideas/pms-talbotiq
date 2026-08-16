@@ -848,3 +848,109 @@ A foreground `pytest` started while a background `pytest` was still running
 against the same test database produced 80 spurious failures. Both suites pass
 cleanly when run one at a time (236, then 132). Worth knowing before trusting a
 red result: **do not run two pytest processes against this stack at once.**
+
+## PHASE F — Polish
+
+### F1 — A brand-new tenant can actually start
+Status: DONE
+Changed: frontend/src/components/SetupNeeded.{tsx,test.tsx} (new),
+frontend/src/features/cycles/CycleSetupDialog.tsx (new),
+frontend/src/features/{reviews/ReviewsListPage,goals/GoalsPage}.tsx,
+shared/src/api/endpoints.ts
+Verified by: tsc clean; 188 frontend tests (7 new); production build clean.
+Needs from human: nothing.
+
+- Most modules already had a decent empty state. What none handled is day one.
+- **Nothing in the SPA ever created a performance cycle.** `POST /api/cycles/`
+  has existed the whole time behind MANAGE_CYCLES; `cyclesApi` only had
+  `list()`. Goals and reviews both require an ACTIVE cycle, so a new customer
+  could invite their whole company, set up reporting lines, and find the two
+  central modules switched off with no screen anywhere to switch them on.
+- The reviews page showed "create a review for someone on your team" and then
+  **hid the button**, because the code already knew there was no cycle. It
+  looked finished; the admin was simply stuck.
+- `CycleSetupDialog` defaults to the half-year containing today, and creates the
+  cycle **ACTIVE, not DRAFT** — a DRAFT leaves every screen looking exactly as
+  broken as before, with no hint a second step exists.
+- `SetupNeeded` is for "cannot be used yet", not "no data": it names the blocker
+  and fixes it in place. For someone without the capability it offers no button
+  and says who to ask — a link to a page that will 403 is worse than no link.
+
+### F2, F3 — Legal pages, support address, getting started
+Status: ALREADY DONE (commit d8a34db, before this session)
+Verified by: `/privacy`, `/terms`, `/support` outside the auth guard;
+`VITE_SUPPORT_EMAIL` with an obvious `support@example.com` fallback; `/help`
+adapts to the reader's role.
+Needs from human: counsel-approved copy. Both legal pages carry a visible
+"Draft — pending legal review" banner with a test asserting it is there, so
+removing it is a deliberate line in a diff.
+
+### F4 — LICENSE, SECURITY, CONTRIBUTING, CODEOWNERS
+Status: DONE
+Changed: LICENSE, SECURITY.md, CONTRIBUTING.md, .github/CODEOWNERS (all new)
+Needs from human: replace `security@talbotiq.com` / `legal@talbotiq.com` if
+those addresses do not exist yet.
+
+- SECURITY.md names the six invariants the design rests on, so a researcher
+  looks where a real problem would be rather than reporting a missing header.
+  It also says **not** to push a commit removing a leaked credential — the value
+  is still in history and rotation comes first.
+- CONTRIBUTING records only what you would *not* infer by reading around,
+  because each item has already caused a bug: `.delete()` is a soft delete; the
+  suite needs real MySQL because audit immutability is enforced by triggers;
+  views must declare a capability even when the queryset already scopes rows.
+- CODEOWNERS lists one owner, honestly. A team that does not exist would route
+  reviews to nobody and merge unreviewed.
+
+### F5 — Archive the loose root markdown, make the README current
+Status: DONE
+Changed: 33 files → docs/archive/, docs/archive/README.md, README.md
+Needs from human: nothing.
+
+- 39 root markdown files, 33 untracked — invisible to anyone who cloned, and
+  indistinguishable from current docs to anyone who did not.
+- The README's "staged / not yet live" section had drifted into fiction:
+  payments described as verified in test mode when checkout now 501s, signup
+  described as self-serve when it is invite-only, TLS not mentioned at all.
+- `OVERNIGHT_BUILD_PROMPT.md` deliberately left at the root: it is the live
+  instruction for this session and a resume re-reads it from that path.
+
+### F6 — OpenAPI schema
+Status: DONE
+Changed: requirements.txt, config/settings/base.py, config/urls.py,
+apps/administration/views.py, apps/core/tests/test_schema.py (new),
+docs/BUILD/API_SCHEMA.md (new)
+Verified by: 198 paths, valid OpenAPI 3.0.3; 7 new tests.
+Needs from human: nothing.
+
+- `/api/schema/` + `/api/schema/ui/`, both **authenticated**: a complete map of
+  every endpoint and payload shape is not secret, but handing it to an anonymous
+  prober is a gift with no corresponding benefit.
+- **193 endpoints have no request/response body documented**, stated plainly in
+  the doc rather than left to be discovered. Most views are plain APIViews that
+  validate with a serializer inline, so there is nothing on the class to
+  introspect. The two data-rights endpoints are annotated as the worked example,
+  with a test keeping them that way.
+
+### F7 — Idempotency keys
+Status: DONE
+Changed: apps/core/{idempotency.py,models.py,migrations/0001_initial.py} (new),
+apps/core/tests/test_idempotency.py (new), apps/reviews/views.py,
+apps/billing/views.py
+Verified by: 11 new tests; `pytest apps/reviews apps/billing` → 189 passed.
+Needs from human: the SPA should send `Idempotency-Key` on these four (the
+server honours it today; nothing breaks until it does).
+
+- **The first version silently did nothing on `CheckoutView`.** It was a mixin,
+  and a mixin cannot intercept a method the class defines itself — Python
+  resolves `self.post` to the class attribute before it looks at any base,
+  however early in the MRO. The endpoint accepted the header, ignored it, and
+  executed twice while looking perfectly wired: exactly the failure the feature
+  exists to prevent, inside the feature. Caught because the tests asserted the
+  replay rather than the plumbing. Now a class decorator, with tests for both
+  shapes (a view that owns `post`, one that inherits it).
+- Keys namespaced by tenant + user + endpoint: a replayed body is about
+  somebody's records, so sharing one across users who picked the same key would
+  be a disclosure, not just a bug.
+- Only 2xx is stored — replaying a 4xx would trap a client that fixed its body
+  and retried with the same key, which is exactly what a client does.

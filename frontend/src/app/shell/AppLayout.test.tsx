@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Reuse the a11y harness: it wraps AppLayout in the QueryClientProvider the
 // command palette needs, so this file tests the shell rather than re-scaffolding it.
+import { Link } from "react-router-dom";
 import { renderInShell } from "@/test/a11y/harness";
 
 // The same shape the a11y suite uses. The shell's children read more than `me` off
@@ -63,6 +64,12 @@ function setViewport(isDesktop: boolean | null) {
 
 function renderShell() {
   return renderInShell(<div>content</div>, "/");
+}
+
+/** A shell whose screen offers a link to another route, so navigation — and the
+ *  drawer's reaction to it — can be driven from a click. */
+function renderShellWithNav() {
+  return renderInShell(<Link to="/other">Go to other</Link>, "/");
 }
 
 afterEach(() => setViewport(null));
@@ -177,5 +184,40 @@ describe("AppLayout sidebar drawer semantics (below md)", () => {
     setViewport(true);
     renderShell();
     expect(document.querySelector("aside")).toBeNull();
+  });
+
+  it("closes when the route changes", () => {
+    setViewport(false);
+    renderShellWithNav();
+    fireEvent.click(screen.getByLabelText("Toggle navigation"));
+    expect(document.querySelector("aside")).not.toBeNull();
+
+    // Tapping a nav item must not leave the menu covering the screen you asked
+    // for — the drawer sits ON TOP of the content at this width.
+    fireEvent.click(screen.getByRole("link", { name: "Go to other" }));
+    expect(document.querySelector("aside")).toBeNull();
+  });
+});
+
+describe("app shell overflow containment", () => {
+  // jsdom has no layout engine, so it cannot measure a real horizontal overflow.
+  // Actual off-screen geometry is verified against a headless browser at 360px
+  // and 390px (see docs/BUILD/MOBILE_AUDIT.md). What IS worth locking here is the
+  // structural guarantee those numbers depend on: the scroll container must never
+  // be allowed to scroll sideways, and the content column must be able to shrink.
+  it("keeps the main scroll region from scrolling horizontally", () => {
+    setViewport(false);
+    renderShell();
+    const main = document.getElementById("main-content")!;
+    expect(main.className).toContain("overflow-x-hidden");
+  });
+
+  it("lets the content column shrink below its content width", () => {
+    setViewport(false);
+    renderShell();
+    // Without min-w-0 a flex child refuses to shrink past its content, which is
+    // exactly how the topbar cluster ended up 97px off-screen (A1).
+    const column = document.querySelector(".min-w-0.flex-1");
+    expect(column).not.toBeNull();
   });
 });

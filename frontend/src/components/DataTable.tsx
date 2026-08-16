@@ -157,28 +157,34 @@ export function DataTable<TData>({
                     "rounded-lg border border-border bg-card p-3",
                     onRowClick && "cursor-pointer active:bg-secondary",
                   )}
-                  // The whole card is the tap target, matching the desktop
-                  // click-the-row affordance. role/tabIndex so it is reachable
-                  // and operable from a keyboard, not mouse-only.
-                  role={onRowClick ? "button" : undefined}
-                  tabIndex={onRowClick ? 0 : undefined}
+                  // The whole card stays tappable for pointer/touch convenience,
+                  // but it is NOT given role="button". It contains a <details>
+                  // disclosure, and a button wrapping another interactive control
+                  // is a WCAG "nested-interactive" failure — a screen reader
+                  // cannot address the inner control. The accessible, keyboard-
+                  // operable action is the lead-field button below; this handler
+                  // is the convenience layer on top of it.
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                  onKeyDown={
-                    onRowClick
-                      ? (e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            onRowClick(row.original);
-                          }
-                        }
-                      : undefined
-                  }
                 >
-                  {lead && (
-                    <div className="text-sm font-semibold text-foreground">
-                      {flexRender(lead.column.columnDef.cell, lead.getContext())}
-                    </div>
-                  )}
+                  {lead &&
+                    (onRowClick ? (
+                      <button
+                        type="button"
+                        // The real row action: focusable, announced, and
+                        // Enter/Space activated natively.
+                        className="block w-full text-left text-sm font-semibold text-foreground"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRowClick(row.original);
+                        }}
+                      >
+                        {flexRender(lead.column.columnDef.cell, lead.getContext())}
+                      </button>
+                    ) : (
+                      <div className="text-sm font-semibold text-foreground">
+                        {flexRender(lead.column.columnDef.cell, lead.getContext())}
+                      </div>
+                    ))}
                   {restPrimary.length > 0 && (
                     <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
                       {restPrimary.map((cell) => (

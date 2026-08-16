@@ -233,3 +233,26 @@ Needs from human: nothing.
   genuinely small — `getBoundingClientRect` cannot see a pseudo-element, so it
   was reporting fixed controls as broken.
 
+## A10 — Regression tests
+Status: DONE
+Changed: frontend/src/components/DataTable.test.tsx (new),
+frontend/src/test/a11y/mobile-a11y.test.tsx (new),
+frontend/src/app/shell/AppLayout.test.tsx, frontend/src/components/DataTable.tsx
+Verified by: `npx vitest run` → 31 files / **181 tests** (150 at the A0
+baseline); `tsc --noEmit` clean; all 18 axe checks green.
+Needs from human: nothing.
+
+- **The mobile axe pass caught a real fault I shipped in A6**: `nested-interactive`
+  (serious) — the card had `role="button"` and contained the `<details>`
+  disclosure, which a screen reader cannot address. Tapping worked, so nothing
+  else would have caught it. Fixed by making the lead field a real `<button>`
+  (the accessible, keyboard-operable action) and dropping the role from the card,
+  which keeps pointer convenience without nesting.
+- Existing a11y suite only ever ran at desktop width (jsdom's absent `matchMedia`
+  reads as desktop), so it never saw the drawer or the card list.
+- On "no route renders with horizontal overflow at 360px": jsdom has no layout
+  engine, so that assertion would be theatre there. Real geometry is measured in
+  a headless browser (A11); vitest locks the structure it depends on
+  (`overflow-x-hidden` on the scroll region, `min-w-0` on the content column).
+  The test file states this rather than implying wider coverage.
+

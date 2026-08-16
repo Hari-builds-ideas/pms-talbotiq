@@ -24,6 +24,8 @@ django-redis==5.4.0
 
 # Health/readiness probes (/readyz)
 django-health-check==3.18.3
+# OpenAPI 3 schema generated from the real views + serializers (F6).
+drf-spectacular==0.30.0
 
 # Observability: error tracking (Sentry) + Celery monitoring (Flower)
 sentry-sdk==2.18.0

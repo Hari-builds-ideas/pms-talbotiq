@@ -1,6 +1,17 @@
 from django.urls import include, path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
+    # OpenAPI 3 schema + Swagger UI (F6). BOTH authenticated: the schema is a
+    # complete map of every endpoint and payload shape, which is precisely what
+    # someone probing the API would like handed to them. Generated from the real
+    # views, so it cannot drift from the API the way a hand-written doc does.
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/schema/ui/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="schema-ui",
+    ),
     # Liveness / ops
     path("", include("apps.core.urls")),
     # Module 1 — Identity & auth

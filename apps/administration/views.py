@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import OpenApiExample, extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -48,6 +49,41 @@ from .serializers import (
 # ── data subject rights (D1/D2) ───────────────────────────────────────────────
 
 
+# NOTE ON @extend_schema. Most views in this codebase are plain APIViews that
+# validate with a serializer inline, so drf-spectacular cannot infer their request
+# and response shapes and the generated schema lists their paths without bodies.
+# The two data-rights endpoints below are annotated as the worked example of the
+# pattern for whoever fills in the rest — see docs/BUILD/API_SCHEMA.md.
+
+
+@extend_schema(
+    summary="Export everything held about one employee",
+    description=(
+        "A data subject access request. Returns one JSON document covering "
+        "profile, goals, reviews, feedback received and given, check-ins, "
+        "recognition, career and succession records, login history and AI jobs.\n\n"
+        "Feedback GIVER identities are never included, and a relationship label "
+        "of `withheld_small_group` means that group had too few responses to be "
+        "anonymous. The access is itself written to the audit log."
+    ),
+    tags=["Data subject rights"],
+    responses={200: dict, 403: None, 404: None},
+    examples=[
+        OpenApiExample(
+            "Shape",
+            value={
+                "schema": "pms.data-export.v1",
+                "subject_id": "9f1c…",
+                "profile": {"email": "someone@acme.test", "role": "EMPLOYEE"},
+                "reviews": [{"state": "FINALIZED", "final_body": "…"}],
+                "feedback_received": [
+                    {"relationship": "withheld_small_group", "body": "…"}
+                ],
+            },
+            response_only=True,
+        )
+    ],
+)
 class UserExportView(RBACMixin, APIView):
     """``GET /api/admin/users/<id>/export`` (MANAGE_TENANT — Admin).
 
@@ -80,6 +116,20 @@ class UserExportView(RBACMixin, APIView):
         return Response(data_rights.export_user(subject))
 
 
+@extend_schema(
+    summary="Erase one employee, irreversibly",
+    description=(
+        "Content ABOUT the person is redacted in place; content they AUTHORED "
+        "about others keeps its text with the author replaced by a stable "
+        "pseudonym. The audit log is never written to, updated or deleted.\n\n"
+        "`confirm` must be the subject's current email address, typed exactly. "
+        "Erasing an already-erased person returns 200 with `already_erased: true` "
+        "— a second call is a retry, not an error."
+    ),
+    tags=["Data subject rights"],
+    request=EraseUserSerializer,
+    responses={200: dict, 403: None, 404: None, 422: None},
+)
 class UserEraseView(RBACMixin, APIView):
     """``POST /api/admin/users/<id>/erase`` (MANAGE_TENANT — Admin).
 

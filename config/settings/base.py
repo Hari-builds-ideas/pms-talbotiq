@@ -58,6 +58,8 @@ THIRD_PARTY_APPS = [
     "health_check.cache",
     "health_check.contrib.migrations",
     "health_check.contrib.redis",
+    # OpenAPI 3 schema, generated from the actual views and serializers (F6).
+    "drf_spectacular",
 ]
 
 LOCAL_APPS = [
@@ -277,6 +279,9 @@ SILENCED_SYSTEM_CHECKS = ["auth.E003", "auth.W004"]
 
 # ─── Django REST Framework ─────────────────────────────────────────────
 REST_FRAMEWORK = {
+    # Generated from the real views and serializers, so it cannot drift from the
+    # API the way a hand-written document does.
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
@@ -350,6 +355,31 @@ RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
 # APP_NAME env var) to rebrand the backend surface — the SPA name lives in the
 # matching seam frontend/src/brand.tsx. Legacy value was "TalbotIQ PMS".
 APP_NAME = env("APP_NAME", default="Axiom")
+
+# ─── OpenAPI schema (F6) ───────────────────────────────────────────────
+# Served at /api/schema/ with Swagger UI at /api/schema/ui/, both AUTHENTICATED.
+# The schema is a complete map of every endpoint, its parameters and its response
+# shapes — which is exactly what someone probing the API would like to be handed.
+# It is not secret, but it is not an invitation either, and there is no reason an
+# anonymous caller needs it.
+SPECTACULAR_SETTINGS = {
+    "TITLE": f"{APP_NAME} API",
+    "DESCRIPTION": (
+        "Multi-tenant performance management. Every request carries a JWT that "
+        "embeds tenant_id and role; every endpoint is RBAC-checked server-side "
+        "and every queryset is filtered by the bound tenant. An id belonging to "
+        "another tenant returns 404, never 403 — the scoped manager never sees "
+        "the row, so the API cannot be used to discover that it exists."
+    ),
+    "VERSION": "1.0.0",
+    # The schema endpoint should not appear in its own schema.
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Ops probes and the Django admin are not part of the product API.
+    "SCHEMA_PATH_PREFIX": "/api",
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAuthenticated"],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": False,
+}
 
 # Seats a brand-new self-serve tenant starts with (Starter default). Server-side
 # seat enforcement still applies; the admin buys more when they grow.

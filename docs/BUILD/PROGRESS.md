@@ -661,3 +661,40 @@ Needs from human: run `gcs_backup_setup.sh` once, grant the VM's service account
 - Gaps stated in the doc rather than left implied: RPO is 24h (no binlog
   shipping), media isn't in the dump, and the drill compares row counts, not
   content.
+
+## C14 — TLS-ready behind one variable (from the CONSTRAINTS block)
+Status: DONE
+Changed: Caddyfile, docker-compose.prod.yml, config/settings/prod.py,
+apps/core/checks.py, apps/core/tests/{test_deploy_checks,test_prod_settings}.py,
+docs/BUILD/ENABLE_TLS.md (new)
+Verified by: both modes validated against the real `caddy` binary (`validate` +
+`adapt`); `check --deploy` run in-container in both modes; prod compose now
+parses with `DOMAIN` unset. `pytest apps/core` → 125 passed.
+Needs from human: point DNS at the VM, then set `DOMAIN`, `ACME_EMAIL`,
+`PUBLIC_APP_URL`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` and open
+:80 + :443. Steps in `docs/BUILD/ENABLE_TLS.md`.
+
+- The prod stack **could not start at all** without `DOMAIN`/`ACME_EMAIL`
+  (`${VAR:?}`), and Caddy would have attempted ACME for whatever it got. Let's
+  Encrypt cannot certify a bare IP — which is what this deployment runs on — so
+  the committed stack was undeployable in its actual environment.
+- `DOMAIN` is now the single switch, read by both halves: empty → Caddy falls
+  back to `:80` with no ACME and prod.py derives redirect/cookies/HSTS off; set →
+  certificate, `http→https`, and all four Django settings on together. One switch
+  because two is one somebody flips halfway.
+- Leaving the old always-on posture wasn't an option: `SECURE_SSL_REDIRECT` on
+  plain HTTP is an infinite redirect loop, and Secure cookies are never sent, so
+  the admin and allauth SSO stop working. Not less secure — **not working**, and
+  it would read as the app's fault rather than a missing DNS record.
+- Turning them off is a real reduction in security, so it isn't silent: new
+  `pms.W003` reports HTTP-only at every `check --deploy`, plus both reverse cases
+  (a domain with the redirect off; reset links still built over `http://`, which
+  leak a single-use token on the request the redirect only upgrades afterwards).
+- Edge HSTS is matched on the **connection** (`http.request.tls.version`), not an
+  env var — RFC 6797 forbids it over plain HTTP, and a browser honouring it on
+  the bare IP would refuse the host once DNS existed. No second variable, correct
+  in both modes permanently.
+- Empty override = "follow DOMAIN". Compose passes `${VAR:-}`, so these arrive
+  empty on every deploy that doesn't override them, and `env.bool` raises on
+  `""` — the stack would have failed to boot because someone declined to override
+  a default.

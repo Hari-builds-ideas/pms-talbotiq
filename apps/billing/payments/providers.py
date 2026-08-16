@@ -59,19 +59,25 @@ class StripeProvider(PaymentProvider):
         return settings.STRIPE_WEBHOOK_SECRET or ""
 
     def create_checkout(self, *, tenant_id, plan, cycle, amount, currency, metadata) -> dict:
-        # TODO(go-live): with the `stripe` SDK + STRIPE_SECRET_KEY (test), call
-        # stripe.checkout.Session.create(mode="subscription", line_items=[...],
-        # metadata={tenant_id, plan, cycle}, success_url/cancel_url) and return its
-        # id + url. Until then we return a deterministic test descriptor; the
-        # trust boundary (the signed webhook) is unchanged either way.
-        session_id = f"cs_test_{uuid.uuid4().hex}"
-        return {
-            "provider": self.name,
-            "session_id": session_id,
-            "checkout_url": f"https://checkout.stripe.com/test/{session_id}",
-            "amount": amount,
-            "currency": currency,
-        }
+        """Not implemented — and it says so (C8).
+
+        This used to return a deterministic descriptor: a `cs_test_...` id and a
+        `https://checkout.stripe.com/test/...` URL. Both look exactly like the
+        real thing. Nothing anywhere charges a card, so a caller got a plausible
+        session id, a page that goes nowhere, and no signal that no money moved.
+        A fake that looks real is worse than an honest failure — it is the shape
+        of bug that reaches a customer.
+
+        Wiring it up is a small job: install `stripe`, and with STRIPE_SECRET_KEY
+        call stripe.checkout.Session.create(mode="subscription", line_items=[...],
+        metadata={tenant_id, plan, cycle}, success_url=..., cancel_url=...) and
+        return its id and url. The trust boundary — the signature-verified webhook
+        below — is already real and does not change.
+        """
+        raise NotImplementedError(
+            "Stripe checkout is not wired up yet, so no payment can be taken. "
+            "Plans are set internally by an administrator in the meantime."
+        )
 
     def verify_and_parse(self, *, headers, raw_body: bytes) -> NormalizedEvent | None:
         secret = self._secret()
@@ -129,17 +135,17 @@ class RazorpayProvider(PaymentProvider):
         return settings.RAZORPAY_WEBHOOK_SECRET or ""
 
     def create_checkout(self, *, tenant_id, plan, cycle, amount, currency, metadata) -> dict:
-        # TODO(go-live): with the `razorpay` SDK + RAZORPAY_KEY_ID/SECRET (test),
-        # create an Order (notes={tenant_id, plan, cycle}) and return its id; the
-        # SPA opens Razorpay Checkout with it. Deterministic test descriptor below.
-        order_id = f"order_test_{uuid.uuid4().hex[:18]}"
-        return {
-            "provider": self.name,
-            "session_id": order_id,
-            "checkout_url": f"https://api.razorpay.com/test/checkout/{order_id}",
-            "amount": amount,
-            "currency": currency,
-        }
+        """Not implemented — see StripeProvider.create_checkout for the reasoning.
+
+        Wiring it up: install `razorpay`, and with RAZORPAY_KEY_ID/SECRET create
+        an Order (notes={tenant_id, plan, cycle}) and return its id; the SPA opens
+        Razorpay Checkout with it. The signature-verified webhook below is already
+        real and does not change.
+        """
+        raise NotImplementedError(
+            "Razorpay checkout is not wired up yet, so no payment can be taken. "
+            "Plans are set internally by an administrator in the meantime."
+        )
 
     def verify_and_parse(self, *, headers, raw_body: bytes) -> NormalizedEvent | None:
         secret = self._secret()

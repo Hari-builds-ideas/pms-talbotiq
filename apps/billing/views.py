@@ -235,6 +235,18 @@ class CheckoutView(RBACMixin, APIView):
                                     plan=plan, cycle=cycle)
         except CheckoutError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except NotImplementedError as exc:
+            # 501, and say so (C8). The provider adapters used to return a
+            # fabricated `cs_test_...` session and a checkout URL that goes
+            # nowhere — indistinguishable from a working one, with no signal that
+            # no money moved. An honest "not implemented" is the smaller problem.
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "payments_not_implemented",
+                },
+                status=status.HTTP_501_NOT_IMPLEMENTED,
+            )
         return Response(result)
 
 

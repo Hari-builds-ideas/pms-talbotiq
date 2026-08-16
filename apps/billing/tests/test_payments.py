@@ -65,12 +65,13 @@ def test_paid_plan_pending_until_verified_webhook_activates():
     t = TenantFactory(slug="acme")
     client = _admin_client(t)
 
-    # 1) Checkout returns a URL and does NOT change the plan yet.
+    # 1) Checkout cannot take money (C8), so it refuses rather than handing back a
+    #    fabricated session. Either way the plan does not change here — which is
+    #    the half of this test that matters and is unchanged.
     r = client.post(CHECKOUT, {"plan": "PROFESSIONAL", "cycle": "MONTHLY"}, format="json")
-    assert r.status_code == 200, r.content
-    assert r.json()["status"] == "pending" and r.json()["checkout_url"]
+    assert r.status_code == 501, r.content
     with tenant_context(t.id):
-        # Not activated yet — no paid subscription exists until the webhook.
+        # Not activated — no paid subscription exists until the webhook.
         assert not Subscription.objects.filter(plan="PROFESSIONAL").exists()
 
     # 2) The verified webhook activates it + records an invoice.
@@ -126,16 +127,36 @@ def test_webhook_for_tenant_a_never_touches_tenant_b():
 
 @override_settings(**PAY_ON)
 def test_client_cannot_self_activate_via_checkout():
-    # Even if the client sends a bogus price/paid flag, checkout stays pending and
-    # the plan does not change without a webhook (server catalogue + webhook only).
+    """The property under test is unchanged: a client cannot talk itself onto a
+    paid plan. Only the mechanism moved — checkout used to answer "pending" with a
+    fabricated session id, and now answers 501 because no payment can be taken
+    (C8). Either way the subscription does not change without a signed webhook."""
     t = TenantFactory(slug="acme")
     client = _admin_client(t)
     r = client.post(CHECKOUT, {"plan": "ENTERPRISE", "cycle": "MONTHLY",
                                "amount": 1, "paid": True}, format="json")
-    assert r.json()["status"] == "pending"
-    assert r.json()["amount"] == 19900  # server price, not the client's "1"
+    assert r.status_code == 501
+    assert r.json()["code"] == "payments_not_implemented"
     with tenant_context(t.id):
         assert not Subscription.objects.filter(plan="ENTERPRISE").exists()
+
+
+@override_settings(**PAY_ON)
+def test_checkout_does_not_hand_back_a_fake_session():
+    """The regression this guards: create_checkout used to return a plausible
+    `cs_test_...` id and a checkout URL that went nowhere, with no signal that no
+    money had moved. A fake that looks real is the shape of bug that reaches a
+    customer."""
+    t = TenantFactory(slug="acme")
+    r = _admin_client(t).post(
+        CHECKOUT, {"plan": "ENTERPRISE", "cycle": "MONTHLY"}, format="json"
+    )
+    body = r.json()
+    assert r.status_code == 501
+    assert "session_id" not in body
+    assert "checkout_url" not in body
+    # And it says what to do instead.
+    assert "administrator" in body["detail"].lower()
 
 
 @override_settings(**PAY_ON)

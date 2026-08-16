@@ -91,6 +91,17 @@ function atLeast(role: string | undefined, min: string): boolean {
 
 export const handlers = [
   // ---- Auth ----------------------------------------------------------------
+  // Pre-login facts the SPA reads before anyone signs in (C7). Mirrors the real
+  // endpoint; signup is open here so the mock layer can exercise the signup flow.
+  http.get(`${API}/auth/public-config`, () =>
+    HttpResponse.json({
+      signup_open: true,
+      support_email: "support@acme.test",
+      google_sso: false,
+      app_name: "Axiom",
+    }),
+  ),
+
   http.post(`${API}/auth/login`, async ({ request }) => {
     await delay(ACTION_DELAY);
     const body = (await request.json()) as { email?: string };

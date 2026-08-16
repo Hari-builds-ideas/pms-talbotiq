@@ -194,10 +194,14 @@ function PlansAndInvoices({ onChanged }: { onChanged: () => void }) {
             </div>
           }
         >
+          {/* C8: with payments enabled the checkout endpoint returns 501, because
+              no provider is wired and it will not fabricate a session. Offering a
+              "Choose plan" button whose only outcome is an error is worse than
+              saying plainly how a plan changes today. */}
           <p className="mb-3 text-xs text-muted-foreground">
             {cfg.data?.payments_enabled
-              ? "Paid plans require checkout; the plan activates after payment is confirmed."
-              : "Payments are off (test/QA) — choosing a plan applies it immediately."}
+              ? "Online payment isn't available yet. Ask us to change your plan and we'll apply it for you."
+              : "Payments are off — choosing a plan applies it immediately."}
           </p>
           {cfg.isLoading ? (
             <CardGridSkeleton count={3} />
@@ -216,14 +220,22 @@ function PlansAndInvoices({ onChanged }: { onChanged: () => void }) {
                         </span>
                       )}
                     </div>
-                    <Button
-                      className="mt-4 w-full"
-                      variant="outline"
-                      loading={checkout.isPending && checkout.variables === plan}
-                      onClick={() => checkout.mutate(plan)}
-                    >
-                      {amount > 0 ? "Choose plan" : "Select"}
-                    </Button>
+                    {cfg.data?.payments_enabled && amount > 0 ? (
+                      // No button: checkout cannot take money, so this would be a
+                      // control whose only possible outcome is an error.
+                      <p className="mt-4 text-xs text-muted-foreground">
+                        Contact us to move to this plan.
+                      </p>
+                    ) : (
+                      <Button
+                        className="mt-4 w-full"
+                        variant="outline"
+                        loading={checkout.isPending && checkout.variables === plan}
+                        onClick={() => checkout.mutate(plan)}
+                      >
+                        {amount > 0 ? "Choose plan" : "Select"}
+                      </Button>
+                    )}
                   </div>
                 );
               })}

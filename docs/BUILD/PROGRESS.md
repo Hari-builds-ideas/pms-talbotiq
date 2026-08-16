@@ -405,3 +405,124 @@ Needs from human: nothing.
   unpriced-models warning surfaced rather than folded in as zero (a silent zero
   reads as "this was free"). The estimate disclaimer travels with the figures.
 
+---
+
+# PHASE C
+
+## C1 — Continuous integration
+Status: DONE
+Changed: .github/workflows/ci.yml (new), docs/BUILD/CI.md (new)
+Verified by: YAML parsed and asserted (2 jobs, 10 steps, correct job name,
+`continue-on-error` on the audit job).
+Needs from human: **enable branch protection in the GitHub UI** — exact click
+path in `docs/BUILD/CI.md`. The workflow proves tests pass; it cannot stop a
+merge when they don't.
+
+- Gate job: MySQL 8.0 + Redis 7 services, both requirements files, `pytest`, then
+  `npm ci` + `test` + `build`.
+- Two things the service container can't express are explicit steps: the
+  `test\_%` grant, and `log_bin_trust_function_creators=1` — without which the
+  `audit_log` triggers can't be created and `audit/0002` fails. **CI now proves
+  on every push that audit immutability can be installed.**
+- Audit job (pip-audit, npm audit) is advisory, not a gate. Expect it red
+  initially: Django 4.2 is past its security window (PHASE G).
+
+## C2 — Non-root containers
+Status: DONE
+Changed: Dockerfile, docker-compose.prod.yml
+Verified by: built the image and checked it — `id` → uid 10001; `touch
+/app/manage.py` → Permission denied; media + staticfiles writable; gunicorn
+"Listening at 0.0.0.0:8000"; `pytest apps/tenancy` → 14 passed.
+Needs from human: nothing.
+
+- `appuser` UID/GID 10001 (high, so it can't collide with a host user on a bind
+  mount). Only `/app/media` and `/app/staticfiles` are chowned — **the source
+  tree stays root-owned so the runtime can't modify the code it's executing.**
+- `security_opt: no-new-privileges` + `cap_drop: ALL` on web, worker, beat,
+  migrate.
+- `read_only` deliberately **not** set, with the reason written in the file
+  (gunicorn's /dev/shm heartbeat, MEDIA_ROOT writes) so the omission doesn't read
+  as an oversight.
+
+## C3 — Tenant suspension terminates sessions
+Status: DONE
+Changed: apps/tenancy/{status,signals,apps,middleware}.py,
+apps/tenancy/tests/test_suspension_terminates_sessions.py, apps/identity/views.py
+Verified by: 11 new tests; **full backend suite 1922 passed**.
+Needs from human: nothing.
+
+- Was checked at login only, so suspending a tenant left access tokens working
+  for 15 min and refresh rotating for **7 days**.
+- Now refused in `TenantMiddleware` (401 `tenant_inactive`) and in the refresh
+  view — refresh is the one endpoint the middleware can't cover, since it's
+  reached with an expired access token.
+- Cached + `post_save`-invalidated: **measured 0 queries** across 5 checks, and a
+  bogus tenant id caches its negative so it can't amplify into a query per
+  request.
+- Fails closed; message blames the workspace, not the person.
+
+## C4 — Config defaults that break in production
+Status: DONE
+Changed: config/settings/prod.py, docker-compose.prod.yml, docs/archive/ (new),
+deleted vercel.json + render.yaml, moved railway*.json
+Verified by: prod settings raise `ImproperlyConfigured` without `PUBLIC_APP_URL`
+and load cleanly with it (both checked in-container).
+Needs from human: set `PUBLIC_APP_URL` at deploy (compose now refuses to start
+without it).
+
+- `PUBLIC_APP_URL` required in prod. Its base default `http://localhost:8080`
+  doesn't error — it **sends**, so every recovery email would carry a dead link.
+- `vercel.json` deleted (hardcoded a production API hostname, so any preview hit
+  prod); `render.yaml` deleted (ran AI jobs inline via `CELERY_TASK_ALWAYS_EAGER`);
+  `railway*.json` archived. Four deployment stories → one.
+
+## C6 — Verify audit triggers after every migration
+Status: DONE
+Changed: apps/audit/management/commands/verify_audit_triggers.py (new),
+apps/audit/tests/test_verify_triggers_command.py (new),
+apps/core/management/commands/deploy_migrate.py
+Verified by: runs green against the live DB; 3 tests including **dropping a
+trigger and asserting the command fails**. `pytest apps/audit` → 32 passed.
+Needs from human: nothing.
+
+- On managed MySQL the migration can report success while the triggers were never
+  created — silently dropping the only layer of audit immutability that survives
+  someone with a DB client. `deploy_migrate` now fails the deploy instead.
+- Error names the missing trigger and gives both remedies; a non-MySQL backend is
+  an error, not a pass, because reporting OK there would be a lie.
+
+## C7 — Invite-only signup
+Status: DONE
+Changed: apps/identity/{signup_views,urls}.py, config/settings/base.py,
+apps/identity/tests/{test_signup_mode.py (new),test_signup.py},
+shared/src/api/endpoints.ts, frontend/src/lib/hooks/usePublicConfig.ts (new),
+frontend/src/features/auth/{LoginPage,SignupPage}.tsx
+Verified by: 10 new tests; `pytest apps/identity` → 86 passed; frontend 181 pass.
+Needs from human: set `SIGNUP_MODE=open` once billing works.
+
+- Default `invite_only`. Signing up today would create a real workspace on a plan
+  no invoice can follow (C8).
+- New `GET /api/auth/public-config` so flipping the env var doesn't also require a
+  frontend rebuild. Tiny by design, with a test pinning the exact key set.
+- **Invitations unaffected in both modes** — explicitly tested, as it's the thing
+  most likely to break here by accident.
+- Client defaults to closed while loading/erroring.
+
+## C8 — Payments honesty
+Status: DONE
+Changed: apps/billing/payments/providers.py, apps/billing/views.py,
+apps/billing/tests/test_payments.py,
+frontend/src/features/admin/BillingPage.tsx, frontend/src/mocks/handlers.ts
+Verified by: `pytest apps/billing` → 108 passed; frontend 181 pass.
+Needs from human: nothing (wiring a real SDK is a future decision; instructions
+are kept in each docstring).
+
+- `create_checkout` returned a plausible `cs_test_...` id and a checkout URL that
+  went nowhere, with **no signal that no money moved**. Now `NotImplementedError`
+  → 501 `payments_not_implemented`.
+- The signature-verified webhook side is untouched — it's real and correct.
+- UI: paid-plan buttons replaced with "Contact us to move to this plan".
+- Two existing tests guarded a property that still holds (a client can't
+  self-activate); they now assert it via the 501. Added one asserting the response
+  carries no `session_id`/`checkout_url`.
+

@@ -1,0 +1,162 @@
+name: CI
+
+# Every push and every pull request, on any branch. The point of this file is
+# that nobody has to remember to run the suite — before it existed, 1800+ backend
+# tests and 180+ frontend tests only ran when a human chose to run them.
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch cancels the older run: the old result is about
+# to be irrelevant and the runner minutes are not free.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── the gate ────────────────────────────────────────────────────────────────
+  test:
+    name: Tests (backend + frontend)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # MySQL, not SQLite. The audit-log immutability triggers are raw MySQL DDL
+      # and the tenant cache invalidation uses django-redis' delete_pattern —
+      # neither survives a substitute, so CI runs the real thing (see
+      # config/settings/test.py).
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-not-a-secret
+          MYSQL_DATABASE: pms
+          MYSQL_USER: pms
+          MYSQL_PASSWORD: ci-pms-not-a-secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-not-a-secret"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      # Point the .env loader at a path that does not exist, so a stray file can
+      # never leak a developer's settings into a CI run.
+      PMS_DOTENV_PATH: /nonexistent/.env
+      DB_NAME: pms
+      DB_USER: pms
+      DB_PASSWORD: ci-pms-not-a-secret
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      REDIS_CACHE_URL: redis://127.0.0.1:6379/1
+      REDIS_SESSION_URL: redis://127.0.0.1:6379/2
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/0
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/0
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: System libraries
+        # mysqlclient compiles against libmysqlclient; python3-saml needs xmlsec
+        # and libxml2. Same set the Dockerfile installs.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential default-libmysqlclient-dev default-mysql-client \
+            pkg-config libxml2-dev libxmlsec1-dev libxmlsec1-openssl xmlsec1
+
+      - name: Prepare MySQL
+        # Two things the app needs that the service container cannot express:
+        #  1. the app user must be able to create/drop test_* databases, because
+        #     pytest-django builds a throwaway one (mirrors db/init.sql);
+        #  2. log_bin_trust_function_creators, without which a non-SUPER user
+        #     cannot create the audit_log immutability TRIGGERS and migration
+        #     audit/0002 fails — the exact footgun documented for managed MySQL.
+        run: |
+          mysql -h 127.0.0.1 -uroot -pci-root-not-a-secret -e "
+            GRANT ALL PRIVILEGES ON \`test\_%\`.* TO 'pms'@'%';
+            SET GLOBAL log_bin_trust_function_creators = 1;
+            FLUSH PRIVILEGES;"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Backend tests
+        # pytest.ini already deselects the `live_ai` and `large_tenant` markers, so
+        # CI never makes a paid model call and never seeds a 1k-employee tenant.
+        run: pytest -q
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Frontend tests
+        run: npm --prefix frontend run test
+
+      - name: Frontend build
+        # Catches what the tests cannot: a type error, a broken import, a bundle
+        # that will not build. VITE_USE_MOCKS is pinned false so no CI artifact can
+        # ever be produced with the passwordless mock layer active.
+        env:
+          VITE_USE_MOCKS: "false"
+          VITE_API_BASE_URL: /api
+        run: npm --prefix frontend run build
+
+  # ── advisory ────────────────────────────────────────────────────────────────
+  audit:
+    name: Dependency audit (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Deliberately NOT a merge gate. A new advisory against a transitive
+    # dependency should tell us within the hour, but it should not block an
+    # unrelated fix at 2am — the failure is upstream and the fix is usually a
+    # version bump nobody can make right now. Read it, don't be ruled by it.
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pip-audit
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r requirements.txt --desc
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm audit
+        run: npm --prefix frontend audit --audit-level=high

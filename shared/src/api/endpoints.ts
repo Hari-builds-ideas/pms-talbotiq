@@ -299,6 +299,18 @@ export const approvalsApi = {
 
 export const cyclesApi = {
   list: () => unwrap<PerformanceCycle[]>(api.get("/cycles/")),
+  // The API has always supported POST /cycles/ (MANAGE_CYCLES) and the SPA never
+  // called it, which left a brand-new tenant unable to start: goals and reviews
+  // both require an ACTIVE cycle, and there was no screen anywhere that created
+  // one. See CycleSetupDialog.
+  create: (body: {
+    name: string;
+    start_date: string;
+    end_date: string;
+    status?: PerformanceCycle["status"];
+  }) => unwrap<PerformanceCycle>(api.post("/cycles/", body)),
+  update: (id: string, body: Partial<Pick<PerformanceCycle, "name" | "status">>) =>
+    unwrap<PerformanceCycle>(api.patch(`/cycles/${id}`, body)),
   scores: (cycleId: string) =>
     unwrap<CycleScore[]>(api.get(`/cycles/${cycleId}/scores`)),
   // One employee's score, scope-bound (404 out-of-scope / not-yet-computed) —

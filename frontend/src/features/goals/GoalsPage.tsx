@@ -26,6 +26,8 @@ import {
 import { CardGridSkeleton } from "@/components/Skeletons";
 import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
+import { SetupNeeded } from "@/components/SetupNeeded";
+import { CycleSetupDialog } from "@/features/cycles/CycleSetupDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { WeightBar } from "@/components/WeightBar";
@@ -86,6 +88,7 @@ export function GoalsPage() {
   // Managers can't list cycles (HRBP+ only), so resolve the working cycle from
   // the active cycle when available, else from the scope's own goals.
   const { active, nameOf } = useCycles();
+  const [cycleSetupOpen, setCycleSetupOpen] = React.useState(false);
   // Goals is an everyday surface for ALL roles (employees see their own, read +
   // own-actuals); the management actions below (create / recompute) are Manager+
   // only — gated so an employee never sees a button the server would deny (D31).
@@ -157,7 +160,22 @@ export function GoalsPage() {
       ) : goals.isError ? (
         <ErrorState error={goals.error} onRetry={() => goals.refetch()} />
       ) : rows.length === 0 ? (
+        active ? (
         <EmptyState icon={Target} title="No goals in this cycle" description="Create a weighted goal with KPIs to start." action={<Button onClick={() => setCreateOpen(true)}>New goal</Button>} />
+      ) : (
+        // Same dead end as reviews: a goal belongs to a cycle, and a brand-new
+        // tenant has none.
+        <SetupNeeded
+          icon={Target}
+          title="Goals belong to a cycle"
+          needs={{
+            label: "a performance cycle",
+            onFix: () => setCycleSetupOpen(true),
+            canFix: atLeast("HRBP"),
+          }}
+          description="Reviews use the same one, so this only has to be done once."
+        />
+      )
       ) : (
         <div className="space-y-6">
           {employees.map((emp) => {
@@ -201,6 +219,8 @@ export function GoalsPage() {
           })}
         </div>
       )}
+
+      <CycleSetupDialog open={cycleSetupOpen} onOpenChange={setCycleSetupOpen} />
 
       <NewGoalDialog
         open={createOpen}

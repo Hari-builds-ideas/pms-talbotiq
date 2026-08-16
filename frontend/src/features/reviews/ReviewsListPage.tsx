@@ -7,6 +7,8 @@ import { DataTable } from "@/components/DataTable";
 import { TableSkeleton } from "@/components/Skeletons";
 import { ErrorState } from "@/components/ErrorState";
 import { EmptyState } from "@/components/EmptyState";
+import { SetupNeeded } from "@/components/SetupNeeded";
+import { CycleSetupDialog } from "@/features/cycles/CycleSetupDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { PersonName } from "@/components/PersonName";
 import { SourceBadge } from "@/components/Hitl";
@@ -46,6 +48,7 @@ export function ReviewsListPage() {
   // Manager+ (MANAGE_REVIEWS) — gate the "New review" entry points (D31).
   const { atLeast } = useAuth();
   const { cycles, active, nameOf } = useCycles();
+  const [cycleSetupOpen, setCycleSetupOpen] = React.useState(false);
   const [cycle, setCycle] = React.useState<string>("all");
   const [page, setPage] = React.useState(1);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -127,13 +130,31 @@ export function ReviewsListPage() {
           pagination={{ page, pageSize: PAGE_SIZE, total: data.count, onPageChange: setPage }}
         />
       ) : (
-        <EmptyState
-          icon={FileText}
-          title="No reviews yet"
-          description="Create a review for someone on your team to start the cycle."
-          action={atLeast("MANAGER") && active ? <Button onClick={() => setCreateOpen(true)}>New review</Button> : undefined}
-        />
+        active ? (
+          <EmptyState
+            icon={FileText}
+            title="No reviews yet"
+            description="Create a review for someone on your team to start the cycle."
+            action={atLeast("MANAGER") ? <Button onClick={() => setCreateOpen(true)}>New review</Button> : undefined}
+          />
+        ) : (
+          // Without a cycle the "New review" button was simply HIDDEN, leaving
+          // "create a review to start the cycle" above a panel with nothing to
+          // click and no hint that a cycle was the missing piece.
+          <SetupNeeded
+            icon={FileText}
+            title="Reviews start with a cycle"
+            needs={{
+              label: "a performance cycle",
+              onFix: () => setCycleSetupOpen(true),
+              canFix: atLeast("HRBP"),
+            }}
+            description="A review belongs to a period, and goals use the same one."
+          />
+        )
       )}
+
+      <CycleSetupDialog open={cycleSetupOpen} onOpenChange={setCycleSetupOpen} />
 
       <CreateReviewDialog
         open={createOpen}

@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from apps.core.throttling import AtomicAnonThrottle
+from apps.tenancy.status import tenant_is_active
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
@@ -422,11 +423,33 @@ class DeviceAwareTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
         did = None
         raw = request.data.get("refresh")
+        payload = {}
         if raw:
             try:
-                did = RefreshToken(raw).payload.get("did")
+                payload = RefreshToken(raw).payload
+                did = payload.get("did")
             except TokenError:
                 pass  # the stock serializer rejects it properly below
+
+        # A suspended tenant must not be able to mint a fresh access token (C3).
+        # TenantMiddleware refuses requests that CARRY a token, but refresh is the
+        # one endpoint whose whole job is issuing a new one — and it is reached
+        # with an expired access token, so the middleware check does not apply.
+        # Without this, suspending a tenant still left its users able to rotate a
+        # working session for up to the refresh token's 7-day lifetime.
+        tenant_id = payload.get("tenant_id")
+        if tenant_id and not tenant_is_active(tenant_id):
+            return Response(
+                {
+                    "detail": (
+                        "This workspace is not active. Please contact your "
+                        "administrator or our support team."
+                    ),
+                    "code": "tenant_inactive",
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
         if did and security.session_is_revoked(did):
             return Response(
                 {"detail": "This session has been revoked. Sign in again."},

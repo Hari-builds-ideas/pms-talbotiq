@@ -39,6 +39,11 @@ mysqlclient==2.2.4
 langgraph==0.2.61
 langsmith==0.1.147
 
+# Object storage for uploaded media (C9). Only imported when USE_GCS_MEDIA is on
+# — Django resolves STORAGES backends lazily by dotted path — so a deployment on
+# the local-filesystem fallback never touches the Google client libraries.
+django-storages[google]==1.14.4
+
 # Config + ops
 django-environ==0.11.2
 python-json-logger==2.0.7

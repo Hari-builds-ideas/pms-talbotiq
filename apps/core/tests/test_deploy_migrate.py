@@ -27,9 +27,40 @@ def test_runs_migrate_under_lock_and_releases():
          patch(_CC) as cc:
         call_command("deploy_migrate")
     acq.assert_called_once()
-    cc.assert_called_once()
-    assert cc.call_args[0][0] == "migrate"  # it invoked migrate
+    # Two sub-commands now: migrate under the lock, then verify_audit_triggers
+    # after it (C6) — a deploy must not proceed believing the audit log is
+    # tamper-proof when the triggers were never created.
+    invoked = [c[0][0] for c in cc.call_args_list]
+    assert invoked == ["migrate", "verify_audit_triggers"]
     rel.assert_called_once()  # lock released
+
+
+def test_audit_triggers_are_verified_after_the_lock_is_released():
+    """Ordering matters: holding the advisory lock across the trigger check would
+    make every concurrent deploy queue behind a read-only assertion."""
+    calls = []
+    with patch.object(deploy_migrate, "acquire_advisory_lock", return_value=True), \
+         patch.object(deploy_migrate, "release_advisory_lock",
+                      side_effect=lambda *a, **k: calls.append("release")), \
+         patch(_CC, side_effect=lambda name, *a, **k: calls.append(name)):
+        call_command("deploy_migrate")
+    assert calls == ["migrate", "release", "verify_audit_triggers"]
+
+
+def test_a_missing_audit_trigger_fails_the_deploy():
+    """The point of wiring the check into deploy_migrate: it must STOP the deploy,
+    not log and carry on."""
+    from django.core.management.base import CommandError
+
+    def _fake(name, *a, **k):
+        if name == "verify_audit_triggers":
+            raise CommandError("Audit-log immutability triggers are MISSING")
+
+    with patch.object(deploy_migrate, "acquire_advisory_lock", return_value=True), \
+         patch.object(deploy_migrate, "release_advisory_lock"), \
+         patch(_CC, side_effect=_fake):
+        with pytest.raises(CommandError, match="MISSING"):
+            call_command("deploy_migrate")
 
 
 def test_releases_lock_even_when_migrate_fails():

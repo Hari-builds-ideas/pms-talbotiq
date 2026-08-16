@@ -29,7 +29,8 @@ def _setup_in_subprocess(env):
 def test_prod_refuses_to_start_without_secret_key():
     env = dict(os.environ)
     env["DJANGO_SETTINGS_MODULE"] = "config.settings.prod"
-    env["DJANGO_ALLOWED_HOSTS"] = "example.com"  # satisfy the other required var
+    env["DJANGO_ALLOWED_HOSTS"] = "example.com"  # satisfy the other required vars
+    env["PUBLIC_APP_URL"] = "https://example.com"
     env.pop("DJANGO_SECRET_KEY", None)
 
     result = _setup_in_subprocess(env)
@@ -42,6 +43,7 @@ def test_prod_boots_when_secret_key_is_present():
     env = dict(os.environ)
     env["DJANGO_SETTINGS_MODULE"] = "config.settings.prod"
     env["DJANGO_ALLOWED_HOSTS"] = "example.com"
+    env["PUBLIC_APP_URL"] = "https://example.com"
     env["DJANGO_SECRET_KEY"] = "x" * 50
     env["DJANGO_SECURE_SSL_REDIRECT"] = "false"
 

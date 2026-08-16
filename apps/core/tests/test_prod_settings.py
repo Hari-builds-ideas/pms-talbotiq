@@ -44,11 +44,25 @@ def test_prod_fails_closed_without_allowed_hosts():
     assert "DJANGO_ALLOWED_HOSTS" in (r.stderr + r.stdout)
 
 
+def test_prod_fails_closed_without_public_app_url():
+    """C4. Its base default is http://localhost:8080, which does not error — it
+    SENDS. Every password-reset and invitation email would carry a dead link to
+    the recipient's own machine, and the only signal would be users reporting it
+    days later. Failing at startup is the strictly better failure."""
+    r = _setup(
+        {"DJANGO_SECRET_KEY": "x" * 60, "DJANGO_ALLOWED_HOSTS": "example.com"},
+        drop=("PUBLIC_APP_URL",),
+    )
+    assert r.returncode != 0
+    assert "PUBLIC_APP_URL" in (r.stderr + r.stdout)
+
+
 def test_prod_loads_secure_with_required_env():
     r = _setup(
         {
             "DJANGO_SECRET_KEY": "a-long-random-production-secret-" + "0" * 40,
             "DJANGO_ALLOWED_HOSTS": "app.example.com",
+            "PUBLIC_APP_URL": "https://app.example.com",
         }
     )
     assert r.returncode == 0, r.stderr
@@ -109,6 +123,7 @@ def test_prod_declares_how_many_proxies_front_it():
     env["PMS_DOTENV_PATH"] = "/nonexistent/.env"
     env.setdefault("DJANGO_SECRET_KEY", "x" * 50)
     env.setdefault("DJANGO_ALLOWED_HOSTS", "example.com")
+    env.setdefault("PUBLIC_APP_URL", "https://example.com")
     out = subprocess.run([sys.executable, "-c", probe], env=env,
                          capture_output=True, text=True)
     assert out.returncode == 0, out.stderr

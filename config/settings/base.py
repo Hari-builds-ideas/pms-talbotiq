@@ -680,6 +680,52 @@ STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
+# ── Where uploaded media actually lives (C9) ──────────────────────────────────
+# Uploads were written to a path INSIDE the container with no volume behind it,
+# so every avatar vanished on the next container replacement — silently, because
+# the photo endpoint simply 404s and the UI falls back to initials.
+#
+# Two supported answers, and the flag picks one:
+#   USE_GCS_MEDIA=true   Google Cloud Storage via django-storages. The right
+#                        answer on GCP: survives the VM, survives a rebuild, and
+#                        does not grow the disk.
+#   USE_GCS_MEDIA=false  the local filesystem — now backed by a NAMED VOLUME in
+#                        docker-compose.prod.yml, so the fallback is durable too
+#                        rather than merely being the default.
+#
+# The bucket is PRIVATE (default_acl=None, no public URLs). Media is served only
+# through the authenticated, scope-checked photo endpoint, exactly as before — a
+# publicly readable bucket of employee avatars would be a data leak wearing a CDN.
+USE_GCS_MEDIA = env.bool("USE_GCS_MEDIA", default=False)
+GS_BUCKET_NAME = env("GS_BUCKET_NAME", default="")
+# Optional: a service-account key path. Unset on GCP means Application Default
+# Credentials (the VM's attached service account), which is the better posture —
+# no key file to leak or rotate.
+GS_CREDENTIALS_FILE = env("GS_CREDENTIALS_FILE", default="")
+
+if USE_GCS_MEDIA:
+    STORAGES = {
+        **STORAGES,
+        "default": {
+            "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+            "OPTIONS": {
+                "bucket_name": GS_BUCKET_NAME,
+                # Private objects. Nothing about an employee photo should be
+                # reachable without going through our permission check.
+                "default_acl": None,
+                "querystring_auth": True,
+                # Never silently overwrite one user's upload with another's.
+                "file_overwrite": False,
+            },
+        },
+    }
+    if GS_CREDENTIALS_FILE:
+        from google.oauth2 import service_account  # noqa: PLC0415
+
+        GS_CREDENTIALS = service_account.Credentials.from_service_account_file(
+            GS_CREDENTIALS_FILE
+        )
+
 # ─── Logging (structured JSON to stdout, request-correlated) ───────────
 # RequestContextFilter injects request_id (+ tenant_id when bound) onto every
 # record; they appear in the JSON because they're named in the format string.

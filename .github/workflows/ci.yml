@@ -129,6 +129,22 @@ jobs:
           VITE_API_BASE_URL: /api
         run: npm --prefix frontend run build
 
+      - name: Assert the mock layer is absent from the artifact
+        # C10. The build strips it, but a build-time guarantee nobody checks is a
+        # guarantee that quietly stops holding. Both halves are asserted: the
+        # request-interception service worker, and the "any password works" login
+        # path that must have been tree-shaken out of the bundle.
+        run: |
+          if [ -f frontend/dist/mockServiceWorker.js ]; then
+            echo "::error::mockServiceWorker.js shipped in a production build"
+            exit 1
+          fi
+          if grep -rqF "any password works" frontend/dist/assets/; then
+            echo "::error::the mock login path is present in the production bundle"
+            exit 1
+          fi
+          echo "OK: no mock worker, no mock login path in dist/"
+
   # ── advisory ────────────────────────────────────────────────────────────────
   audit:
     name: Dependency audit (advisory)

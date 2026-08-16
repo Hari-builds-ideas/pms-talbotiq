@@ -68,4 +68,17 @@ class Command(BaseCommand):
         finally:
             # Always release, even if migrate raised — never strand the lock.
             release_advisory_lock(LOCK_NAME)
+
+        # C6 — prove the audit log is still immutable at the DATABASE.
+        #
+        # Migration audit/0002 creates BEFORE UPDATE / BEFORE DELETE triggers on
+        # audit_log. Creating a trigger needs log_bin_trust_function_creators=1 or
+        # TRIGGER+SUPER grants, and a managed MySQL grants neither by default — so
+        # the migration can report success while the triggers were never created,
+        # silently dropping a layer of immutability with no signal anywhere.
+        #
+        # Raising here fails the deploy rather than letting it proceed. That is the
+        # right way round: an audit log you believe is tamper-proof and is not is
+        # worse than a deploy that stopped and told you why.
+        call_command("verify_audit_triggers")
         self.stdout.write(self.style.SUCCESS("Migrations applied; advisory lock released."))

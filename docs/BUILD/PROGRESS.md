@@ -69,3 +69,21 @@ Needs from human: nothing.
   `docs/BUILD/` on case-insensitive macOS, so the build log could not be
   committed.
 
+## A2 — Sidebar is a drawer on mobile, closed by default
+Status: DONE
+Changed: frontend/src/app/shell/AppLayout.tsx, frontend/src/app/shell/Sidebar.tsx,
+frontend/src/app/shell/Topbar.tsx, frontend/src/app/shell/AppLayout.test.tsx
+Verified by: 8 new vitest cases (158 total, up from 150); `tsc --noEmit` clean;
+live browser check at 390×844 — closed on mount, `role=dialog`/`aria-modal` on
+open, focus lands on the first nav item, Escape closes, `localStorage` empty
+after a mobile toggle.
+Needs from human: nothing.
+
+- Added: focus trap + focus restore, Escape to close, modal ARIA (drawer only),
+  `aria-expanded` on the hamburger.
+- Breakpoint moved `lg` (1024) → `md` (768) per spec; one `DESKTOP_QUERY`
+  constant now drives the CSS variants, the backdrop and the JS check.
+- Viewport class is live via a `matchMedia` change listener, so rotation
+  re-applies the layout instead of waiting for the next navigation.
+- Desktop collapse preference persists; a mobile open state never does.
+

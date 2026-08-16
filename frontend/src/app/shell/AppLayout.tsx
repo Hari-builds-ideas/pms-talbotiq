@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth/AuthContext";
@@ -39,7 +39,15 @@ export function AppLayout() {
   );
 }
 
-/** Is the viewport at Tailwind's `lg` breakpoint or wider?
+/** Tailwind's `md`. Below this the sidebar is a drawer; at or above it is inline.
+ *  Keep in step with the `md:` variants in Sidebar.tsx and the backdrop below. */
+const DESKTOP_QUERY = "(min-width: 768px)";
+
+/** Remembers the DESKTOP sidebar preference only. A mobile session always starts
+ *  closed (A2), so an open drawer is never restored onto a phone. */
+const NAV_PREF_KEY = "pms.nav.desktopOpen";
+
+/** Is the viewport at Tailwind's `md` breakpoint or wider?
  *
  * Guarded rather than calling `window.matchMedia` directly: it does not exist under
  * SSR, and jsdom does not implement it either, so an unguarded call takes out every
@@ -49,8 +57,36 @@ function isDesktopViewport(): boolean {
   return (
     typeof window === "undefined" ||
     typeof window.matchMedia !== "function" ||
-    window.matchMedia("(min-width: 1024px)").matches
+    window.matchMedia(DESKTOP_QUERY).matches
   );
+}
+
+/** Live viewport class, so rotating a phone or resizing a window re-lays-out
+ *  instead of keeping whatever was true at mount. */
+function useIsDesktop(): boolean {
+  const [desktop, setDesktop] = useState(isDesktopViewport);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(DESKTOP_QUERY);
+    const onChange = () => setDesktop(mql.matches);
+    // addEventListener is the modern API; addListener is the Safari <14 fallback.
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    mql.addListener?.(onChange);
+    return () => mql.removeListener?.(onChange);
+  }, []);
+  return desktop;
+}
+
+/** The stored desktop preference, defaulting to open. Never consulted on mobile. */
+function readDesktopPref(): boolean {
+  try {
+    return window.localStorage.getItem(NAV_PREF_KEY) !== "false";
+  } catch {
+    return true;
+  }
 }
 
 /** hex "#RRGGBB" → the "H S% L%" triple the CSS tokens use. */
@@ -82,16 +118,49 @@ function hexToHslTriple(hex: string): string | null {
  * tenant's primary brand color when the plan includes custom_branding (L1.5). */
 function ShellFrame() {
   const location = useLocation();
-  // Open on desktop, CLOSED on a phone. It used to start open at every width, and
-  // since the sidebar is 256px wide that left a 390px screen about 130px of content:
-  // the dashboard rendered with its stat cards overlapping each other. The topbar's
-  // menu button already toggled it — only the default was wrong.
-  const [navOpen, setNavOpen] = useState(isDesktopViewport);
+  const isDesktop = useIsDesktop();
+  // Open on desktop (honouring the stored preference), CLOSED on a phone. It used
+  // to start open at every width, and since the sidebar is 256px wide that left a
+  // 390px screen about 130px of content: the dashboard rendered with its stat
+  // cards overlapping each other.
+  const [navOpen, setNavOpen] = useState(
+    () => isDesktopViewport() && readDesktopPref(),
+  );
+  // Below md the sidebar is a DRAWER: fixed, over the content, with a backdrop.
+  const isDrawer = !isDesktop;
+
+  // Crossing the breakpoint (rotation, window resize) re-applies the rule for the
+  // side you land on: desktop restores the stored preference, mobile always closes.
+  // Without this, rotating a phone to landscape-tablet width left the drawer state
+  // stuck and the layout half-applied.
+  useEffect(() => {
+    setNavOpen(isDesktop ? readDesktopPref() : false);
+  }, [isDesktop]);
+
   // Close it again after navigating on mobile, where it sits ON TOP of the page —
   // otherwise tapping a nav item leaves the menu covering the screen you asked for.
   useEffect(() => {
-    if (!isDesktopViewport()) setNavOpen(false);
-  }, [location.pathname]);
+    if (isDrawer) setNavOpen(false);
+  }, [location.pathname, isDrawer]);
+
+  // Toggling persists ONLY on desktop. A phone's open drawer is session state, not
+  // a preference, and restoring it on the next visit would put the menu back over
+  // the content on load.
+  const toggleNav = useCallback(() => {
+    setNavOpen((open) => {
+      const next = !open;
+      if (isDesktop) {
+        try {
+          window.localStorage.setItem(NAV_PREF_KEY, String(next));
+        } catch {
+          /* private mode / storage disabled — the toggle still works in-session */
+        }
+      }
+      return next;
+    });
+  }, [isDesktop]);
+
+  const closeNav = useCallback(() => setNavOpen(false), []);
   const { open: chatOpen, width: chatWidth } = useChatPanel();
   const { me } = useAuth();
   const brandColor = me?.tenant_branding?.primary_color;
@@ -114,19 +183,19 @@ function ShellFrame() {
       )}
       style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}
     >
-      {navOpen && <Sidebar />}
+      {navOpen && <Sidebar drawer={isDrawer} onClose={closeNav} />}
       {/* Backdrop for the overlaying mobile sidebar: gives it an obvious way to be
-          dismissed. lg:hidden so the desktop layout is untouched. */}
-      {navOpen && (
+          dismissed. Rendered only in drawer mode so the desktop layout is untouched. */}
+      {navOpen && isDrawer && (
         <button
           type="button"
           aria-label="Close navigation"
-          onClick={() => setNavOpen(false)}
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          onClick={closeNav}
+          className="fixed inset-0 z-30 bg-black/40"
         />
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onToggleNav={() => setNavOpen((v) => !v)} />
+        <Topbar onToggleNav={toggleNav} navOpen={navOpen} />
         <main
           id="main-content"
           tabIndex={-1}

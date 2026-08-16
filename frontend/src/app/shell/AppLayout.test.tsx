@@ -7,7 +7,7 @@
  * it was only visible in a screenshot.
  */
 import { fireEvent, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Reuse the a11y harness: it wraps AppLayout in the QueryClientProvider the
 // command palette needs, so this file tests the shell rather than re-scaffolding it.
@@ -96,5 +96,86 @@ describe("AppLayout sidebar default", () => {
     setViewport(null);
     renderShell();
     expect(document.querySelector("aside")).not.toBeNull();
+  });
+});
+
+describe("AppLayout sidebar drawer semantics (below md)", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("announces itself as a modal dialog only while it is a drawer", () => {
+    setViewport(false);
+    renderShell();
+    fireEvent.click(screen.getByLabelText("Toggle navigation"));
+    const aside = document.querySelector("aside")!;
+    expect(aside.getAttribute("role")).toBe("dialog");
+    expect(aside.getAttribute("aria-modal")).toBe("true");
+  });
+
+  it("is plain navigation on desktop, not a dialog", () => {
+    setViewport(true);
+    renderShell();
+    const aside = document.querySelector("aside")!;
+    expect(aside.getAttribute("role")).toBeNull();
+    expect(aside.getAttribute("aria-modal")).toBeNull();
+  });
+
+  it("moves focus into the drawer when it opens", () => {
+    setViewport(false);
+    renderShell();
+    fireEvent.click(screen.getByLabelText("Toggle navigation"));
+    const aside = document.querySelector("aside")!;
+    expect(aside.contains(document.activeElement)).toBe(true);
+  });
+
+  it("closes on Escape and returns focus to the toggle", () => {
+    setViewport(false);
+    renderShell();
+    const toggle = screen.getByLabelText("Toggle navigation");
+    // Focus explicitly first: a real tap/keyboard activation focuses the button,
+    // but jsdom's synthetic click does not, and the restore target is whatever
+    // held focus when the drawer opened.
+    toggle.focus();
+    fireEvent.click(toggle);
+    expect(document.querySelector("aside")).not.toBeNull();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(document.querySelector("aside")).toBeNull();
+    // Focus must come back to what opened it, or a keyboard user is stranded at
+    // the top of the document.
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("reflects open state on the toggle for assistive tech", () => {
+    setViewport(false);
+    renderShell();
+    const toggle = screen.getByLabelText("Toggle navigation");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("never persists an open drawer into a mobile session", () => {
+    setViewport(false);
+    renderShell();
+    fireEvent.click(screen.getByLabelText("Toggle navigation"));
+    // Opening a drawer on a phone is session state, not a preference. Persisting
+    // it would put the menu back over the content on the next load.
+    expect(window.localStorage.getItem("pms.nav.desktopOpen")).toBeNull();
+  });
+
+  it("persists the collapse preference on desktop", () => {
+    setViewport(true);
+    renderShell();
+    fireEvent.click(screen.getByLabelText("Toggle navigation"));
+    expect(window.localStorage.getItem("pms.nav.desktopOpen")).toBe("false");
+    expect(document.querySelector("aside")).toBeNull();
+  });
+
+  it("restores the stored desktop preference on mount", () => {
+    window.localStorage.setItem("pms.nav.desktopOpen", "false");
+    setViewport(true);
+    renderShell();
+    expect(document.querySelector("aside")).toBeNull();
   });
 });

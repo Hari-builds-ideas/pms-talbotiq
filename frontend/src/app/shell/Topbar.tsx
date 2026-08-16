@@ -60,7 +60,14 @@ function openCommandPalette() {
   );
 }
 
-export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
+export function Topbar({
+  onToggleNav,
+  navOpen = false,
+}: {
+  onToggleNav?: () => void;
+  /** Drives aria-expanded so the control announces the drawer's state. */
+  navOpen?: boolean;
+}) {
   const { me, logout, completeLogin } = useAuth();
   const chat = useChatPanel();
   const navigate = useNavigate();
@@ -81,6 +88,7 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
         size="icon-sm"
         onClick={onToggleNav}
         aria-label="Toggle navigation"
+        aria-expanded={navOpen}
         className="h-11 w-11 shrink-0 text-muted-foreground"
       >
         <Menu className="h-5 w-5" />

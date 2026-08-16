@@ -53,20 +53,106 @@ function openCommandPalette() {
   );
 }
 
+/** Every focusable descendant, in DOM order — the tab ring for the drawer. */
+function focusablesIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+}
+
+/**
+ * Drawer behaviour for the mobile sidebar: it is a modal surface, so it has to
+ * behave like one. On open, focus moves in and is remembered; Tab cycles inside
+ * it rather than escaping to the page underneath; Escape closes it; on close,
+ * focus returns to whatever opened it (the hamburger).
+ *
+ * Inert on desktop, where the sidebar is an ordinary inline column and trapping
+ * focus in it would be wrong.
+ */
+function useDrawerBehaviour(
+  ref: React.RefObject<HTMLElement>,
+  active: boolean,
+  onClose: () => void,
+) {
+  React.useEffect(() => {
+    if (!active) return;
+    const root = ref.current;
+    if (!root) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    // Move focus in so a screen reader lands on the menu, not behind it.
+    (focusablesIn(root)[0] ?? root).focus?.();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusablesIn(root!);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const current = document.activeElement;
+      // Wrap at both ends, and pull focus back in if it has already escaped.
+      if (e.shiftKey && (current === first || !root!.contains(current))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (current === last || !root!.contains(current))) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    // Listen on the document so Escape works even if focus has drifted out.
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      previouslyFocused?.focus?.();
+    };
+  }, [active, onClose, ref]);
+}
+
 /** Light sidebar with the TalbotIQ brand lockup, sectioned role-filtered nav
- *  (brand-green active state), and Quick Actions pinned bottom-left. */
-export function Sidebar() {
+ *  (brand-green active state), and Quick Actions pinned bottom-left.
+ *
+ *  `drawer` = the viewport is below `md`, so this is an overlaying modal surface
+ *  rather than an inline column. */
+export function Sidebar({
+  drawer = false,
+  onClose,
+}: {
+  drawer?: boolean;
+  onClose?: () => void;
+} = {}) {
   const { me } = useAuth();
   // Visibility is a pure function of role (navForRole) — the same source the nav
   // tests assert. A role only ever sees the sections/items it can use.
   const sections = navForRole(me?.role ?? "EMPLOYEE");
+  const ref = React.useRef<HTMLElement>(null);
+  const close = React.useCallback(() => onClose?.(), [onClose]);
+  useDrawerBehaviour(ref, drawer, close);
 
   return (
-    // Below lg the sidebar OVERLAYS the content instead of sitting beside it.
+    // Below md the sidebar OVERLAYS the content instead of sitting beside it.
     // Inline, its w-64 is 256 of a phone's 390px and the page is left with ~130 —
-    // enough for the dashboard stat cards to land on top of each other. From lg up
+    // enough for the dashboard stat cards to land on top of each other. From md up
     // this is `relative` again, i.e. exactly the desktop layout it has always had.
-    <aside className="fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar shadow-xl lg:relative lg:z-auto lg:shadow-none">
+    // pt-safe/pb-safe keep the brand lockup off the notch and Quick Actions clear
+    // of the home indicator.
+    <aside
+      ref={ref}
+      tabIndex={-1}
+      // Modal semantics only while it is actually a drawer; as an inline desktop
+      // column it is plain navigation and must not announce itself as a dialog.
+      role={drawer ? "dialog" : undefined}
+      aria-modal={drawer ? true : undefined}
+      aria-label={drawer ? "Navigation menu" : undefined}
+      className="fixed inset-y-0 left-0 z-40 flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar pt-safe pb-safe shadow-xl outline-none md:relative md:z-auto md:shadow-none"
+    >
       {/* Brand lockup (see SidebarBrand — tenant logo overrides, with fallback). */}
       <div className="flex h-16 items-center px-5">
         <SidebarBrand

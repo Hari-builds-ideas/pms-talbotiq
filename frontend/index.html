@@ -9,7 +9,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="icon" type="image/png" sizes="512x512" href="/favicon/icon-green.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the page paint under the notch and home indicator;
+         the shell then re-inserts that space with env(safe-area-inset-*) padding so
+         content clears both. Without it iOS letterboxes the page in landscape. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#0d5c3a" />
     <meta

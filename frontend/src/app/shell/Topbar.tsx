@@ -71,33 +71,47 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
   }
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-card px-5">
-      {/* Left: collapse toggle */}
+    // pt-safe clears the notch; px-safe clears the landscape rounded corners.
+    // min-w-0 on the header itself so it can never be widened by its children.
+    <header className="flex h-16 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-card px-3 pt-safe px-safe sm:gap-3 sm:px-5">
+      {/* Left: collapse toggle. h-11 w-11 = a 44x44 tap target; it was 16x32,
+          and on a phone this is the ONLY way to open navigation. */}
       <Button
         variant="ghost"
         size="icon-sm"
         onClick={onToggleNav}
         aria-label="Toggle navigation"
-        className="text-muted-foreground"
+        className="h-11 w-11 shrink-0 text-muted-foreground"
       >
         <Menu className="h-5 w-5" />
       </Button>
 
-      {/* Center: global search */}
+      {/* Center: global search.
+          min-w-0 is load-bearing. A flex child defaults to min-width:auto, which
+          refuses to shrink below its content — so this button held its full
+          ~299px and pushed the entire right-hand cluster (notifications, Ask AI,
+          and the account menu, which is the only route to Sign out) to right:487
+          on a 390px screen. Off the edge, unreachable, on every route for every
+          role. See docs/BUILD/MOBILE_AUDIT.md finding 2.
+          Below sm the label and the ⌘K hint are dropped: a phone has no ⌘ key and
+          no room for the sentence, so it collapses to a 44px icon button. */}
       <button
         type="button"
         onClick={openCommandPalette}
-        className="flex h-10 max-w-xl flex-1 items-center gap-2.5 rounded-xl border border-input bg-input-background px-3.5 text-sm text-muted-foreground transition-colors hover:bg-secondary"
+        aria-label="Search"
+        className="flex h-11 w-11 min-w-0 shrink items-center justify-center gap-2.5 rounded-xl border border-input bg-input-background text-sm text-muted-foreground transition-colors hover:bg-secondary sm:h-10 sm:w-auto sm:max-w-xl sm:flex-1 sm:justify-start sm:px-3.5"
       >
-        <Search className="h-4 w-4" />
-        <span className="truncate">Search employees, OKRs, goals…</span>
-        <kbd className="ml-auto rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+        <Search className="h-4 w-4 shrink-0" />
+        <span className="hidden truncate sm:inline">Search employees, OKRs, goals…</span>
+        <kbd className="ml-auto hidden rounded border border-border bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
           ⌘K
         </kbd>
       </button>
 
-      {/* Right: dev switcher · notifications · help/AI · identity */}
-      <div className="flex items-center gap-1.5">
+      {/* Right: dev switcher · notifications · help/AI · identity.
+          shrink-0 + ml-auto so this cluster keeps its width and stays pinned to
+          the right edge rather than being pushed past it. */}
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1.5">
         {USING_MOCKS && (
           <DropdownMenu>
             <Tooltip>
@@ -130,7 +144,7 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
               type="button"
               onClick={() => navigate(approvals > 0 ? "/approvals" : "/feedback")}
               aria-label={`Pending actions: ${pending}`}
-              className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              className="relative flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <Bell className="h-[18px] w-[18px]" />
               {pending > 0 && (
@@ -150,7 +164,7 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
               type="button"
               onClick={chat.toggle}
               aria-label="Ask AI"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-ai transition-colors hover:bg-ai-subtle"
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-ai transition-colors hover:bg-ai-subtle"
             >
               <Sparkles className="h-[18px] w-[18px]" />
             </button>
@@ -165,7 +179,7 @@ export function Topbar({ onToggleNav }: { onToggleNav?: () => void }) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button aria-label="Open account menu" className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-secondary">
+            <button aria-label="Open account menu" className="flex h-11 min-w-11 items-center gap-2.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-secondary">
               <Avatar>
                 <AvatarFallback>{initials(me?.display)}</AvatarFallback>
               </Avatar>

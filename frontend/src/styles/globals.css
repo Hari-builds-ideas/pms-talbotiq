@@ -94,8 +94,20 @@
     @apply border-border;
   }
 
+  /* The shell is a full-height flex column, so every ancestor has to actually be
+     full height or `flex-1` collapses. Setting it here (rather than on a wrapper)
+     keeps it true for the login/legal pages too. */
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
+    /* A phone must never scroll sideways. Anything wide enough to need it gets a
+       scroll container of its own (tables, code blocks) — see .scroll-x. */
+    overflow-x: hidden;
   }
 
   body {
@@ -103,6 +115,7 @@
     font-family: theme("fontFamily.sans");
     font-size: theme("fontSize.base[0]");
     line-height: theme("fontSize.base[1].lineHeight");
+    overflow-x: hidden;
   }
 
   /* Tabular numbers for tables, scores, money */
@@ -122,6 +135,41 @@
 }
 
 @layer utilities {
+  /* ── Safe areas (iPhone notch / home indicator) ────────────────────────────
+     index.html sets viewport-fit=cover, which paints under the system UI. These
+     put the space back where it matters: the top bar, the bottom of a scrolling
+     column, and any sticky action bar. env() resolves to 0px everywhere else, so
+     these are inert on desktop and Android. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* For a sticky footer/action bar: its own padding PLUS the inset. */
+  .pb-safe-4 {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Horizontal scroll container. Anything that genuinely cannot shrink (a wide
+     table, a code block) goes in one of these so it scrolls itself instead of
+     widening the page. -webkit-overflow-scrolling keeps momentum on iOS. */
+  .scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
   /* Skeleton shimmer surface */
   .skeleton-shimmer {
     @apply relative overflow-hidden bg-muted;

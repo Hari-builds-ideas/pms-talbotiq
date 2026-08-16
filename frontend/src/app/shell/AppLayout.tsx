@@ -24,7 +24,16 @@ export function AppLayout() {
           Skip to main content
         </a>
         <CommandPalette />
-        <ShellFrame />
+        {/* SHELL-level boundary. The inner boundary (around <Outlet/>) keeps a
+            crashed SCREEN from taking the shell down; this one keeps a crashed
+            SHELL — Topbar, Sidebar, the chat provider — from taking the whole
+            app down. Without it a single throw in Topbar unmounts the React root
+            and leaves an empty #root: a white screen with no way back. That was
+            a real, reproducible outage, not a hypothetical (see
+            docs/BUILD/MOBILE_AUDIT.md finding 1). */}
+        <ErrorBoundary>
+          <ShellFrame />
+        </ErrorBoundary>
       </ChatProvider>
     </TooltipProvider>
   );
@@ -96,7 +105,11 @@ function ShellFrame() {
   return (
     <div
       className={cn(
-        "flex h-screen overflow-hidden bg-background",
+        // 100dvh, not 100vh: on mobile Safari/Chrome the URL bar collapses on
+        // scroll and 100vh keeps reserving the taller height, so the page jumps
+        // and the last ~60px sit under the browser chrome. dvh tracks the real
+        // visible height. h-screen stays as the fallback for older engines.
+        "flex h-screen h-[100dvh] overflow-hidden bg-background",
         chatOpen && "sm:mr-[var(--chat-w)]",
       )}
       style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}
@@ -117,9 +130,11 @@ function ShellFrame() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto scrollbar-thin focus:outline-none"
+          className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin focus:outline-none"
         >
-          <div className="mx-auto w-full max-w-[1440px] px-6 py-8">
+          {/* px-4 on a phone (px-6 wasted 12% of a 390px screen), px-6 from sm.
+              pb-safe-4 keeps the last row clear of the home indicator. */}
+          <div className="mx-auto w-full max-w-[1440px] px-4 py-6 pb-safe-4 sm:px-6 sm:py-8">
             <ErrorBoundary resetKey={location.pathname}>
               <Outlet />
             </ErrorBoundary>

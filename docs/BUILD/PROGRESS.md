@@ -44,3 +44,28 @@ Key findings (full detail in MOBILE_AUDIT.md):
 - No broken image assets — the "AI icons missing" report is almost certainly the
   off-screen Ask AI button.
 
+## A1 — Viewport and base layout (+ P0 shell-crash fix)
+Status: DONE
+Changed: frontend/index.html, frontend/src/styles/globals.css,
+frontend/src/app/shell/AppLayout.tsx, frontend/src/app/shell/Topbar.tsx,
+.gitignore
+Verified by: `npx tsc --noEmit` clean; `npx vitest run` 28 files / 150 tests
+pass; production image rebuilt and re-walked at 390×844 against the real API —
+dashboard off-screen overflow **487 → 0**, sub-44px targets on `/` 10 → 5, and
+the topbar no longer appears as an offender on any route.
+Needs from human: nothing.
+
+- Topbar: `min-w-0` on the search button (flexbox `min-width:auto` was the root
+  cause), `ml-auto shrink-0` on the right cluster, icon-only search below `sm`.
+  Notifications / Ask AI / account menu are now on-screen and tappable.
+- Shell-level `ErrorBoundary` added around `ShellFrame` so a Topbar/Sidebar throw
+  degrades instead of emptying `#root`.
+- `viewport-fit=cover` + `pt-safe/pb-safe/px-safe/pb-safe-4` utilities.
+- `html, body, #root` height 100% + `overflow-x: hidden`; `.scroll-x` escape
+  hatch for genuinely wide content.
+- `h-[100dvh]` for the shell; content padding `px-4 py-6` below `sm`.
+- Shell tap targets raised to 44×44 (hamburger was 16×32).
+- `.gitignore`: `!docs/BUILD/` — the Python `build/` rule was swallowing
+  `docs/BUILD/` on case-insensitive macOS, so the build log could not be
+  committed.
+

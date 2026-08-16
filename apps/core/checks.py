@@ -83,3 +83,65 @@ def ai_call_ceiling_is_production_sized(app_configs, **kwargs):
             id="pms.W001",
         )]
     return []
+
+
+@register(Tags.security, deploy=True)
+def proxy_depth_is_declared(app_configs, **kwargs):
+    """A wrong NUM_PROXIES silently disables the login brute-force throttle (C11).
+
+    Behind a TLS edge every request arrives with REMOTE_ADDR set to the proxy, so
+    DRF identifies anonymous clients from X-Forwarded-For instead. A proxy APPENDS
+    to that header rather than replacing it, so with NUM_PROXIES unset DRF keys on
+    the WHOLE header — and a client that sends its own X-Forwarded-For gets a
+    different throttle bucket on every request. The per-IP limit protecting the
+    login surface stops existing, and nothing reports an error: logins still work,
+    the counter simply never fills.
+
+    prod.py defaults it to 1, which is correct for Caddy alone. That default is
+    the trap: put a CDN in front (Cloudflare, CloudFront) and the correct value
+    becomes 2, but nothing changes, nothing errors, and the throttle silently
+    becomes forgeable again. So this warns when the value was DEFAULTED rather
+    than declared — the deployer is asked to confirm the topology once, out loud.
+    """
+    import os
+
+    proxy_header = getattr(settings, "SECURE_PROXY_SSL_HEADER", None)
+    if not proxy_header:
+        return []
+
+    num_proxies = (getattr(settings, "REST_FRAMEWORK", {}) or {}).get("NUM_PROXIES")
+
+    if num_proxies is None:
+        return [Error(
+            "A reverse proxy fronts this app (SECURE_PROXY_SSL_HEADER is set) but "
+            "REST_FRAMEWORK['NUM_PROXIES'] is not configured.",
+            hint=("DRF will key the anonymous throttle on the whole X-Forwarded-For "
+                  "header, which a client can vary at will — the brute-force limit "
+                  "on /api/auth/login stops working and nothing reports an error. "
+                  "Set DJANGO_NUM_PROXIES."),
+            id="pms.E004",
+        )]
+
+    if isinstance(num_proxies, int) and num_proxies < 1:
+        return [Error(
+            f"REST_FRAMEWORK['NUM_PROXIES'] is {num_proxies}, but a proxy fronts "
+            "this app.",
+            hint=("0 means 'trust REMOTE_ADDR', which behind a proxy is the proxy "
+                  "itself — every anonymous client then shares one throttle bucket. "
+                  "Set DJANGO_NUM_PROXIES to the real proxy count."),
+            id="pms.E004",
+        )]
+
+    if "DJANGO_NUM_PROXIES" not in os.environ:
+        return [Warning(
+            f"DJANGO_NUM_PROXIES is not set, so the proxy depth defaulted to "
+            f"{num_proxies}.",
+            hint=("That default is right for Caddy alone and WRONG the moment a CDN "
+                  "sits in front (Cloudflare/CloudFront → 2). Getting it wrong does "
+                  "not error: too low throttles every anonymous user as one, too "
+                  "high trusts a hop the client can forge, and the login "
+                  "brute-force limit quietly stops protecting anything. Set "
+                  "DJANGO_NUM_PROXIES explicitly to confirm the topology."),
+            id="pms.W002",
+        )]
+    return []

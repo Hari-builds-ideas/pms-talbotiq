@@ -15,9 +15,17 @@ authoritative scrubber and is kept import-light so it never depends on
 # Keys whose values must never leave the process, matched case-insensitively
 # wherever they appear in request data / cookies / extra.
 _SENSITIVE_KEYS = frozenset(
-    {"authorization", "token", "access", "refresh", "password", "mfa_token"}
+    {
+        "authorization", "token", "access", "refresh", "password", "mfa_token",
+        # Anything that is itself a credential or a way to get one.
+        "api_key", "apikey", "secret", "client_secret", "signature", "code",
+        "new_password", "current_password", "email_change_token",
+    }
 )
 _REDACTED = "[Filtered]"
+#: Stands in for a dropped request body, so a reader knows one existed rather
+#: than wondering whether the request was empty.
+_BODY_DROPPED = "[request body dropped — may contain employee performance data]"
 
 
 def _scrub_headers(headers):
@@ -38,6 +46,58 @@ def _scrub_mapping(mapping):
             mapping[key] = _REDACTED
 
 
+def _drop_body(request):
+    """Remove the request body entirely (C12).
+
+    Key-based redaction was not enough here, and the reason is what this product
+    stores. A POST to /api/reviews/<id>/submit carries ``draft_body`` — a written
+    performance review. /api/feedback/continuous carries somebody's 360 feedback.
+    /api/checkins carries what a person said was blocking them this week. None of
+    those key names look sensitive, so a denylist keeps every one of them, and the
+    error store quietly becomes a second copy of the most sensitive text in the
+    system — held by a third party, on a different retention policy, readable by
+    anyone with a Sentry login.
+
+    Enumerating the fields that DO matter is the wrong shape of defence: the list
+    is long, it grows with every feature, and forgetting one entry is silent. So
+    the body goes, wholesale. A marker is left behind so a developer reading the
+    event knows a body existed and is not left wondering whether the request was
+    empty.
+
+    What is lost is real — payload shape is genuinely useful when debugging a 500
+    — but the stack trace, the endpoint, the tenant and the request id all survive,
+    and those answer most of it. Employee performance text leaving the system is
+    not a debugging convenience worth paying for.
+    """
+    if not isinstance(request, dict) or "data" not in request:
+        return
+    data = request.get("data")
+    if data in (None, "", {}, []):
+        request.pop("data", None)
+        return
+    request["data"] = _BODY_DROPPED
+
+
+def _scrub_query_string(request):
+    """Redact sensitive-looking query parameters.
+
+    Tokens do end up in query strings — the invitation and password-reset links
+    both carry one — and a GET that 500s would otherwise ship a working
+    credential to the error store.
+    """
+    qs = request.get("query_string")
+    if not isinstance(qs, str) or not qs:
+        return
+    parts = []
+    for pair in qs.split("&"):
+        key, sep, _value = pair.partition("=")
+        if sep and key.lower() in _SENSITIVE_KEYS:
+            parts.append(f"{key}={_REDACTED}")
+        else:
+            parts.append(pair)
+    request["query_string"] = "&".join(parts)
+
+
 def before_send(event, hint):
     """Scrub secrets and tag with correlation ids before an event is sent.
 
@@ -47,8 +107,9 @@ def before_send(event, hint):
     request = event.get("request")
     if isinstance(request, dict):
         _scrub_headers(request.get("headers"))
-        _scrub_mapping(request.get("data"))
+        _drop_body(request)
         _scrub_mapping(request.get("cookies"))
+        _scrub_query_string(request)
 
     _scrub_mapping(event.get("extra"))
 

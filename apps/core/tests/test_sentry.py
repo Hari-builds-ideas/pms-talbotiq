@@ -1,5 +1,5 @@
 """Tests for Sentry wiring: disabled-without-DSN boot + before_send scrubbing."""
-from apps.core.observability import before_send, init_sentry
+from apps.core.observability import _BODY_DROPPED, before_send, init_sentry
 from apps.core.request_context import reset_request_id, set_request_id
 from apps.tenancy.context import set_current_tenant_id, reset_current_tenant_id
 
@@ -32,10 +32,13 @@ def test_before_send_scrubs_headers_and_data():
     assert "Authorization" not in headers
     assert headers["Accept"] == "application/json"  # non-sensitive preserved
 
-    data = result["request"]["data"]
-    for key in ("password", "access", "refresh", "token"):
-        assert data[key] == "[Filtered]"
-    assert data["email"] == "x@y.com"  # non-sensitive preserved
+    # C12 strengthened this. The body used to be key-redacted, which kept every
+    # field whose name did not look sensitive — including `email` here, and
+    # including `draft_body` (a written performance review) in real traffic. The
+    # whole body is now dropped, so none of it can reach the error store.
+    assert result["request"]["data"] == _BODY_DROPPED
+    for leaked in ("hunter2", "jwt-access", "jwt-refresh", "raw-token", "x@y.com"):
+        assert leaked not in str(result)
 
     assert result["request"]["cookies"]["token"] == "[Filtered]"
     assert result["request"]["cookies"]["sessionid"] == "abc"

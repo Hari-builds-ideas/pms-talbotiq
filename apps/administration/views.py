@@ -32,8 +32,10 @@ from apps.identity.models import User
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
-from . import data_rights, services
+from . import data_rights, erasure, services
+from .exceptions import InvalidAdminInput
 from .serializers import (
+    EraseUserSerializer,
     CreateUserSerializer,
     DisplayNameSerializer,
     ReportingLineSerializer,
@@ -76,6 +78,48 @@ class UserExportView(RBACMixin, APIView):
             tenant=request.user.tenant_id,
         )
         return Response(data_rights.export_user(subject))
+
+
+class UserEraseView(RBACMixin, APIView):
+    """``POST /api/admin/users/<id>/erase`` (MANAGE_TENANT — Admin).
+
+    Irreversible. Body::
+
+        {"confirm": "<the subject's email>", "justification": "why, in words"}
+
+    The confirmation is the subject's own email typed back, not a checkbox and
+    not the literal word ERASE. A fixed word is muscle memory by the second time;
+    retyping *this person's* address is the one thing that cannot be done
+    absent-mindedly on the wrong row — and acting on the id below the one you
+    meant is the mistake that actually happens here.
+
+    The justification is required and must be more than a token, because it lands
+    in the append-only audit log. "test" tells a future auditor nothing, and by
+    the time they read it the data is gone and cannot be re-read for context.
+    """
+
+    required_capability = Capability.MANAGE_TENANT
+
+    def post(self, request, pk):
+        subject = get_object_or_404(User.objects.all(), pk=pk)
+        serializer = EraseUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Compared against the CURRENT email, so a repeat confirm can never match
+        # a stale address the admin still has on screen after a tombstone.
+        if data["confirm"].strip().lower() != subject.email.strip().lower():
+            raise InvalidAdminInput(
+                "The confirmation does not match this person's email address. Type "
+                "it exactly to confirm you are erasing the right record."
+            )
+        try:
+            summary = erasure.erase_user(
+                request.user, subject, justification=data["justification"].strip()
+            )
+        except erasure.CannotErase as exc:
+            raise InvalidAdminInput(str(exc)) from exc
+        return Response(summary)
 
 
 # ── users / roles ──────────────────────────────────────────────────────────────

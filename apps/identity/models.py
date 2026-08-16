@@ -95,6 +95,17 @@ class User(AbstractBaseUser, PermissionsMixin, TenantScopedModel):
     #: Free-form user preferences bag: {"notifications": {channel: bool, ...}, ...}.
     preferences = models.JSONField(default=dict, blank=True)
 
+    #: Set when this person has been erased under a data subject request (D2).
+    #:
+    #: The row itself SURVIVES the erasure, tombstoned: it is the stable
+    #: pseudonymous id that every piece of content they authored about somebody
+    #: else now points at, and it is what makes historical audit rows render as
+    #: "Former employee 4f2a" without the append-only log being touched. See
+    #: ``apps/administration/data_rights.py`` and docs/BUILD/DATA_RIGHTS_DESIGN.md.
+    #:
+    #: Its other job is idempotency: erasing twice is a retry, not an error.
+    erased_at = models.DateTimeField(null=True, blank=True, default=None)
+
     objects = UserManager()
     all_objects = UserManager(include_deleted=True)
 

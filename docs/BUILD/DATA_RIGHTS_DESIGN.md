@@ -61,11 +61,28 @@ repointed at the tombstone user, which *is* the stable pseudonymous id.
 `.marked_by` / `.reviewed_by` / `.override_by`, `career.*.generated_by` /
 `.selected_by`, `org.Position.created_by`, `ai.AIJob.requested_by`.
 
-**MACHINERY** — operational rows, deleted outright. `identity.DeviceSession`,
-`identity.LoginEvent`, `account.EmailAddress`, `ai.ChatSession` (and its turns
-and plans, by cascade). These are the person's own session and chat records; no
-one else's history depends on them, so anonymising rather than deleting would
-keep IP addresses and user agents for no purpose.
+**MACHINERY** — operational rows. `identity.LoginEvent`, `account.EmailAddress`
+and `ai.ChatSession` (with its turns and plans, by cascade) are deleted outright:
+they are the person's own session and chat records, no one else's history depends
+on them, and anonymising rather than deleting would keep IP addresses and user
+agents for no purpose.
+
+`identity.DeviceSession` is the exception, and it runs the other way from the
+obvious implementation. The rows are **revoked and kept**, not deleted, because
+`session_is_revoked()` looks the device id up and reads a **missing row as NOT
+revoked** — deliberately, since it was an additive rollout and tokens predating
+the feature must keep working. Deleting the sessions during an erasure would
+therefore hand the erased account a working access token until it expired on its
+own: the precise opposite of the intent, with no error anywhere. They are
+stripped of `ip` and `user_agent` instead, which leaves them holding nothing
+about the person, and D3's retention purge removes them on the normal clock.
+
+**Deletion here means `hard_delete()`.** On a `TenantScopedQuerySet`, `.delete()`
+is a *soft* delete that stamps `deleted_at` and leaves the row and all its text
+in the table. An erasure written the obvious way would report success with every
+IP address, user agent and login email still present — and, because a soft delete
+is an `UPDATE`, would never cascade to the chat turns where the conversation text
+actually lives.
 
 ### The pseudonymous id is the tombstoned user row itself
 
@@ -129,13 +146,29 @@ removed on request. The marker is `[redacted — erased at the subject's request
 | `succession.BenchCandidate` | `notes` |
 | `succession.NineBoxPlacement` | `override_rationale` |
 | `succession.CriticalRole` | `risk_notes` (where they are incumbent) |
-| `succession.SuccessionPlan` | entries naming them inside `ranked_bench`, `red_flags`, `action_items` |
-| `recognition.Recognition` | `message`, `value` (received) |
+| `succession.SuccessionPlan` | the frozen identity inside `ranked_bench` / `red_flags` / `action_items` — see below |
+| `recognition.Recognition` | `message` (received). `value` and `badge` are the award name, not personal data |
 | `ai.AIJob` | `params` → `{}` (the prompt payload can quote review text verbatim) |
 
 Rows are **not deleted**. A missing `CycleScore` changes a tenant's aggregate
 performance distribution and the analytics silently shift; a redacted one keeps
 the shape of history honest. Numbers stay, words go.
+
+### The one copy tombstoning does not reach
+
+`succession/engine.py` writes `candidate_email` and `candidate_name` into
+`SuccessionPlan.ranked_bench` — a snapshot of the person's identity taken when
+the plan was generated. It is denormalised **text**, not a foreign key, so
+tombstoning the user row does not touch it. Every screen in the product renders
+the pseudonym correctly from the live FK while the name and email sit unchanged
+in a JSON column, which is precisely what makes it easy to miss.
+
+Erasure scrubs the identity out of those entries and **keeps the entries**:
+removing a candidate would retroactively change the plan's coverage assessment,
+which is a statement about the role, not about the person.
+
+This is the only such copy in the schema — every other `person_label()` call
+resolves live from a foreign key at serialisation time.
 
 ### What is deliberately not redacted, and why
 

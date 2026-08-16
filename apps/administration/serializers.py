@@ -94,3 +94,17 @@ class TenantConfigUpdateSerializer(serializers.Serializer):
     """Body for ``PUT /tenant-config``: the full ``settings`` bag (a JSON object)."""
 
     settings = serializers.DictField()
+
+
+class EraseUserSerializer(serializers.Serializer):
+    """Body for ``POST /users/<id>/erase`` (D2). Both fields are required.
+
+    ``confirm`` is the subject's email address typed back — see the view for why
+    it is not a checkbox. ``justification`` has a real minimum length because it
+    is written to the append-only audit log: whoever reads that row later cannot
+    go and look at the data to work out what happened, since erasing it is the
+    whole point.
+    """
+
+    confirm = serializers.CharField(max_length=254)
+    justification = serializers.CharField(max_length=1000, min_length=10, trim_whitespace=True)

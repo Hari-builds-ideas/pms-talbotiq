@@ -255,7 +255,7 @@ function GoalCard({ goal, mutations }: { goal: Goal; mutations: ReturnType<typeo
             type="button"
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
-            className="inline-flex items-center gap-1 text-2xs font-medium text-muted-foreground hover:text-foreground"
+            className="tap-target inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
           >
             {open ? "Hide details" : "Show details"}
             <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />

@@ -20,7 +20,7 @@ export function AppLayout() {
         {/* Skip-to-content: first focusable element; visible only when focused. */}
         <a
           href="#main-content"
-          className="sr-only z-50 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
+          className="tap-target sr-only z-50 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
         >
           Skip to main content
         </a>

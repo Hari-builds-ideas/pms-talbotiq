@@ -211,3 +211,25 @@ Needs from human: nothing.
 - Height floored at 180px so a small `height` prop or a collapsing flex parent
   cannot produce an unreadable sliver.
 
+## A9 — Touch targets and spacing
+Status: DONE
+Changed: frontend/src/styles/globals.css (`.tap-target`),
+frontend/src/components/ui/{button,tabs,checkbox}.tsx,
+frontend/src/features/{recognition,goals,dashboard,checkins,settings,feedback}/*,
+frontend/src/app/shell/AppLayout.tsx
+Verified by: live sweep of 8 routes at 390×844 — **under-sized controls 393 → 0**,
+off-screen content 0. `tsc` clean; 167 tests pass.
+Needs from human: nothing.
+
+- `.tap-target` puts a 44×44 hit area on an invisible `::after` so the control's
+  visual size — and the desktop layout — is unchanged. Sizing 393 chips and icons
+  to 44px outright would have wrecked the dense enterprise UI.
+- Gated `(max-width: 767.98px), (pointer: coarse)`: `coarse` alone misses touch
+  devices reporting a fine pointer; width alone misses large tablets. Kept off
+  desktop so adjacent controls don't steal each other's clicks.
+- Applied at the primitives (Button, Tabs, Checkbox) so unaudited screens benefit
+  too.
+- The measurement harness now distinguishes "small rect but 44px hit area" from
+  genuinely small — `getBoundingClientRect` cannot see a pseudo-element, so it
+  was reporting fixed controls as broken.
+

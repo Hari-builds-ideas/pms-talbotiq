@@ -238,7 +238,7 @@ export function ManagerDashboard() {
                     return (
                       <tr key={s.employee} className="border-b border-border last:border-0 hover:bg-secondary/40">
                         <td className="py-2.5 pr-3">
-                          <Link to={`/people/${s.employee}`} className="hover:underline">
+                          <Link to={`/people/${s.employee}`} className="tap-target hover:underline">
                             <PersonName id={s.employee} withAvatar className="font-medium" />
                           </Link>
                         </td>
@@ -293,7 +293,7 @@ function TasksRail({ tasks, loading }: { tasks: Task[]; loading: boolean }) {
         const b = PRIO_BADGE[t.priority];
         return (
           <li key={t.id} className="py-2.5 first:pt-0 last:pb-0">
-            <Link to={t.href} className="flex items-center justify-between gap-3 hover:underline">
+            <Link to={t.href} className="tap-target flex items-center justify-between gap-3 hover:underline">
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-foreground">{t.label}</span>
                 <span className="block truncate text-2xs text-muted-foreground">{t.sub}</span>

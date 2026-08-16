@@ -95,7 +95,7 @@ export function FeedbackSummariesTile() {
             <li key={s.id} className="py-2.5 first:pt-0 last:pb-0">
               <Link
                 to={`/feedback?tab=review&cycle=${s.cycle}`}
-                className="flex items-center justify-between gap-3 hover:underline"
+                className="tap-target flex items-center justify-between gap-3 hover:underline"
               >
                 <span className="min-w-0 text-sm">
                   360 for <PersonName id={s.subject} name={s.subject_name} className="font-medium" />

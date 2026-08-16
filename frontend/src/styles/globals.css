@@ -161,6 +161,38 @@
     padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   }
 
+  /* ── Touch targets ─────────────────────────────────────────────────────────
+     Expands a control's HIT AREA to 44x44 without changing how it looks.
+
+     WCAG 2.5.5 and both platform HIGs want 44x44. Applying that as width/height
+     would inflate every small chip, badge-button and icon in a dense enterprise
+     UI and wreck the desktop layout — so instead an invisible centred
+     pseudo-element carries the hit area. Layout is untouched; the finger target
+     is legal.
+
+     Scoped to phones and touch input, so a mouse user's dense desktop toolbar
+     keeps its exact hit boxes and adjacent controls don't start stealing each
+     other's clicks. Both conditions are needed: `pointer: coarse` alone misses
+     touch devices that report a fine pointer (Windows tablets, some Chromebooks),
+     and the width query alone misses a large tablet. 767.98 rather than 768 so
+     it cannot overlap Tailwind's `md`. */
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .tap-target {
+      position: relative;
+    }
+    .tap-target::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
   /* Horizontal scroll container. Anything that genuinely cannot shrink (a wide
      table, a code block) goes in one of these so it scrolls itself instead of
      widening the page. -webkit-overflow-scrolling keeps momentum on iOS. */

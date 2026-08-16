@@ -199,7 +199,7 @@ export function DashboardSection({
           <h3 className="text-base font-semibold">{title}</h3>
         </div>
         {to && (
-          <Link to={to} className="text-xs font-medium text-primary hover:underline">
+          <Link to={to} className="tap-target text-xs font-medium text-primary hover:underline">
             {toLabel}
           </Link>
         )}

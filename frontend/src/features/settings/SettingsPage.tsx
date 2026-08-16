@@ -153,7 +153,7 @@ function EmailChangeRow() {
   });
   if (!open) {
     return (
-      <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => setOpen(true)}>
+      <button type="button" className="tap-target text-xs font-medium text-primary hover:underline" onClick={() => setOpen(true)}>
         Change email…
       </button>
     );
@@ -201,7 +201,7 @@ function NotificationPrefsCard({ p }: { p: Profile }) {
             <span>{label}</span>
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-input"
+              className="tap-target h-4 w-4 rounded border-input"
               checked={prefs[key]}
               onChange={(e) => setPrefs((s) => ({ ...s, [key]: e.target.checked }))}
             />

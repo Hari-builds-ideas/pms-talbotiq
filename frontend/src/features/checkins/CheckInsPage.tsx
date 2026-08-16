@@ -114,7 +114,7 @@ function MyCheckinsTab() {
                   aria-label={`Mood ${x.v}`}
                   aria-pressed={mood === x.v}
                   onClick={() => setMood(x.v)}
-                  className={`flex h-10 w-10 items-center justify-center rounded-md border text-lg transition-colors ${
+                  className={`tap-target flex h-10 w-10 items-center justify-center rounded-md border text-lg transition-colors ${
                     mood === x.v ? "border-primary bg-primary/10" : "border-border hover:bg-secondary"
                   }`}
                 >

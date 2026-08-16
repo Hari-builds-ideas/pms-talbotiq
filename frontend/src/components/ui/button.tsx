@@ -23,11 +23,14 @@ const buttonVariants = cva(
           "bg-premium text-premium-foreground shadow-xs hover:bg-premium/90",
       },
       size: {
-        default: "h-9 px-3.5 py-2",
-        sm: "h-8 rounded-lg px-3 text-xs",
+        // Anything under 44px carries `tap-target`, which expands the HIT AREA
+        // to 44x44 on touch devices via an invisible pseudo-element — the visual
+        // size, and so the desktop layout, is unchanged. See globals.css.
+        default: "h-9 px-3.5 py-2 tap-target",
+        sm: "h-8 rounded-lg px-3 text-xs tap-target",
         lg: "h-10 rounded-lg px-6",
-        icon: "h-9 w-9",
-        "icon-sm": "h-8 w-8",
+        icon: "h-9 w-9 tap-target",
+        "icon-sm": "h-8 w-8 tap-target",
       },
     },
     defaultVariants: {

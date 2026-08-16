@@ -148,7 +148,7 @@ function RecognitionItem({ card }: { card: Card_ }) {
                 }
                 aria-pressed={mine}
                 aria-label={`React ${emoji}`}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                className={`tap-target inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
                   mine
                     ? "border-primary/40 bg-primary/10 text-foreground"
                     : "border-border bg-card text-muted-foreground hover:bg-secondary"

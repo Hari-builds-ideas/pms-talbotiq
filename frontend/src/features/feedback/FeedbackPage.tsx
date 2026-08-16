@@ -284,7 +284,7 @@ function CreateCycleDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <Input value={minVolume} onChange={(e) => setMinVolume(e.target.value)} inputMode="numeric" className="w-24" />
           </Field>
           <label className="flex items-center gap-2 text-sm text-muted-foreground">
-            <input type="checkbox" checked={openNow} onChange={(e) => setOpenNow(e.target.checked)} className="h-4 w-4 rounded border-input" />
+            <input type="checkbox" checked={openNow} onChange={(e) => setOpenNow(e.target.checked)} className="tap-target h-4 w-4 rounded border-input" />
             Open immediately for collection
           </label>
         </div>

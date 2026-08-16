@@ -54,6 +54,29 @@ COPY . .
 # Uses the image's default dev settings, so no secret is needed to build.
 RUN python manage.py collectstatic --noinput
 
+# ── run as a non-root user ───────────────────────────────────────────────────
+# Every process in this image — gunicorn, the celery worker, beat, and the
+# one-shot migrate job — previously ran as UID 0. In the dev compose that is
+# compounded by a `.:/app` bind mount, so a container escape or a compromised
+# dependency had root write access to the whole host checkout.
+#
+# UID 10001 is deliberately high: it cannot collide with a host user in the
+# 1000-range if a volume is ever bind-mounted, and it is outside the range most
+# base images allocate to system accounts.
+#
+# What appuser must be able to write:
+#   /app/media        uploaded avatars (MEDIA_ROOT default; a volume in prod)
+#   /app/staticfiles  collectstatic output, written above as root
+#   /dev/shm          gunicorn's heartbeat dir (world-writable already)
+# It does NOT need to write the source tree, so only these are chowned — the code
+# staying root-owned and read-only to the runtime is the point.
+RUN groupadd --gid 10001 appuser \
+    && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin appuser \
+    && mkdir -p /app/media /app/staticfiles \
+    && chown -R appuser:appuser /app/media /app/staticfiles
+
+USER appuser
+
 EXPOSE 8000
 
 # Production app server: gunicorn driven by gunicorn.conf.py (workers/threads/

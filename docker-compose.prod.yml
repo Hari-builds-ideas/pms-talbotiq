@@ -113,6 +113,11 @@ services:
     command: python manage.py deploy_migrate
     environment: *app_environment
     restart: "no"
+    # Dropped privileges — see the note on `web`.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   web:
     <<: *app_build
@@ -120,6 +125,20 @@ services:
     # replicas never race on schema. Tuned by gunicorn.conf.py.
     command: gunicorn config.wsgi:application -c gunicorn.conf.py
     environment: *app_environment
+    # Dropped privileges (C2). The image already runs as UID 10001; these stop
+    # the container regaining anything from inside:
+    #   no-new-privileges  a setuid binary cannot escalate back to root
+    #   cap_drop: ALL      no capabilities at all — this is a Python web process,
+    #                      it binds a high port and needs none of them
+    # read_only is deliberately NOT set: gunicorn writes its heartbeat to
+    # /dev/shm, Python may write __pycache__, and MEDIA_ROOT is written on every
+    # avatar upload. Turning it on needs tmpfs mounts for at least /tmp and
+    # /dev/shm plus PYTHONDONTWRITEBYTECODE (already set) — worth doing, but not
+    # worth doing blind at the same time as everything else.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     expose:
       - "8000"
     depends_on:
@@ -131,6 +150,11 @@ services:
     <<: *app_build
     command: celery -A config worker -l info
     environment: *app_environment
+    # Dropped privileges — see the note on `web`.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -140,6 +164,11 @@ services:
     <<: *app_build
     command: celery -A config beat -l info
     environment: *app_environment
+    # Dropped privileges — see the note on `web`.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -9,7 +9,9 @@ import { Link } from "react-router-dom";
 /** Full-screen branded loader for the auth bootstrap. */
 export function FullScreenLoader({ label }: { label?: string }) {
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
+    // 100dvh, not 100vh: on mobile 100vh includes the collapsible browser chrome,
+    // so a "centred" full-screen loader sits visibly low and the page scrolls.
+    <div className="flex h-screen h-[100dvh] flex-col items-center justify-center gap-3 bg-background px-6 text-muted-foreground">
       <Loader2 className="h-6 w-6 animate-spin text-primary" />
       {label && <p className="text-sm">{label}</p>}
     </div>

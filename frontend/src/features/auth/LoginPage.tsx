@@ -78,7 +78,7 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen min-h-[100dvh] pt-safe pb-safe">
       {/* Brand panel */}
       <div className="relative hidden w-1/2 flex-col justify-between bg-sidebar p-12 text-white lg:flex">
         <div className="flex items-center gap-2.5">

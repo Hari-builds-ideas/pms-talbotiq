@@ -15,7 +15,7 @@ function AuthShell({ title, subtitle, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6">
+    <div className="flex min-h-screen min-h-[100dvh] flex-col items-center justify-center bg-background px-6 pt-safe pb-safe">
       <div className="w-full max-w-sm space-y-6">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">

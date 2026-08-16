@@ -87,3 +87,24 @@ Needs from human: nothing.
   re-applies the layout instead of waiting for the next navigation.
 - Desktop collapse preference persists; a mobile open state never does.
 
+## A3 — Post-login paint race
+Status: DONE (symptom did not reproduce; a real adjacent defect was fixed)
+Changed: frontend/src/app/guards.tsx, frontend/src/features/auth/LoginPage.tsx,
+SignupPage.tsx, AcceptInvitePage.tsx, PasswordResetPages.tsx
+Verified by: XHR delayed 900ms in-page (CDP throttling is blocked by the browse
+allowlist) and the DOM sampled every 100ms across the login transition —
+`/login` → chromed dashboard with skeletons at 2000ms → data at 3100ms. No
+blank, unstyled or partial frame. `tsc` clean; vitest 158 pass.
+Needs from human: nothing.
+
+- The A3 gating is already correct in the existing code: `completeLogin()` awaits
+  `/me` + `/my-features` before resolving, and `navigate()` runs after that
+  await, so the shell never renders without a resolved profile. `StatCard`
+  already takes `loading` and every cockpit passes its query's `isLoading`.
+- The reported "half-built screen" is almost certainly A1 (topbar controls 97px
+  off-screen, sidebar covering content), now fixed.
+- Real defect fixed here: all four auth screens and `FullScreenLoader` used
+  `h-screen`/`min-h-screen`. On mobile `100vh` counts collapsible browser chrome,
+  so the centred loader sat low and the login card scrolled needlessly. Now
+  `100dvh` (vh retained as fallback) plus safe-area padding.
+

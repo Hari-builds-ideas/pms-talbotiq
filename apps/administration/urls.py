@@ -18,6 +18,7 @@ from .views import (
     TenantConfigView,
     UserDeactivateView,
     UserDisplayNameView,
+    UserExportView,
     UserListCreateView,
     UserOrgProfileView,
     UserReactivateView,
@@ -36,6 +37,8 @@ urlpatterns = [
     path("users/<uuid:pk>/role", UserRoleView.as_view(), name="user-role"),
     path("users/<uuid:pk>/display-name", UserDisplayNameView.as_view(), name="user-display-name"),
     path("users/<uuid:pk>/profile", UserOrgProfileView.as_view(), name="user-org-profile"),
+    # ─── data subject rights (D1/D2; MANAGE_TENANT — Admin) ───
+    path("users/<uuid:pk>/export", UserExportView.as_view(), name="user-export"),
     # ─── invitations (PHASE2 L1.2; INVITE_USERS — HRBP+) ───
     path("invitations", InvitationAdminView.as_view(), name="invitations"),
     path("invitations/<uuid:pk>/revoke", InvitationRevokeView.as_view(), name="invitation-revoke"),

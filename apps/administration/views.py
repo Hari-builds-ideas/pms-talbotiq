@@ -25,13 +25,14 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.services import record
 from apps.core.concurrency import check_version
 from apps.core.pagination import StandardResultsSetPagination
 from apps.identity.models import User
 from apps.rbac.matrix import Capability
 from apps.rbac.mixins import RBACMixin
 
-from . import services
+from . import data_rights, services
 from .serializers import (
     CreateUserSerializer,
     DisplayNameSerializer,
@@ -40,6 +41,41 @@ from .serializers import (
     TenantConfigSerializer,
     UserAdminSerializer,
 )
+
+
+# ── data subject rights (D1/D2) ───────────────────────────────────────────────
+
+
+class UserExportView(RBACMixin, APIView):
+    """``GET /api/admin/users/<id>/export`` (MANAGE_TENANT — Admin).
+
+    Everything held about one employee, as one JSON document. See
+    ``docs/BUILD/DATA_RIGHTS_DESIGN.md``.
+
+    MANAGE_TENANT rather than MANAGE_USERS_ROLES: both are Admin-only today, but
+    they mean different things. Managing users is routine administration; reading
+    one person's entire performance history — every review body, every piece of
+    360 feedback about them, their nine-box placement — is not, and the
+    capability it requires should say so if the two ever diverge.
+
+    The access is audited with the subject's id. An admin pulling an employee's
+    complete record is exactly the legitimate-but-sensitive action the audit
+    console exists to make visible afterwards.
+    """
+
+    required_capability = Capability.MANAGE_TENANT
+
+    def get(self, request, pk):
+        subject = get_object_or_404(User.objects.all(), pk=pk)
+        record(
+            action="privacy.user_exported",
+            actor=request.user,
+            target_type="user",
+            target_id=subject.id,
+            metadata={"subject_email": subject.email},
+            tenant=request.user.tenant_id,
+        )
+        return Response(data_rights.export_user(subject))
 
 
 # ── users / roles ──────────────────────────────────────────────────────────────

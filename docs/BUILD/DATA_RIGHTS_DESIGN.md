@@ -227,11 +227,26 @@ Two decisions worth stating:
   own writing, so it is theirs under any access-request framing — but it
   discloses who they reviewed. That is unavoidable in a 360 system and is why
   the endpoint is Admin-only rather than self-service.
-- **Anonymous feedback stays anonymous in the export.** `Feedback` rows carry an
-  anonymity flag; where set, the giver is reported as `anonymous`, in an export
-  requested *about* the subject. Exposing it here would retroactively break the
-  promise made to every person who gave feedback under it, and would do so
-  through an endpoint nobody thinks of as a disclosure surface.
+
+- **Feedback received carries no giver identity at all.** Not "anonymised where
+  a flag is set" — never. `apps/feedback` states the rule as a module-wide
+  guarantee: the giver is stored for dedup, audit and self-edit, and the only
+  surface that may reveal it is the giver looking at their own item. An export
+  is a new egress boundary, and a new egress boundary is exactly where an
+  invariant like this gets broken by accident, so the export builds
+  `feedback_received` from `body`, `kind`, `relationship` and timestamps and
+  never touches `giver`.
+
+- **The minimum-volume threshold is honoured on the `relationship` label.**
+  `apps/feedback/constants.py` sets `MIN_FEEDBACK_VOLUME = 3`: a PEER or UPWARD
+  group with fewer responses is withheld from the normal anonymised payload,
+  because one identifiable peer response is not anonymous. Stripping the giver
+  id is not enough in that case — "the one peer comment on your 360" identifies
+  its author to anyone who knows who was invited. The **body is still exported**
+  (it is data about the subject, and withholding it would defeat the purpose of
+  the request), but the `relationship` label is reported as
+  `withheld_small_group`, which is the part that does the identifying. SELF and
+  MANAGER are inherently attributed and are unaffected.
 
 The export is audited with the subject's id — an admin reading an employee's
 entire performance history is exactly the kind of legitimate-but-sensitive access

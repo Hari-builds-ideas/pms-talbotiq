@@ -7,6 +7,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useIsDesktop } from "@/lib/hooks/useIsDesktop";
 
 export interface TrendPoint {
   label: string;
@@ -28,8 +29,13 @@ export function TrendChart({
   height?: number;
   seriesName?: string;
 }) {
+  const isDesktop = useIsDesktop();
+  // Floor the height. A caller passing a small number (or a flex parent
+  // collapsing) turns a chart into an unreadable 40px sliver; 180px is the least
+  // that still shows a trend.
+  const h = Math.max(height, 180);
   return (
-    <div style={{ width: "100%", height }} className="text-2xs">
+    <div style={{ width: "100%", height: h }} className="text-2xs">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
           <defs>
@@ -41,15 +47,23 @@ export function TrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+            tick={{ fontSize: isDesktop ? 11 : 10, fill: "hsl(var(--muted-foreground))" }}
             tickLine={false}
             axisLine={{ stroke: "hsl(var(--border))" }}
+            // A phone gives this chart ~300px. Rendering every label there
+            // overlaps them into a grey smear, so below md keep the first and
+            // last and let recharts drop the rest, with a wide minimum gap.
+            interval={isDesktop ? "preserveEnd" : "preserveStartEnd"}
+            minTickGap={isDesktop ? 8 : 32}
           />
           <YAxis
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+            tick={{ fontSize: isDesktop ? 11 : 10, fill: "hsl(var(--muted-foreground))" }}
             tickLine={false}
             axisLine={false}
-            width={36}
+            // Narrower gutter and fewer gridlines on a phone: the axis was
+            // spending 36 of ~300px on labels.
+            width={isDesktop ? 36 : 28}
+            tickCount={isDesktop ? undefined : 4}
           />
           <Tooltip
             cursor={{ stroke: "hsl(var(--border))" }}

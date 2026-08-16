@@ -197,3 +197,17 @@ Needs from human: nothing.
   paragraph, so it rendered ~570px off-screen and was clipped — the label
   identifying your own session was invisible on a phone.
 
+## A8 — Charts
+Status: DONE
+Changed: frontend/src/components/TrendChart.tsx
+Verified by: live check at 390×844 — analytics chart renders 324×220 with 4 x
+ticks and 4 y ticks, none colliding. `tsc` clean; 167 tests pass.
+Needs from human: nothing.
+
+- Charts were already `ResponsiveContainer`-based and measured 308×220 — no
+  slivers, no overflow. This was density tuning, not a rescue.
+- Below `md`: `interval="preserveStartEnd"`, 32px `minTickGap`, 10px ticks,
+  y-gutter 36→28px, y capped at 4 ticks.
+- Height floored at 180px so a small `height` prop or a collapsing flex parent
+  cannot produce an unreadable sliver.
+

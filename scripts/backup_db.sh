@@ -33,6 +33,19 @@ cd "$(dirname "$0")/.."
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 S3_BUCKET="${S3_BUCKET:-}"
+# GCS is the configured offsite target for this deployment (GCP VM + compose).
+#   GCS_BUCKET=gs://axiom-backups
+GCS_BUCKET="${GCS_BUCKET:-}"
+
+# ── alert on failure (C5) ────────────────────────────────────────────────────
+# A backup job that fails silently is worse than no backup job, because it
+# produces the BELIEF that backups exist. Any non-zero exit is reported: to
+# stderr always, and to Sentry when a DSN is configured.
+fail() {
+  python3 "$(dirname "$0")/backup_alert.py" "$*" || true
+  exit 1
+}
+trap 'fail "unexpected error at line $LINENO"' ERR
 
 # Credentials come from the environment (same names the app uses). Never inline.
 DB_NAME="${DB_NAME:-pms}"
@@ -75,14 +88,13 @@ echo "▶ dumping ${DB_NAME} -> ${OUT}"
   "$DB_NAME" | gzip -9 > "$OUT"
 
 # ── verify, or it is not a backup ────────────────────────────────────────────
-gzip -t "$OUT" || { echo "✗ ${OUT} is not a valid gzip stream"; rm -f "$OUT"; exit 1; }
+gzip -t "$OUT" || { rm -f "$OUT"; fail "${OUT} is not a valid gzip stream"; }
 
 # mysqldump writes this marker only after a clean finish. Without the check, a dump
 # truncated by a disk-full or a killed connection looks like a perfectly good file.
 if ! gunzip -c "$OUT" | tail -5 | grep -q "Dump completed"; then
-  echo "✗ ${OUT} has no 'Dump completed' marker — the dump was truncated"
   rm -f "$OUT"
-  exit 1
+  fail "${OUT} has no 'Dump completed' marker — the dump was truncated"
 fi
 
 SIZE="$(du -h "$OUT" | cut -f1)"
@@ -99,8 +111,25 @@ if [ -n "$S3_BUCKET" ]; then
   else
     echo "⚠ S3_BUCKET is set but the aws CLI is not installed — LOCAL COPY ONLY"
   fi
-else
-  echo "⚠ S3_BUCKET unset — this backup lives on the same host as the database."
+fi
+
+if [ -n "$GCS_BUCKET" ]; then
+  if command -v gsutil >/dev/null 2>&1; then
+    echo "▶ uploading to ${GCS_BUCKET}"
+    # -n: never overwrite an existing object. Filenames carry a UTC timestamp, so
+    # a collision means the clock moved backwards or a job ran twice — either way
+    # silently replacing yesterday's good backup is the wrong response.
+    gsutil -q cp -n "$OUT" "${GCS_BUCKET%/}/$(basename "$OUT")" \
+      || fail "gsutil upload to ${GCS_BUCKET} failed"
+    echo "✓ offsite copy stored in ${GCS_BUCKET}"
+  else
+    fail "GCS_BUCKET is set but gsutil is not installed — the backup is LOCAL ONLY"
+  fi
+fi
+
+if [ -z "$S3_BUCKET" ] && [ -z "$GCS_BUCKET" ]; then
+  echo "⚠ no offsite bucket configured — this backup lives on the same host as"
+  echo "  the database, so it dies with the host. Set GCS_BUCKET."
 fi
 
 # ── retention (local only; lifecycle rules own the bucket) ────────────────────

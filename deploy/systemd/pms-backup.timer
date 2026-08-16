@@ -1,0 +1,21 @@
+[Unit]
+Description=Axiom PMS — nightly database backup
+Documentation=file:///srv/pms/docs/BUILD/BACKUP_RESTORE.md
+
+[Timer]
+# 02:15 local time. Not 02:00: every other cron job on every other box also runs
+# at 02:00, and the offsite upload competes with them for bandwidth.
+OnCalendar=*-*-* 02:15:00
+
+# Spread the start by up to 10 minutes so a fleet does not stampede the bucket.
+RandomizedDelaySec=600
+
+# If the machine was off at 02:15, run on the next boot. Without this a VM that
+# is stopped overnight silently never backs up — and "we thought it was running"
+# is how backup gaps are discovered during a restore.
+Persistent=true
+
+Unit=pms-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,46 @@
+[Unit]
+# Nightly database backup (C5). Nothing invoked scripts/backup_db.sh before this
+# existed — the script was written, verified, and never scheduled, which means the
+# product had no backups at all while appearing to have a backup story.
+Description=Axiom PMS — database backup to GCS
+Documentation=file:///srv/pms/docs/BUILD/BACKUP_RESTORE.md
+# Do not start before the database is up; on a compose host that is docker.
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/pms
+
+# Credentials come from the same env file the stack uses. Keep it 0600 and owned
+# by root — it holds DB_PASSWORD.
+EnvironmentFile=/srv/pms/.env.backup
+
+# The offsite target. Without it the script warns and keeps a local-only copy,
+# which is not a backup: it dies with the host.
+Environment=GCS_BUCKET=gs://axiom-backups
+Environment=BACKUP_DIR=/var/backups/pms
+
+ExecStart=/srv/pms/scripts/backup_db.sh
+
+# A dump of a large database is IO-heavy. Deprioritise it so a backup running at
+# 02:15 cannot make the app slow for anyone awake.
+Nice=10
+IOSchedulingClass=idle
+
+# Do not retry in a tight loop: a failure here is almost always a missing
+# credential or a full disk, and hammering it just fills the log. The alerter has
+# already reported it, and the timer will try again tomorrow.
+Restart=no
+TimeoutStartSec=3600
+
+# Least privilege — this job reads the database and writes two directories.
+User=root
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+ReadWritePaths=/var/backups/pms /srv/pms/backups
+
+[Install]
+WantedBy=multi-user.target

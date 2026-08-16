@@ -526,3 +526,138 @@ are kept in each docstring).
   self-activate); they now assert it via the 501. Added one asserting the response
   carries no `session_id`/`checkout_url`.
 
+
+## C9 — Durable media storage
+Status: DONE
+Changed: config/settings/{base,prod}.py, docker-compose.prod.yml,
+requirements.txt, apps/core/tests/{test_prod_settings,test_deploy_migrate}.py
+Verified by: both branches resolved in-container (off → FileSystemStorage,
+on → GoogleCloudStorage, imports clean, no network); `pytest apps/core` → 101
+passed, `apps/identity` → 86 passed.
+Needs from human: set `USE_GCS_MEDIA=true` + `GS_BUCKET_NAME` at deploy, or
+accept the named-volume fallback.
+
+- `MEDIA_ROOT` pointed inside the container with no volume behind it, so every
+  uploaded avatar vanished on the next container replacement. Silent: the photo
+  endpoint 404s and the UI falls back to initials, so it reads as "photos keep
+  disappearing", not as data loss.
+- Bucket is private — `default_acl=None`, `querystring_auth` on, no public URLs.
+  Media still only reaches a browser through the authenticated, scope-checked
+  photo endpoint. A public bucket of employee avatars is a leak wearing a CDN.
+- `file_overwrite=False`, so one upload can never silently replace another.
+- ADC by default rather than a shipped key file.
+- Also repaired four `apps/core` tests my own C4/C6 commits broke, by **adding**
+  tests for the new contracts (prod fails closed without `PUBLIC_APP_URL`;
+  trigger check runs after the advisory lock is released; a missing trigger
+  fails the deploy) rather than only patching them green.
+
+## C10 — Mock layer kept out of production builds
+Status: DONE
+Changed: frontend/vite.config.ts, .github/workflows/ci.yml
+Verified by: both directions built — normal build logs the removal and `dist/`
+has no worker; `VITE_USE_MOCKS=true` still produces one. tsc clean, 181 tests.
+Needs from human: nothing.
+
+- Measured first: the JS half was already safe — `import.meta.env.VITE_USE_MOCKS`
+  folds to a literal `false`, so Rollup drops the mock import and the "any
+  password works" path with it.
+- `public/mockServiceWorker.js` was the real gap. Vite copies `public/` verbatim,
+  so production served a request-interception service worker at 200. Inert only
+  because the code that registers it is absent — one refactor from being live.
+- Plugin deletes it in `closeBundle` (public/ assets sit outside the bundle
+  graph). CI asserts both halves after every build, because a build-time
+  guarantee nobody checks is one that quietly stops holding — and this one
+  protects a passwordless login path.
+
+## C11 — Declare the proxy depth
+Status: DONE
+Changed: apps/core/checks.py
+Verified by: four outcomes exercised in-container against prod settings;
+`pytest apps/core` → 112 passed.
+Needs from human: set `DJANGO_NUM_PROXIES` explicitly at deploy (1 for Caddy
+alone, 2 behind a CDN).
+
+- Behind TLS, DRF identifies anonymous clients from `X-Forwarded-For`, which a
+  proxy **appends** to. Wrong depth → a client supplying its own header gets a
+  fresh throttle bucket every request, so the per-IP limit on `/api/auth/login`
+  stops existing. Nothing errors; the counter just never fills.
+- `prod.py` defaults it to 1, and that default is the trap. The check therefore
+  asks whether it was **declared**, not whether it has a value: unset with proxy
+  headers → `pms.E004`; defaulted → `pms.W002`; declared → silent.
+- Runs under `check --deploy` only, so it gates a release without firing in tests.
+
+## C12 — Stop shipping performance text to Sentry
+Status: DONE
+Changed: apps/core/observability.py, apps/core/tests/test_sentry.py,
+apps/core/tests/test_sentry_scrubbing.py (new)
+Verified by: 11 new tests; `pytest apps/core` → 112 passed.
+Needs from human: nothing.
+
+- Key-name redaction keeps every field whose name doesn't look sensitive — and
+  here that *is* the sensitive part: `draft_body` (a written review), `body` (360
+  feedback, 1:1 notes), `blockers` (a check-in). None would ever make a denylist,
+  so any 500 on those endpoints shipped the text to a third-party store on a
+  different retention policy. The pre-existing test asserted an `email` in the
+  body was **preserved** — the behaviour, not an oversight.
+- Enumerating fields that matter is the wrong shape of defence (list grows with
+  every feature, omissions are silent). The body now goes wholesale, replaced by
+  a marker so a developer knows one existed.
+- Kept: stack trace, endpoint, method, tenant tag, request id — tested, because
+  scrubbing that makes debugging impossible gets switched off.
+- Query strings scrubbed too: invitation and reset links carry a single-use
+  token, so a GET that 500s shipped a working credential.
+
+## C13 — Every endpoint declares what it gates
+Status: DONE
+Changed: apps/ai/views.py,
+apps/core/tests/test_endpoints_declare_permissions.py (new)
+Verified by: `pytest apps/ai` → 619 passed; the new URLconf-wide guard, 4 passed.
+Needs from human: nothing.
+
+- `ai/jobs` and `ai/jobs/<pk>` leaned on `DEFAULT_PERMISSION_CLASSES` and declared
+  nothing. Behaviour was already correct (both filter `requested_by=request.user`
+  over the tenant-scoped manager), but the guarantee lived in the queryset, so an
+  auditor couldn't tell "deliberately open" from "somebody forgot", and a change
+  to the project default would have moved them with no diff touching them.
+- The test walks the **whole URLconf** rather than naming the three views from the
+  audit — naming three won't catch the fourth, and the fourth is the one written
+  next month. Necessarily-public views (login, signup, SSO callbacks, signed
+  webhooks, ops probes) are listed and all declare `AllowAny`: exempt from
+  requiring auth, not from saying so.
+- The sweep found no other offenders, which is the useful half of the result.
+
+## C5 — Scheduled offsite backups with a proven restore path
+Status: DONE
+Changed: scripts/{backup_db.sh,backup_alert.py (new),gcs_backup_setup.sh (new),
+restore_drill.sh (new)}, deploy/systemd/{pms-backup.service,pms-backup.timer,
+pms-restore-drill.service} (new), docs/BUILD/BACKUP_RESTORE.md (new)
+Verified by: a real 27M / 78-table dump taken against the live database and
+drilled end to end — restore, per-table row counts, triggers — all three checks
+passing. Shell syntax checked; lifecycle JSON parsed.
+Needs from human: run `gcs_backup_setup.sh` once, grant the VM's service account
+`roles/storage.objectAdmin` on `gs://axiom-backups`, create
+`/srv/pms/.env.backup` (0600), install the units. Steps are in
+`docs/BUILD/BACKUP_RESTORE.md`.
+
+- `backup_db.sh` existed and **nothing ever called it**. No schedule, no offsite
+  copy, no evidence any dump had ever been restored. That is the shape of a
+  backup story that fails on the day it matters.
+- Timer at 02:15 with `Persistent=true`, so a VM that was off overnight still
+  backs up on next boot — "we thought it was running" is how gaps get discovered
+  during a restore.
+- Bucket setup enables **object versioning** (the thing that survives a bad
+  script or ransomware; retention alone doesn't), enforces the public-access
+  block, and sets lifecycle: NEARLINE at 7d, delete at 35d, old versions at 14d.
+- The drill's third check is the one that earns its keep: a restore into a server
+  that won't let a non-SUPER user create triggers **succeeds with the audit_log
+  triggers simply missing**. You'd recover every row and quietly lose audit
+  immutability with no error anywhere.
+- Weekly drill runs `--from-bucket` deliberately — restoring the local copy
+  proves the local copy is good and says nothing about the copy you'd reach for.
+- Scratch DB is `test_restore_drill`, not `pms_restore_drill`: the app's MySQL
+  user is scoped to its own DB plus a test prefix (`db/init.sql`), so the drill
+  runs under the existing grant with no elevation. A drill needing elevated
+  rights is one nobody schedules.
+- Gaps stated in the doc rather than left implied: RPO is 24h (no binlog
+  shipping), media isn't in the dump, and the drill compares row counts, not
+  content.

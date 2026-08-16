@@ -8,12 +8,21 @@ Scope tiers:
                 transitive reports, walked via the ``User.manager`` self-FK).
   - ``TENANT`` (HRBP, Admin): everyone in the tenant.
 
-MVP simplification — HRBP scope: the §2 spec describes HRBP as "business-unit
-wide". There is no BusinessUnit model yet, so for the MVP an HRBP's data scope is
-approximated as **tenant-wide**, identical to Admin's. HRBP and Admin therefore
-share a data *scope* and differ only in *capabilities* (Admin alone holds
-``manage_tenant``). When BusinessUnit lands, only ``scope_for_role`` and the
-TENANT branch of ``actor_can_access`` need revisiting — callers are unaffected.
+HRBP scope is tenant-wide BY DESIGN — this is a settled product decision, not an
+MVP simplification waiting to be finished. The §2 spec described HRBP as
+"business-unit wide" because a separate HRBP product was planned alongside this
+one; that product was discontinued, and what remains is the performance-
+management system only. There is no BusinessUnit model and none is coming, so an
+HRBP sees the whole tenant.
+
+HRBP and Admin therefore share a data *scope* and differ only in *capabilities*
+(Admin alone holds ``manage_tenant``). That difference is the real boundary
+between the two roles — do not go looking for a narrower HRBP scope to enforce.
+
+If a business-unit tier is ever genuinely wanted, it is a new feature with its own
+model, not the completion of an unfinished one: ``scope_for_role`` and the TENANT
+branch of ``actor_can_access`` would be the two places to revisit, and callers
+would be unaffected.
 
 Tenant isolation is enforced upstream by ``TenantScopedManager`` (every query is
 filtered by the bound tenant, failing closed when none is bound). The
@@ -47,8 +56,8 @@ class Scope(enum.Enum):
     TENANT = "TENANT"
 
 
-#: role string -> data scope. HRBP and Admin both map to TENANT (see the MVP
-#: simplification in the module docstring).
+#: role string -> data scope. HRBP and Admin both map to TENANT deliberately —
+#: see the module docstring; this is the product decision, not a placeholder.
 _SCOPE_BY_ROLE: dict[str, Scope] = {
     Role.EMPLOYEE: Scope.OWN,
     Role.MANAGER: Scope.TEAM,

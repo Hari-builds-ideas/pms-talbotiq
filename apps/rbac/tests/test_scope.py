@@ -45,7 +45,9 @@ def test_scope_for_unknown_role_fails_closed():
 
 
 def test_hrbp_and_admin_share_data_scope():
-    # MVP simplification: HRBP is tenant-wide like Admin (see scope.py docstring).
+    # By design, not a placeholder: the business-unit tier belonged to a separate
+    # HRBP product that was discontinued (see scope.py docstring). The two roles
+    # differ in capabilities, not in what rows they can see.
     assert scope_for_role(User.Role.HRBP) is scope_for_role(User.Role.ADMIN)
 
 

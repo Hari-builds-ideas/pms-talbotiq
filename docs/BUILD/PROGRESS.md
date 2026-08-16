@@ -698,3 +698,109 @@ Needs from human: point DNS at the VM, then set `DOMAIN`, `ACME_EMAIL`,
   empty on every deploy that doesn't override them, and `env.bool` raises on
   `""` — the stack would have failed to boot because someone declined to override
   a default.
+
+## R10 — HRBP scope comment
+Status: DONE
+Changed: apps/rbac/scope.py, apps/rbac/tests/test_scope.py
+Verified by: `pytest apps/rbac` → 334 passed. Comment-only.
+Needs from human: nothing.
+
+- The docstring called tenant-wide HRBP scope an "MVP simplification" and pointed
+  at a BusinessUnit model that would narrow it later. That model isn't coming —
+  the separate HRBP product was discontinued.
+- Wording mattered more than it looks: read as unfinished, the next person to
+  touch RBAC either narrows HRBP (breaking every HRBP-scoped view) or leaves a
+  TODO that makes an auditor ask why a documented shortfall shipped.
+
+## D0 — Design before code
+Status: DONE
+Changed: docs/BUILD/DATA_RIGHTS_DESIGN.md (new)
+Verified by: derived from the live model registry — 40 models carry a User FK,
+each placed in exactly one bucket.
+Needs from human: nothing.
+
+- Every user FK sorted into subject (redact text) / author (keep text, repoint
+  identity) / machinery (delete). The erasure code is organised by that split
+  rather than by app, so a new model gets classified rather than missed.
+- Pseudonym = the tombstoned user row itself. Referential integrity for free,
+  stable by construction, and a comment thread from "Former employee 4f2a" still
+  reads as a conversation where two nulls do not.
+- Residuals stated up front: audit justification may still name the person;
+  backups keep pre-erasure rows until they age out.
+
+## D1 — Export
+Status: DONE
+Changed: apps/administration/{data_rights.py (new),views.py,urls.py},
+apps/administration/tests/test_data_export.py (new)
+Verified by: `pytest apps/administration` → 58 passed (11 new).
+Needs from human: nothing.
+
+- `GET /api/admin/users/<id>/export`, Admin-only (MANAGE_TENANT), audited with
+  the subject id.
+- The real work was the feedback module's anonymity guarantee. An export is a
+  NEW egress boundary — exactly where such a guarantee breaks by accident — so
+  `feedback_received` is built from an explicit field list (a field added to
+  `Feedback` later cannot ride along) and a test scans the **entire** serialised
+  document for the giver's id and email.
+- Stripping the giver id isn't enough: "the one PEER comment on your 360"
+  identifies its author. The per-cycle MIN_FEEDBACK_VOLUME threshold is honoured
+  on the relationship **label**; the body still ships, because it's data about
+  the subject and withholding it defeats the request.
+- MANAGE_TENANT not MANAGE_USERS_ROLES — same role today, different meaning.
+
+## D2 — Erasure
+Status: DONE
+Changed: apps/administration/{erasure.py (new),views.py,urls.py,serializers.py},
+apps/identity/models.py + migration 0008, tests/test_data_erasure.py (new)
+Verified by: `pytest apps/administration apps/identity apps/audit
+apps/succession` → 333 passed (23 new).
+Needs from human: nothing.
+
+- Three things here would each have shipped as a **silent failure**:
+  1. `.delete()` on a TenantScopedQuerySet is a SOFT delete → the endpoint would
+     report success with every login IP, user agent and email still in the table,
+     and (being an UPDATE) would never cascade to the chat turns holding the text.
+     Uses `hard_delete()`; the test asserts through `all_objects`.
+  2. Deleting device sessions would **un-revoke** live tokens — `session_is_revoked()`
+     reads a missing row as *not* revoked. They're revoked, kept, and stripped.
+  3. `succession/engine.py` freezes `candidate_email`/`candidate_name` into
+     `ranked_bench` as denormalised text. Tombstoning doesn't reach it, and every
+     screen renders the pseudonym correctly off the live FK — so the product looks
+     right while the name sits in a JSON column. Only such copy in the schema.
+- Confirmation is the subject's own email typed back, not a checkbox or the word
+  ERASE: a fixed word is muscle memory by the second time, and the mistake that
+  happens is acting on the row below the one you meant.
+- Erasing twice is a retry (200 + `already_erased`), not a 409 — a 409 invites
+  the caller to "fix" it with something more destructive.
+- One transaction; the photo delete runs `on_commit` because object storage can't
+  roll back. An admin cannot erase themselves.
+
+## D3 — Auth-event retention
+Status: DONE
+Changed: apps/identity/tasks.py (new), config/settings/base.py,
+apps/identity/tests/test_auth_event_retention.py (new)
+Verified by: `pytest apps/identity` → 94 passed (8 new).
+Needs from human: nothing (`AUTH_EVENT_RETENTION_DAYS=0` for a legal hold).
+
+- Nothing ever removed `LoginEvent`/`DeviceSession`, so they accumulate into a
+  movement log of the whole workforce. 90 days: longer than any plausible
+  investigation, much shorter than forever.
+- Two ways this job silently does nothing, both covered: off-request the scoped
+  manager fails **closed** (so `all_tenants()`), and `.delete()` is a soft delete
+  (so `hard_delete()`, asserted through `all_objects`).
+- Sessions cut on age, not on revocation — a session revoked yesterday is
+  evidence about a compromise today.
+- A test resolves the beat entry's dotted string, because a rename otherwise
+  fails once a day on a worker, in a log nobody reads.
+
+## D4 — Retention reference
+Status: DONE
+Changed: docs/BUILD/DATA_RETENTION.md (new)
+Verified by: compiled from the model registry; every app model listed.
+Needs from human: nothing.
+
+- States the uncomfortable summary rather than burying it: this product deletes
+  almost nothing on a clock, because the retention period for an employment
+  record belongs to the employer's obligations, not to us.
+- Names the residuals: audit justification text, backups holding pre-erasure rows
+  until they age out, and the deliberate absence of a tenant-delete button.

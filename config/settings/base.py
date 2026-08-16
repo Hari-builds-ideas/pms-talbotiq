@@ -454,10 +454,25 @@ CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=False)
 
 # Celery beat: the approval-escalation sweep reassigns overdue PENDING steps to
 # their escalation target (Module 5). Interval in seconds (default 5 min).
+#: How long an authentication event is kept (D3). LoginEvent and DeviceSession
+#: hold an IP and a user agent per sign-in and per device — across a tenant, a
+#: movement log of the whole workforce. Their only real use is answering "was
+#: this account reached by somebody else, recently", so 90 days is longer than
+#: any plausible investigation and much shorter than forever. 0 disables the
+#: purge, for a deployment under a legal hold.
+AUTH_EVENT_RETENTION_DAYS = env.int("AUTH_EVENT_RETENTION_DAYS", default=90)
+
 CELERY_BEAT_SCHEDULE = {
     "approvals-escalate-overdue-routes": {
         "task": "apps.approvals.tasks.escalate_overdue_routes",
         "schedule": env.int("APPROVALS_ESCALATION_INTERVAL_SECONDS", default=300),
+    },
+    # Daily rather than hourly: the window is 90 days, so the exact hour a row
+    # disappears is meaningless, and a nightly sweep keeps the delete off the
+    # working day.
+    "identity-purge-auth-events": {
+        "task": "apps.identity.tasks.purge_expired_auth_events_task",
+        "schedule": env.int("AUTH_EVENT_PURGE_INTERVAL_SECONDS", default=86400),
     },
 }
 

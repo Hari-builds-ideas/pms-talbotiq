@@ -68,6 +68,19 @@ they stay annotated, so the example cannot quietly stop being one.
 Annotating the remaining views is worth doing per module, when that module is next
 touched, rather than as one sweeping change nobody can review.
 
+**These warnings are silenced in `check --deploy`** (`drf_spectacular.W001` and
+`W002` in `SILENCED_SYSTEM_CHECKS`). Not to hide them — they are documented right
+here — but because 209 of them turned the deploy gate into noise, and `pms.W003`
+("this deployment is serving plain HTTP") was buried around line 180 of the
+output. A gate nobody reads is not a gate. They remain visible on the command
+whose job is the schema:
+
+```bash
+docker compose exec web python manage.py spectacular --file schema.yml
+```
+
+Un-silence them as the annotation work removes them.
+
 ## Two other things the generator reports
 
 **16 `operationId` collisions.** They come from URL pairs like

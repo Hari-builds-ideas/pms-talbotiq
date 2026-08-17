@@ -100,3 +100,32 @@ def test_a_domain_with_http_reset_links_warns():
     results = checks.tls_is_terminated(None)
     assert "pms.W003" in _ids(results)
     assert "https://pms.example.com" in results[0].hint
+
+
+# ── the gate has to stay readable ─────────────────────────────────────────────
+
+
+def test_the_deploy_check_is_not_buried_in_known_noise(settings):
+    """A gate nobody reads is not a gate.
+
+    Adding drf-spectacular (F6) put 209 warnings into `manage.py check --deploy`
+    — 193 "unable to guess serializer" plus 16 operationId collisions. They are
+    real and documented, and none of them blocks a deploy. What they did block is
+    the deployer noticing `pms.W003`, the one that says this deployment is
+    serving plain HTTP, which had been pushed to somewhere around line 180.
+
+    So they are silenced, and this test pins the silencing. If a future change
+    starts emitting a NEW class of warning by the hundred, that one is not on the
+    list and the gate goes noisy again — which is when somebody should look at
+    it, rather than a year later.
+    """
+    assert "drf_spectacular.W001" in settings.SILENCED_SYSTEM_CHECKS
+    assert "drf_spectacular.W002" in settings.SILENCED_SYSTEM_CHECKS
+
+
+def test_our_own_checks_are_never_silenced(settings):
+    """The pms.* checks exist precisely because they catch what boots happily and
+    breaks a promise. Silencing one would be indistinguishable from deleting it."""
+    assert not any(
+        code.startswith("pms.") for code in settings.SILENCED_SYSTEM_CHECKS
+    ), "a pms.* deploy check has been silenced — delete it or fix it, do not mute it"

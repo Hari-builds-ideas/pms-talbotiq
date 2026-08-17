@@ -275,7 +275,25 @@ AUTH_PASSWORD_VALIDATORS = [
 # email is unique *per tenant* (enforced by a UniqueConstraint on the User
 # model), not globally — so the USERNAME_FIELD-must-be-globally-unique check
 # is intentionally silenced. Tenant scoping makes per-tenant uniqueness correct.
-SILENCED_SYSTEM_CHECKS = ["auth.E003", "auth.W004"]
+#
+# drf_spectacular.W001/W002 are the 193 "unable to guess serializer" and 16
+# operationId-collision warnings from the schema generator (F6). They are real,
+# they are documented in docs/BUILD/API_SCHEMA.md, and they are not deploy
+# blockers — but they turned `manage.py check --deploy` from a gate somebody
+# reads into 209 lines of known noise, which is the same as no gate at all: the
+# pms.W003 that says "this deployment is serving plain HTTP" was buried on line
+# 180. Silenced here so the deploy check keeps meaning something, and UNsilenced
+# by the schema work that fixes them.
+#
+# The warnings are still visible where they belong, on the command whose job is
+# the schema:
+#     python manage.py spectacular --file schema.yml
+SILENCED_SYSTEM_CHECKS = [
+    "auth.E003",
+    "auth.W004",
+    "drf_spectacular.W001",
+    "drf_spectacular.W002",
+]
 
 # ─── Django REST Framework ─────────────────────────────────────────────
 REST_FRAMEWORK = {

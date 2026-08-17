@@ -1,10 +1,19 @@
 # Overnight build — summary
 
-**Branch: `hari/prod-hardening`** (50 commits on top of `e082597`), plus
+**Branch: `hari/prod-hardening`** (52 commits on top of `e082597`), plus
 **`hari/django-upgrade`** (4 commits, ready for review, deliberately unmerged).
 
-Every phase was attempted. Nothing is half-committed: the tree is green at every
-commit, and `docs/BUILD/PROGRESS.md` has the per-item detail with the reasoning.
+Every phase was attempted. Nothing is half-committed, and
+`docs/BUILD/PROGRESS.md` has the per-item detail with the reasoning.
+
+**Verified at the end, on a clean run of each branch:**
+
+| | Backend | Frontend |
+| --- | --- | --- |
+| `hari/prod-hardening` | **2,042 passed**, 0 failed (7 deselected: `live_ai`, `large_tenant`) | **188 passed**, tsc clean, production build clean |
+| `hari/django-upgrade` | **2,042 passed**, 0 failed | unchanged by that branch |
+
+`manage.py check --deploy` under prod settings is clean on both.
 
 **Read `## NEEDS FROM HUMAN` first** — the deployment is blocked on four
 credentials and one DNS record, and nothing below can go live without them.

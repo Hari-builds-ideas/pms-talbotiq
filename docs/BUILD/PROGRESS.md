@@ -954,3 +954,57 @@ server honours it today; nothing breaks until it does).
   be a disclosure, not just a bug.
 - Only 2xx is stored — replaying a 4xx would trap a client that fixed its body
   and retried with the same key, which is exactly what a client does.
+
+## PHASE G — Django 5.2 upgrade (branch `hari/django-upgrade`)
+Status: DONE, committed, NOT MERGED, NOT PUSHED (token lacks `workflow` scope)
+Changed (on that branch only): requirements.txt, requirements.lock (new),
+config/settings/base.py, apps/identity/views.py + tests, apps/core/tests/
+test_readyz.py, apps/{reviews,career}/models.py + their 0001 migrations,
+docs/BUILD/DJANGO_UPGRADE.md (new)
+Verified by: `pytest` → **2042 passed**, 0 failed; `check --deploy` clean under
+prod settings; no Django deprecation warnings remain.
+Needs from human: review the refresh-serializer override, then merge and deploy
+separately from PHASE A–F.
+
+- Django 4.2.16 → **5.2.17 LTS**, allauth 0.63.6 → 65.19.1, DRF 3.16.1,
+  simplejwt 5.5.1. Nothing else bumped — the suite proves the rest runs on 5.2,
+  and bumping more would mix unrelated risk into a security upgrade.
+- **The break that mattered:** simplejwt 5.4 added a user lookup to the refresh
+  serializer (so a deactivated account cannot keep rotating). It goes through
+  `get_user_model().objects` — the tenant-scoped manager — which **fails closed**
+  with no tenant bound, and refresh runs with no tenant bound *by design*. Every
+  refresh 500ed. In production that means every session works until its access
+  token expires, then all of them fail at once, across every tenant, with an
+  error that says nothing about tenancy.
+- Fixed by keeping the new protection: resolve through
+  `get_by_natural_id_unscoped` (the same bootstrap escape login and SSO use) and
+  apply `USER_AUTHENTICATION_RULE` as upstream does. Third pre-tenant lookup
+  needing that escape; the pattern is now established.
+- `/readyz` probes the replica alias, and Django 5 refuses a threaded connection
+  to a database the test never declared. One line.
+- allauth's version jump is frightening and small here: three settings renamed,
+  no data migration, no template overrides (we use none). New warning worth
+  knowing — allauth 65's **conditional** unique constraint on verified emails is
+  silently not created by MySQL.
+- Cleared `CheckConstraint(check=)` → `condition=` (removed in 6.0). Both
+  constraints are load-bearing: the DB-level half of the HITL guarantee, and
+  roadmaps staying advisory-only.
+- `requirements.lock`: 92 packages, **1,152 hashes**. Not wired into the
+  Dockerfile — that is a separate PR, after this one lands.
+
+## Post-phase fix — the deploy gate
+Status: DONE (on `hari/prod-hardening`)
+Changed: config/settings/base.py, apps/core/tests/test_deploy_checks.py,
+docs/BUILD/API_SCHEMA.md
+Verified by: `check --deploy` under prod settings → no issues; 21 tests pass.
+
+- F6 put **209 warnings** into `manage.py check --deploy` (drf-spectacular
+  W001/W002). All real, all documented, none a deploy blocker — and together
+  they buried `pms.W003` ("this deployment is serving plain HTTP") around line
+  180. A gate nobody reads is not a gate, and I introduced that regression two
+  commits earlier without noticing, because I only ever grepped for the codes I
+  was looking for.
+- Silenced with the reason in-place; still visible on `manage.py spectacular`.
+  Two tests: one pinning the silencing so a *new* class of mass warning goes
+  noisy, one asserting **no `pms.*` check is ever silenced** — muting one would
+  be indistinguishable from deleting it.

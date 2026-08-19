@@ -53,3 +53,6 @@ staticfiles/*
 # Local env files that are not the committed placeholder template.
 env-for-testing.txt
 .gstack/
+backups/
+*.sql.gz
+*.sql

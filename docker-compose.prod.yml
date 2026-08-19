@@ -77,6 +77,33 @@ x-app-environment: &app_environment
   LLM_MAX_CALLS: ${LLM_MAX_CALLS:-0}
   # See docker-compose.yml: 900 truncates a long-form draft mid-JSON.
   LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+  # Per-tenant provider keys are chosen in the Admin Hub, not here; this is the
+  # deployment-wide FALLBACK consulted only when a tenant has set no key of its own
+  # (resolve_provider: tenant key -> env key -> not configured).
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
+  # Fernet key encrypting the per-tenant provider keys at rest. Unset is a SAFE
+  # state, not a broken one: the Admin Hub refuses the write with an explainable
+  # 409 rather than storing a provider credential in plaintext. Comma-separated
+  # for rotation — FIRST key encrypts, ALL are tried for decryption.
+  FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+
+  # ── SMTP ────────────────────────────────────────────────────────────────────
+  # Defaults mirror base.py exactly, so an unset variable degrades to the console
+  # backend rather than breaking boot — and `check --deploy` then fails pms.E001
+  # instead of the stack silently delivering password resets to a log file.
+  EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+  EMAIL_HOST: ${EMAIL_HOST:-}
+  EMAIL_PORT: ${EMAIL_PORT:-587}
+  EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+  EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+  # 587 = STARTTLS (TLS true / SSL false). 465 = implicit TLS (TLS false / SSL true).
+  # Django raises if both are true, which is the correct failure.
+  EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
+  EMAIL_USE_SSL: ${EMAIL_USE_SSL:-false}
+  DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
+  EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
+  SUPPORT_EMAIL: ${SUPPORT_EMAIL:-}
 
 # Baked production image: code COPYed in, NO dev/test toolchain, NO source mount.
 x-app-build: &app_build
